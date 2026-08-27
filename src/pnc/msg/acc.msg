@@ -1,0 +1,12 @@
+bool active
+int16 object
+float32 ds
+float32 dv
+float32 tarspd
+float32 curspd
+float32 objspd
+float32 Ades 
+float32 Av
+float32 Bd
+float32 Aaeb
+float32 Aout

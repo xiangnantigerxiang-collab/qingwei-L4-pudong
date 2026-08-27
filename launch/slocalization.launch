@@ -1,0 +1,25 @@
+<?xml version="1.0" ?>
+
+<launch>
+
+<!-- <node pkg="canbus" type="can_node" name="can_node" output="screen"/>
+<node name="rs232"  pkg="rs232"  type="rs232" />
+<param name="/robot/serial/rs232/port"   type="str" value="/dev/serial_button" />
+	 -->
+<!-- <param name="/sound/fileaddress" type="str" value="$(find sound_play)/sound/"/>
+<param name="/sound/number" type="int" value="7"/>
+<node name="sound_play" pkg="sound_play" type="sound_play" output="screen"/>
+
+<node name="ivlocalization"                pkg="ivlocalization"           type="ivlocalization" output="screen"/>  
+<node pkg ="ivmatching" name="main" type="listener1" output="screen"/> -->
+
+
+<!-- <node pkg ="canbus" name="can_node" type="can_node" output="screen"/> -->
+
+  <node pkg="tmp" type="tmp" name="tmp" required="true">
+    <param name="port" value="/dev/serial_gps"/>
+  </node>
+
+
+
+</launch>

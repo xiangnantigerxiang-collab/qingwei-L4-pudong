@@ -1,0 +1,30 @@
+#   Tractor-task list
+task_sum: 1
+
+
+#do action -- gear N and hook
+task0_task_type: 1 # 0-nothing 1-Track path  2-adaptiveloadpath 3-adaptiveunload  4-adaptivehook 5-adaptiveback 6-action
+task0_path_list: path0506001 #1.lpx 2.lpx 3.lpx
+task0_stop_x: 0.194
+task0_stop_y: -9.658
+task0_stop_angle: 358.682
+task0_desire_speed: 1 #3km/h
+task0_gear: 4 #2-N  3-R  4-D
+task0_subaction: 0 # 0-no_operation 5-hook 6-decouple  7-wait
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

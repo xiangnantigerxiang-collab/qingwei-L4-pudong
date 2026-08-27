@@ -1,0 +1,7 @@
+#相邻日志文件间隔时间/minute
+interval: 10
+
+#数据的记录频率/hz
+frequency: 10
+
+

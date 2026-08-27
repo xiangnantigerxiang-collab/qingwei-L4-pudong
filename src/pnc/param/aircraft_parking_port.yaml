@@ -1,0 +1,31 @@
+go_task_id: 5
+back_task_id: 6
+
+aircraft_parkingPorts:
+  - id: 1
+    parking: 0
+    go_stop_point:
+      x: -4.89288
+      y: -31.0892
+    back_stop_point:
+      x: 0.129221
+      y: -37.1917
+
+  - id: 2
+    parking: 0
+    go_stop_point:
+      x: 1.25021
+      y: -50.4889
+    back_stop_point:
+      x: 6.4904
+      y: -57.2117
+  
+  - id: 3
+    parking: 0
+    go_stop_point:
+      x: 6.62641
+      y: -67.3232
+    back_stop_point:
+      x: 11.6449
+      y: -73.4215
+

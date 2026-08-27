@@ -1,0 +1,17 @@
+std_msgs/Header header
+bool update
+float64 lon
+float64 lat
+float64 height
+float64 heading
+float64 velocity
+float64 track_angle
+float64 utctime	
+float64 hdop
+float64 diff_age
+float64 base_length
+float64 heading_std
+uint8 status
+uint8 satenum
+uint8 status_yaw
+uint8 is_heading_valid

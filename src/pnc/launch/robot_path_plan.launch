@@ -1,0 +1,35 @@
+<launch>
+	<param name="config_file" value="$(find robot)/param/config.yaml"/>	
+	<param name="path_dir" value="$(find robot)/path/"/>
+	<param name="bypass_enable" value="true"/>
+	<param name="/robot/planning/pallettype" type="int" value="0"/>
+	<node pkg="robot" type="path_plan_node" name="path_plan_node" output="screen"/>
+</launch>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

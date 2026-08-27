@@ -1,0 +1,10 @@
+#!/bin/bash
+app_dir=/usr/local/camera_demo_geac
+
+## remove dirs that contains files created by user
+if [ $1 = "remove" ] || [ $1 = "purge" ];then
+    rm -rf $app_dir/cfg
+    rm -rf $app_dir/demo
+    rm -rf $app_dir/lib
+    rm -rf $app_dir/tools
+fi

@@ -1,0 +1,6 @@
+uint8 leftLightEnable
+uint8 rightLightEnable
+uint8 doubleLightEnable
+uint8 whistleEnable
+float32 dist2target
+uint8 bypassProcessing

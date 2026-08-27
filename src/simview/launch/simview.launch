@@ -1,0 +1,7 @@
+<launch>
+  <node name="simviewer" pkg="view" type="simviewer" output="screen"/>
+  <node name="robot_rviz" pkg="rviz" type="rviz" args="-d $(find view)/launch/robot.rviz" required="true"/>
+
+  <param name="/robot/mapfile" type="str" value="$(find view)/launch/view.csv" />
+  <param name="/robot/simviewer/mapswitch"     type="int" value="1" />
+</launch>

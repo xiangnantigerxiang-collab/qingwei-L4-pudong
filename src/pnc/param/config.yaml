@@ -1,0 +1,147 @@
+#   Tractor
+task_start_num: 0
+
+load_base_point: [175.614,99.735,258.46]
+unload_base_point: [182.601,101.265,79.19]
+
+#offset angle and distance 45.0  5.75
+unload_offset_angle: 45.0
+unload_offset_dis: 5.55
+#58.5 4.6
+load_offset_angle: 57.5
+load_offset_dis: 4.42
+
+#general adaptive
+back_distance: 5.0
+front_distance: 4.0
+counter_dis_array: [3.75,8.0,12.05] #load direction
+counter_dis_array2: [3.75,8.0,12.05] #unload direction
+
+#lidar limit speed (decision_node)
+lidar_dis: [0,3.5,6,8,12,15,20,30]
+lidar_speed: [0,0,3,4,5,6,13,16]
+
+#action code defination
+parking: 0
+reversehook: 1
+decoupling: 2
+reverseparking: 3
+adaptiveload: 4
+adaptiveunload: 5
+counterpoint: 6
+adaptive: 7
+
+#set max speed (km/h)
+max_vehicle_speed: 15
+
+#vehicle parameter
+vehicle_mass: 1680
+vehicle_length: 3.09
+vehicle_front_length: 0.7
+vehicle_rear_length: 0.7
+vehicle_wheel_base: 1.6
+vehicle_head_length: 0.6
+vehicle_wheel_co: 22
+Vehicle_max_front_wheel: 60 #zhangyu 20220210 origin=30
+
+#control
+control_wheel_mot: 720
+control_preview_base: 0.5
+control_preview_base_back: 6
+control_lane_div: 1.5
+
+#speed limit parameter 
+speed_curve0: 0
+speed_curve1: 0.008
+speed_curve2: 0.01
+speed_curve3: 0.02
+speed_curve4: 0.05
+speed_curve5: 0.1
+speed_curve_limit0: 20
+speed_curve_limit1: 15
+speed_curve_limit2: 12
+speed_curve_limit3: 8
+speed_curve_limit4: 7
+speed_curve_limit5: 6
+
+speed_angle0: 0
+speed_angle1: 5
+speed_angle2: 10
+speed_angle3: 15
+speed_angle4: 20
+speed_angle_limit0: 70
+speed_angle_limit1: 70
+speed_angle_limit2: 15
+speed_angle_limit3: 9
+speed_angle_limit4: 7
+
+lateral_distance0: 0
+lateral_distance1: 0.3
+lateral_distance2: 0.5
+lateral_distance3: 1.0
+lateral_distance4: 2.0
+speed_dis_limit0: 20
+speed_dis_limit1: 10
+speed_dis_limit2: 7
+speed_dis_limit3: 2
+speed_dis_limit4: 1
+
+#preview parameter 	
+forward_preview_dis: 2.0
+back_preview_dis: 2
+preview_time: 0.6
+curve_preview_dis: 6
+preview_time2: 1.5
+
+#acc calculate parameter 
+acc_kp: 0.3
+acc_ki: 0.06
+acc_kd: 0.2
+acc_max: 2.5
+acc_min: -5
+
+#lateral control parameter -->
+lat_forward_predis: 2
+lat_back_predis: 1.2
+control_kv: 0.3
+speed_list: [0, 7, 15, 22, 30]
+angle_list: [0, 5, 12, 20, 30]
+p_para_list: [132,147,162,176,191,  132,140,147,162,176,  132,132,140,147,162,  132,132,132,132,147,  118,118,118,118,132]
+p2_para_list: [88,103,118,125,132,  81,95,103,110,118,  73,88,88,95,103,  59,59,73,73,88,  59,59,66,73,81]
+speed_list1: [0, 7, 15, 22, 30]
+angle_list1: [0, 5, 12, 20, 30]
+p_para_list1: [132,147,162,176,191,  132,140,147,162,176,  132,132,140,147,162,  132,132,132,132,147,  118,118,118,118,132]
+p2_para_list1: [88,103,118,125,132,  81,95,103,110,118,  73,88,88,95,103,  59,59,73,73,88, 59,59,66,73,81]
+
+#throttle calculate parameter --> 
+throttle_kp: 0.3
+throttle_ki: 0.06
+throttle_kd: 0.2
+
+#Least squares method calculate throttle percent
+throttle_percent: [0,20,40,60,80,100]
+actual_speed: [0,3,6,10,15,20]
+
+#avoid parameter
+# avoid_left: true
+# avoid_right: false
+# set_speed_max: 2.2
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

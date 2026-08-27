@@ -1,0 +1,9 @@
+<?xml version="1.0" ?>
+
+<launch>
+
+<node pkg="canbus" type="can_node" name="can_node" output="screen"/>	
+<node name="rs232"  pkg="rs232"  type="rs232" />
+<param name="/robot/serial/rs232/port"   type="str" value="/dev/serial_button" />
+
+</launch>

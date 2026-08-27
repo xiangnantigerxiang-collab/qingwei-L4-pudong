@@ -1,0 +1,33 @@
+#!/bin/bash
+
+app_dir=/usr/local/camera_demo_geac
+service_path=/lib/systemd/system/camera_demo_geac.service
+
+# 生成服务文件（无静态 Environment 配置）
+cat << EOF > $service_path
+[Unit]
+Description=camera demo geac Compatibility
+ConditionFileIsExecutable=$app_dir/rb_camera.sh
+After=network.target multi-user.target
+
+[Service]
+Type=simple
+ExecStart=$app_dir/rb_camera.sh \$CAMERA_MODE
+ExecStop=$app_dir/rb_camera.sh stop
+TimeoutSec=60
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+Alias=camera_demo_geac.service
+EOF
+
+# 重载 systemd 配置
+systemctl daemon-reload || true
+
+# （可选）停止旧服务
+if systemctl is-active --quiet camera_demo_geac.service; then
+    systemctl stop camera_demo_geac.service || true
+fi
+
+exit 0

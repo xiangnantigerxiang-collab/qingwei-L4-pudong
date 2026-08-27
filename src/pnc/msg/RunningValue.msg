@@ -1,0 +1,9 @@
+HeadingPoint fromPoint
+HeadingPoint toPoint
+float32 limitSpeed
+float32 suggestSpeed
+string fromTime
+string toTime
+string text
+HeadingPoint[] keyPoints
+string params

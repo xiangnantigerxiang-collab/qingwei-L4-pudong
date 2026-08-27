@@ -1,0 +1,57 @@
+<?xml version="1.0"?>
+
+<launch>
+    <node name="richbeam_lidar_node0" pkg="lakibeam1" type="lakibeam1_scan_node" output="screen"><!--lidar0设置-->
+      <remap from="/richbeam_lidar/scan0" to="/scan0" />
+      <param name="frame_id" type="string" value="robot"/><!--frame_id设置-->
+      <param name="output_topic" type="string" value="/back_left_scan" /><!--topic设置-->
+      <param name="inverted" type="bool" value="false"/><!--配置是否倒装,true倒装-->
+      <param name="hostip" type="string" value="0.0.0.0"/><!--配置本机监听地址，0.0.0.0表示监听全部-->
+      <param name="sensorip" type="string" value="192.168.5.131"/><!--配置sensor地址-->
+      <param name="port" type="string" value="2368"/><!--配置本机监听端口-->
+      <param name="angle_offset" type="int" value="0"/><!--配置点云旋转角度，可以是负数-->
+    </node>
+
+    <node name="richbeam_lidar_node1" pkg="lakibeam1" type="lakibeam1_scan_node" output="screen"><!--lidar1设置-->
+      <remap from="/richbeam_lidar/scan1" to="/scan1" />
+      <param name="frame_id" type="string" value="robot"/><!--frame_id设置-->
+      <param name="output_topic" type="string" value="/back_right_scan" /><!--topic设置-->
+      <param name="inverted" type="bool" value="false"/><!--配置是否倒装,true倒装-->
+      <param name="hostip" type="string" value="0.0.0.0"/><!--配置本机监听地址，0.0.0.0表示监听全部-->
+      <param name="sensorip" type="string" value="192.168.5.132"/><!--配置sensor地址-->
+      <param name="port" type="string" value="2369"/><!--配置本机监听端口-->
+      <param name="angle_offset" type="int" value="0"/><!--配置点云旋转角度，可以是负数-->
+    </node>
+    
+    <node pkg="auto_couple" type="auto_couple_node" name="auto_couple_node" output="screen">
+       <!-- <param name="x_left" value="0.05"/>
+       <param name="y_left" value="-0.675"/>
+       <param name="z_left" value="0.0"/>
+       <param name="roll_left" value="0.06891"/>
+       <param name="pitch_left" value="0.0"/>
+       <param name="yaw_left" value="0.0"/>
+       <param name="x_right" value="0.0"/>
+       <param name="y_right" value="0.275"/>
+       <param name="z_right" value="0.0"/>
+       <param name="roll_right" value="0.1047"/>
+       <param name="pitch_right" value="0.0"/>
+       <param name="yaw_right" value="0.0"/> -->
+
+       <param name="x_left" value="0.0"/>
+       <param name="y_left" value="0.47"/>
+       <param name="z_left" value="0.0"/>
+       <param name="roll_left" value="0.0"/>
+       <param name="pitch_left" value="0.0"/>
+       <param name="yaw_left" value="0.0"/>
+       <param name="x_right" value="0.0"/>
+       <param name="y_right" value="-0.47"/>
+       <param name="z_right" value="0.0"/>
+       <param name="roll_right" value="0.01"/>
+       <param name="pitch_right" value="0.0"/>
+       <param name="yaw_right" value="0.0"/>
+      <param name="target_type" value="0"/> 
+      <!-- 0 是固定位置， 1是反光板位置 -->
+    </node>
+     
+    <!-- <include file="$(find lidar_perception)/launch/lidar_perception.launch"/> -->
+</launch>

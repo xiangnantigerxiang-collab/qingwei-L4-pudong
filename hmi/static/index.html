@@ -1,0 +1,684 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>清维 L4 · 车辆控制台</title>
+<style>
+/* ============ 设计令牌(深色,单主题) ============
+   状态色为固定色板,深色面上对比度全部 ≥3:1;颜色只做辅助,
+   所有状态都伴随文字标签,不单靠颜色传达。 */
+:root{
+  --page:#0d0d0d;          /* 页面底 */
+  --surface:#1a1a19;       /* 卡片面 */
+  --surface2:#232322;      /* 抬升面(header/弹窗) */
+  --ink:#ffffff;
+  --ink2:#c3c2b7;
+  --muted:#898781;
+  --hairline:#2c2c2a;
+  --ring:rgba(255,255,255,.10);
+  --good:#0ca30c;  --warning:#fab219; --serious:#ec835a; --critical:#d03b3b;
+  --info:#3987e5;           /* 过渡态(启动中/停止中) */
+  --track:#123012;          /* meter 未填充轨道:good 同色系深阶 */
+  --track-warn:#3a2b0a;
+  --track-crit:#3a1414;
+  --track-info:#12233c;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{font-size:15px}
+body{
+  background:var(--page);color:var(--ink);
+  font-family:system-ui,-apple-system,"Segoe UI","Noto Sans CJK SC",sans-serif;
+  touch-action:manipulation;
+}
+button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
+button:disabled{opacity:.35;cursor:not-allowed}
+
+/* ============ 顶栏 ============ */
+header{
+  position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:.9rem;
+  padding:.6rem 1rem;background:var(--surface2);
+  border-bottom:1px solid var(--ring);flex-wrap:wrap;
+}
+.brand{font-weight:700;font-size:1.05rem;letter-spacing:.02em;white-space:nowrap}
+.pill{
+  padding:.25rem .8rem;border-radius:999px;font-weight:600;font-size:.9rem;
+  border:1px solid var(--ring);color:var(--muted);white-space:nowrap;
+}
+.pill.p-good{color:var(--good);border-color:var(--good)}
+.pill.p-warn{color:var(--warning);border-color:var(--warning)}
+.pill.p-crit{color:var(--critical);border-color:var(--critical)}
+.pill.p-info{color:var(--info);border-color:var(--info)}
+.spacer{flex:1}
+.btn{
+  min-height:44px;min-width:72px;padding:.4rem 1.1rem;border-radius:8px;
+  font-weight:600;border:1px solid var(--ring);color:var(--ink2);
+}
+.btn.big{font-size:1.05rem;padding:.5rem 1.6rem}
+.btn.b-good{color:var(--good);border-color:var(--good)}
+.btn.b-good:not(:disabled):hover{background:rgba(12,163,12,.12)}
+.btn.b-crit{color:var(--critical);border-color:var(--critical)}
+.btn.b-crit:not(:disabled):hover{background:rgba(208,59,59,.12)}
+.sysline{width:100%;color:var(--muted);font-size:.82rem;display:flex;gap:1.1rem;flex-wrap:wrap}
+.sysline b{color:var(--ink2);font-weight:600}
+
+/* ============ 横幅 ============ */
+#banners{display:flex;flex-direction:column;gap:.4rem;padding:.5rem 1rem 0}
+.banner{
+  display:flex;align-items:center;gap:.6rem;padding:.45rem .8rem;border-radius:8px;
+  border:1px solid;font-size:.9rem;background:var(--surface);
+}
+.banner.warn{border-color:var(--warning);color:var(--warning)}
+.banner.crit{border-color:var(--critical);color:var(--critical)}
+.banner.info{border-color:var(--info);color:var(--info)}
+
+/* ============ 主体两栏 ============ */
+main{
+  display:grid;grid-template-columns:minmax(0,1fr) 400px;gap:1rem;
+  padding:1rem;align-items:start;
+}
+@media (max-width:1000px){
+  main{grid-template-columns:1fr}
+  #vehiclePanel{position:static}
+}
+
+/* ---- 组件卡片 ---- */
+.groupSec{margin-bottom:1.1rem}
+.groupTitle{
+  color:var(--muted);font-size:.82rem;font-weight:600;letter-spacing:.08em;
+  margin:.2rem 0 .5rem;
+}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(185px,1fr));gap:.7rem}
+.card{
+  background:var(--surface);border:1px solid var(--ring);border-radius:10px;
+  padding:.65rem .75rem;display:flex;flex-direction:column;gap:.3rem;
+}
+.crow{display:flex;align-items:center;gap:.5rem}
+.dot{width:11px;height:11px;border-radius:50%;flex:none;background:var(--muted)}
+.st-RUNNING .dot{background:var(--good)}
+.st-STARTING .dot,.st-STOPPING .dot{background:var(--info);animation:pulse 1.2s infinite}
+.st-DEGRADED .dot{background:var(--warning)}
+.st-CRASHED .dot{background:var(--critical);animation:blink 0.9s infinite}
+@keyframes pulse{50%{opacity:.35}}
+@keyframes blink{50%{opacity:.15}}
+.ctitle{font-weight:600;font-size:.95rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.badge{
+  font-size:.7rem;padding:.05rem .4rem;border-radius:4px;flex:none;
+  border:1px solid var(--serious);color:var(--serious);font-weight:600;
+}
+.badge.off{border-color:var(--muted);color:var(--muted)}
+.cstate{color:var(--ink2);font-size:.82rem}
+.chealth{color:var(--muted);font-size:.75rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-height:1em}
+.cerr{color:var(--critical);font-size:.75rem;line-height:1.3}
+.cbtns{display:flex;gap:.35rem;margin-top:.25rem;flex-wrap:wrap}
+.cbtns button{
+  flex:1;min-height:34px;min-width:44px;border-radius:6px;font-size:.8rem;
+  border:1px solid var(--ring);color:var(--ink2);padding:0 .4rem;
+}
+.cbtns button:not(:disabled):hover{background:rgba(255,255,255,.06)}
+.cbtns button.op-start:not(:disabled){color:var(--good);border-color:var(--good)}
+.cbtns button.op-stop:not(:disabled){color:var(--serious);border-color:var(--serious)}
+
+/* ---- 车辆状态面板 ---- */
+#vehiclePanel{
+  position:sticky;top:64px;display:flex;flex-direction:column;gap:.8rem;
+}
+.vsec{background:var(--surface);border:1px solid var(--ring);border-radius:10px;padding:.7rem .85rem}
+.vsec h3{
+  font-size:.78rem;color:var(--muted);font-weight:600;letter-spacing:.08em;
+  margin-bottom:.55rem;
+}
+.vrow{display:flex;justify-content:space-between;align-items:baseline;gap:.6rem;padding:.14rem 0}
+.vrow .lbl{color:var(--ink2);font-size:.85rem;white-space:nowrap}
+.vrow .val{font-weight:600;font-size:.92rem;text-align:right;word-break:break-all}
+.val.good{color:var(--good)} .val.warn{color:var(--warning)}
+.val.serious{color:var(--serious)} .val.crit{color:var(--critical)}
+.val.stale,.gearbox.stale{color:var(--muted);text-decoration:line-through dotted}
+.val .sub{color:var(--muted);font-weight:400;font-size:.78rem}
+.hero{display:flex;align-items:baseline;gap:.5rem}
+.hero .num{font-size:3.2rem;font-weight:700;line-height:1}
+.hero .unit{color:var(--muted);font-size:1rem}
+.driving{display:grid;grid-template-columns:1fr auto;gap:.5rem .9rem;align-items:center}
+.gearbox{
+  font-size:1.5rem;font-weight:700;border:1px solid var(--ring);border-radius:8px;
+  padding:.3rem .8rem;text-align:center;min-width:3.2em;
+}
+.estop{
+  grid-column:1/-1;text-align:center;padding:.4rem;border-radius:8px;
+  font-weight:700;border:1px solid var(--ring);color:var(--muted);
+}
+.estop.on{color:var(--critical);border-color:var(--critical);animation:blink 0.8s infinite}
+.meter{height:10px;border-radius:5px;background:var(--track);overflow:hidden;margin-top:.25rem}
+.meter>div{height:100%;border-radius:5px;background:var(--good);transition:width .5s}
+.meter.warn>div{background:var(--warning)}
+.meter.crit>div{background:var(--critical)}
+.meter.info>div{background:var(--info)}
+.sensgrid{display:grid;grid-template-columns:1fr 1fr;gap:.35rem .8rem}
+.sens{display:flex;align-items:center;gap:.45rem;font-size:.85rem;color:var(--ink2)}
+.sens .dot{width:9px;height:9px}
+.sens.ok .dot{background:var(--good)}
+.sens.bad .dot{background:var(--critical);animation:blink .9s infinite}
+.sens.na .dot{background:var(--muted)}
+.vehEmpty{color:var(--muted);font-size:.85rem;padding:.4rem 0}
+
+/* ============ 日志弹窗 ============ */
+#logModal{
+  position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.55);
+  display:none;align-items:center;justify-content:center;padding:1.5rem;
+}
+#logModal.open{display:flex}
+.logBox{
+  background:var(--surface2);border:1px solid var(--ring);border-radius:12px;
+  width:min(1100px,100%);height:74vh;display:flex;flex-direction:column;overflow:hidden;
+}
+.logHead{display:flex;align-items:center;gap:.8rem;padding:.6rem .9rem;border-bottom:1px solid var(--ring);flex-wrap:wrap}
+.logHead b{font-size:1rem}
+.logHead label{color:var(--muted);font-size:.82rem;display:flex;align-items:center;gap:.3rem}
+.logHead .spacer{flex:1}
+.logBox pre{
+  flex:1;overflow:auto;padding:.7rem .9rem;font-size:.78rem;line-height:1.45;
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  color:var(--ink2);white-space:pre-wrap;word-break:break-all;
+}
+footer{
+  color:var(--muted);font-size:.75rem;padding:.6rem 1rem 1rem;
+  border-top:1px solid var(--hairline);margin-top:.5rem;line-height:1.5;
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">清维 L4 · 车辆控制台</div>
+  <div id="overall" class="pill">连接中…</div>
+  <div class="spacer"></div>
+  <button id="btnStart" class="btn big b-good">一键启动</button>
+  <button id="btnStop" class="btn big b-crit">全部停止</button>
+  <div id="sysline" class="sysline"></div>
+</header>
+
+<div id="banners"></div>
+
+<main>
+  <section id="components"></section>
+
+  <aside id="vehiclePanel">
+    <div class="vsec">
+      <h3>行驶</h3>
+      <div class="driving">
+        <div class="hero"><span class="num" id="v-speed">--</span><span class="unit">km/h</span></div>
+        <div class="gearbox" id="v-gear">--</div>
+        <div class="vrow"><span class="lbl">模式</span><span class="val" id="v-mode">--</span></div>
+        <div class="vrow"><span class="lbl">急停</span><span class="val" id="v-estop">--</span></div>
+        <div class="estop" id="v-estopbar">急停状态未知</div>
+      </div>
+    </div>
+
+    <div class="vsec">
+      <h3>任务</h3>
+      <div class="vrow"><span class="lbl">执行状态</span><span class="val" id="v-taskst">--</span></div>
+      <div class="vrow"><span class="lbl">任务号</span><span class="val" id="v-taskid">--</span></div>
+      <div class="vrow"><span class="lbl">子目标点</span><span class="val" id="v-taskxy">--</span></div>
+      <div class="vrow"><span class="lbl">距停车点</span><span class="val" id="v-d2stop">--</span></div>
+      <div class="vrow"><span class="lbl">失败信息</span><span class="val" id="v-taskfail">--</span></div>
+    </div>
+
+    <div class="vsec">
+      <h3>定位</h3>
+      <div class="vrow"><span class="lbl">局部坐标</span><span class="val" id="v-locxy">--</span></div>
+      <div class="vrow"><span class="lbl">航向</span><span class="val" id="v-lochead">--</span></div>
+      <div class="vrow"><span class="lbl">RTK</span><span class="val" id="v-rtk">--</span></div>
+    </div>
+
+    <div class="vsec">
+      <h3>安全</h3>
+      <div class="vrow"><span class="lbl">最近障碍物</span><span class="val" id="v-obstacle">--</span></div>
+      <div class="vrow"><span class="lbl">横向偏差</span><span class="val" id="v-latdev">--</span></div>
+    </div>
+
+    <div class="vsec">
+      <h3>电源与挂接</h3>
+      <div class="vrow"><span class="lbl">电量</span><span class="val" id="v-batt">--</span></div>
+      <div class="meter" id="v-battmeter"><div style="width:0%"></div></div>
+      <div class="vrow" style="margin-top:.3rem"><span class="lbl">挂接状态</span><span class="val" id="v-hook">--</span></div>
+      <div class="vrow"><span class="lbl">挂点中心距 / 夹角</span><span class="val" id="v-hookgeo">--</span></div>
+    </div>
+
+    <div class="vsec">
+      <h3>健康与网络</h3>
+      <div class="sensgrid">
+        <span class="sens na" id="s-lidar"><span class="dot"></span>激光雷达</span>
+        <span class="sens na" id="s-camera"><span class="dot"></span>相机</span>
+        <span class="sens na" id="s-gnss"><span class="dot"></span>GNSS</span>
+        <span class="sens na" id="s-vehicle"><span class="dot"></span>CAN 总线</span>
+      </div>
+      <div class="vrow" style="margin-top:.35rem"><span class="lbl">CAN 频率</span><span class="val" id="v-canhz">--</span></div>
+      <div class="vrow"><span class="lbl">CAN 故障码</span><span class="val" id="v-canfault">--</span></div>
+      <div class="vrow"><span class="lbl">互联网</span><span class="val" id="v-net">--</span></div>
+      <div class="vrow"><span class="lbl">围栏告警</span><span class="val" id="v-alarm">--</span></div>
+      <div class="vrow"><span class="lbl">ROS master</span><span class="val" id="v-master">--</span></div>
+    </div>
+
+    <div class="vsec" id="vehEmpty" style="display:none">
+      <div class="vehEmpty" id="vehEmptyText"></div>
+    </div>
+  </aside>
+</main>
+
+<div id="logModal">
+  <div class="logBox">
+    <div class="logHead">
+      <b id="logTitle">日志</b>
+      <label><input type="checkbox" id="logStick" checked>自动滚动</label>
+      <a id="logDl" href="#" download>下载全文</a>
+      <div class="spacer"></div>
+      <button class="btn" id="logClose">关闭</button>
+    </div>
+    <pre id="logBody">暂无日志</pre>
+  </div>
+</div>
+
+<footer>
+  <span id="ftInfo"></span>
+</footer>
+
+<script>
+"use strict";
+/* ================= 工具 ================= */
+var $ = function(s){ return document.querySelector(s); };
+function esc(s){
+  return String(s == null ? "" : s).replace(/[&<>"']/g, function(c){
+    return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];
+  });
+}
+function fmtUptime(s){
+  if (s == null) return "";
+  if (s < 60) return Math.round(s) + " 秒";
+  if (s < 3600) return Math.floor(s/60) + " 分钟";
+  return Math.floor(s/3600) + " 时 " + Math.floor(s%3600/60) + " 分";
+}
+var STATE_TEXT = {STOPPED:"已停止", STARTING:"启动中", RUNNING:"运行",
+                  DEGRADED:"降级", STOPPING:"停止中", CRASHED:"故障"};
+
+/* ================= 状态与轮询 ================= */
+var ST = null, online = true;
+var pollTimer = null, logTimer = null, logName = null;
+
+function poll(){
+  fetch("/api/state").then(function(r){ return r.json(); }).then(function(d){
+    ST = d; online = true; render();
+  }).catch(function(){
+    if (online){ online = false; renderOffline(); }
+  });
+}
+function startPoll(){
+  if (pollTimer) clearInterval(pollTimer);
+  poll();
+  pollTimer = setInterval(poll, 1000);
+}
+document.addEventListener("visibilitychange", function(){
+  if (document.hidden){
+    if (pollTimer){ clearInterval(pollTimer); pollTimer = null; }
+  } else { startPoll(); }
+});
+
+function post(url, body){
+  return fetch(url, {
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body: JSON.stringify(body || {})
+  }).then(function(r){ return r.json().then(function(j){
+    if (!r.ok && j && j.error){ console.warn(url, j.error); }
+    poll(); return j;
+  }); }).catch(function(){ poll(); });
+}
+
+/* ================= 渲染 ================= */
+function render(){
+  if (!ST) return;
+  renderHeader(); renderBanners(); renderComponents(); renderVehicle(); renderFooter();
+}
+
+function renderOffline(){
+  var o = $("#overall");
+  o.textContent = "无法连接车端服务";
+  o.className = "pill p-crit";
+  $("#banners").innerHTML =
+    '<div class="banner crit">⚠ 无法连接车端服务,正在重试…</div>';
+}
+
+function overallState(){
+  if (!ST) return ["连接中…",""];
+  var cs = ST.components, i;
+  if (ST.sequence && ST.sequence.active){
+    return ST.sequence.action === "stop" ? ["停止中…","p-info"] : ["启动中…","p-info"];
+  }
+  var crashed = 0, degraded = 0, running = 0, other = 0;
+  for (i = 0; i < cs.length; i++){
+    if (!cs[i].enabled) continue;
+    if (cs[i].state === "CRASHED") crashed++;
+    else if (cs[i].state === "DEGRADED") degraded++;
+    else if (cs[i].state === "RUNNING") running++;
+    else other++;
+  }
+  if (crashed) return [crashed + " 个组件故障","p-crit"];
+  if (degraded) return [degraded + " 个组件降级","p-warn"];
+  if (running && !other) return ["全部运行","p-good"];
+  if (running) return ["部分运行 " + running + "/" + (running+other),"p-warn"];
+  return ["未运行",""];
+}
+
+function renderHeader(){
+  var ov = overallState();
+  $("#overall").textContent = ov[0];
+  $("#overall").className = "pill " + ov[1];
+
+  var s = ST.system || {};
+  $("#sysline").innerHTML =
+    "<span>CPU <b>" + (s.cpu_pct == null ? "--" : s.cpu_pct + "%") + "</b></span>" +
+    "<span>内存 <b>" + (s.mem_pct == null ? "--" : s.mem_pct + "%") + "</b></span>" +
+    "<span>温度 <b>" + (s.cpu_temp_c == null ? "--" : s.cpu_temp_c + "℃") + "</b></span>" +
+    "<span>磁盘 <b>" + (s.disk_pct == null ? "--" : s.disk_pct + "%") +
+      " 剩余 " + (s.disk_free_gb == null ? "--" : s.disk_free_gb + "GB") + "</b></span>" +
+    "<span>负载 <b>" + (s.load1 == null ? "--" : s.load1) + "</b></span>";
+
+  var busy = ST.sequence && ST.sequence.active;
+  $("#btnStart").disabled = busy;
+  $("#btnStop").disabled = busy;
+}
+
+function renderBanners(){
+  var bs = [];
+  if (!online){
+    bs.push('<div class="banner crit">⚠ 无法连接车端服务,正在重试…</div>');
+  }
+  var srv = ST.server || {};
+  if (!srv.ros_available){
+    bs.push('<div class="banner warn">⚠ 无 ROS 环境:仅进程管理可用,车辆状态面板不可用</div>');
+  } else if (srv.master_ok === false){
+    bs.push('<div class="banner crit">⚠ ROS master 失联:roscore 可能已停止,请检查后重启</div>');
+  }
+  var sq = ST.sequence || {};
+  if (sq.active){
+    bs.push('<div class="banner info">⟳ 一键' + (sq.action === "stop" ? "停止" : "启动") +
+            "进行中,当前分组:" + esc(sq.current_group) + "</div>");
+  } else if (sq.note){
+    var cls = sq.failed && sq.failed.length ? "crit" : "info";
+    bs.push('<div class="banner ' + cls + '">' + (sq.failed && sq.failed.length ? "✖ " : "ℹ ") +
+            esc(sq.note) + "</div>");
+  }
+  var i, cs = ST.components;
+  for (i = 0; i < cs.length; i++){
+    if (cs[i].foreign){
+      bs.push('<div class="banner warn">⚠ 检测到 ' + esc(cs[i].title) +
+              " 疑似外部进程(非本 HMI 启动)。建议先全部停止后由 HMI 重新拉起</div>");
+    }
+  }
+  if (ST.system && ST.system.disk_warn){
+    bs.push('<div class="banner warn">⚠ 磁盘剩余空间不足 1GB,日志可能被自动清理</div>');
+  }
+  $("#banners").innerHTML = bs.join("");
+}
+
+function renderComponents(){
+  var cs = ST.components;
+  var groups = {};
+  var i, g, order = [];
+  for (i = 0; i < cs.length; i++){
+    g = cs[i].group;
+    if (!groups[g]){ groups[g] = []; order.push(g); }
+    groups[g].push(cs[i]);
+  }
+  order.sort(function(a,b){ return a-b; });
+  var busy = ST.sequence && ST.sequence.active;
+  var html = [];
+  for (i = 0; i < order.length; i++){
+    g = order[i];
+    var gtitle = cs.length ? (groups[g][0].group_title || ("组 " + g)) : ("组 " + g);
+    html.push('<div class="groupSec"><div class="groupTitle">' + esc(gtitle) + "</div>" +
+              '<div class="cards">');
+    var list = groups[g], j, c;
+    for (j = 0; j < list.length; j++){
+      c = list[j];
+      var st = c.state;
+      var canStart = !busy && (st === "STOPPED" || st === "CRASHED");
+      var canStop  = !busy && (st === "STARTING" || st === "RUNNING" ||
+                               st === "DEGRADED" || st === "CRASHED");
+      var canRestart = !busy && (st !== "STARTING" && st !== "STOPPING");
+      html.push(
+        '<div class="card st-' + st + '">' +
+          '<div class="crow"><span class="dot"></span>' +
+            '<span class="ctitle">' + esc(c.title) + "</span>" +
+            (c.foreign ? '<span class="badge">外部</span>' : "") +
+            (c.stop_failed ? '<span class="badge">停止失败</span>' : "") +
+            (!c.enabled ? '<span class="badge off">未启用</span>' : "") +
+          "</div>" +
+          '<div class="cstate">' + (STATE_TEXT[st] || st) +
+            (c.uptime_s != null ? " · " + fmtUptime(c.uptime_s) : "") + "</div>" +
+          '<div class="chealth" title="' + esc(c.health_detail || "") + '">' +
+            esc(c.health_detail || "") + "</div>" +
+          (c.last_error ? '<div class="cerr">' + esc(c.last_error) + "</div>" : "") +
+          '<div class="cbtns">' +
+            '<button data-act="start" data-name="' + esc(c.name) + '" ' +
+              'class="op-start" ' + (canStart ? "" : "disabled") + ">启动</button>" +
+            '<button data-act="stop" data-name="' + esc(c.name) + '" ' +
+              'class="op-stop" ' + (canStop ? "" : "disabled") + ">停止</button>" +
+            '<button data-act="restart" data-name="' + esc(c.name) + '" ' +
+              (canRestart ? "" : "disabled") + ">重启</button>" +
+            '<button data-act="log" data-name="' + esc(c.name) + '">日志</button>' +
+          "</div>" +
+        "</div>");
+    }
+    html.push("</div></div>");
+  }
+  $("#components").innerHTML = html.join("");
+}
+
+/* ---- 车辆面板 ---- */
+function setVal(id, text, cls, stale){
+  var el = document.getElementById(id);
+  el.textContent = text;
+  el.className = "val" + (cls ? " " + cls : "") + (stale ? " stale" : "");
+}
+function age(topic){
+  if (!ST.vehicle || !ST.vehicle.ages) return null;
+  return ST.vehicle.ages[topic];
+}
+function staleOf(topic){ var a = age(topic); return a != null && a > 5; }
+
+function renderVehicle(){
+  var v = ST.vehicle || {};
+  var panelOk = !!v.ros_available;
+  var empty = $("#vehEmpty"), emptyText = $("#vehEmptyText");
+  if (!panelOk){
+    empty.style.display = "";
+    emptyText.textContent = v.reason || "车辆状态不可用";
+  } else {
+    empty.style.display = "none";
+  }
+
+  /* 行驶 */
+  var spd = v.speed_kmh;
+  $("#v-speed").textContent = panelOk && spd != null ? spd : "--";
+  var gearEl = $("#v-gear");
+  gearEl.textContent = panelOk && v.gear ? v.gear : "--";
+  gearEl.classList.toggle("stale", staleOf("/can_msg"));
+  var mode = v.mode;
+  setVal("v-mode", panelOk ? (mode || "--") : "--",
+         mode === "自动" ? "good" : (mode === "手动" ? "warn" : null),
+         staleOf("/can_msg"));
+  var es = v.emergency_stop;
+  var esBar = $("#v-estopbar");
+  if (!panelOk || es == null){
+    setVal("v-estop", "--", null, false);
+    esBar.textContent = "急停状态未知";
+    esBar.className = "estop";
+  } else if (es){
+    setVal("v-estop", "按下", "crit", false);
+    esBar.textContent = "⚠ 急停激活";
+    esBar.className = "estop on";
+  } else {
+    setVal("v-estop", "正常", "good", false);
+    esBar.textContent = "急停正常";
+    esBar.className = "estop";
+  }
+
+  /* 任务 */
+  var t = v.task || {};
+  setVal("v-taskst", panelOk ? (t.status_text || "--") : "--",
+         t.status === 1 ? "good" : null, staleOf("/path_plan_status"));
+  setVal("v-taskid", panelOk && t.task_id != null ? String(t.task_id) : "--",
+         null, staleOf("/task_plan_msg"));
+  setVal("v-taskxy", t.stop_xy_m ? "(" + t.stop_xy_m[0] + ", " + t.stop_xy_m[1] + ") m" :
+         (panelOk ? "--" : "--"), null, staleOf("/task_plan_msg"));
+  var d2s = v.distance_to_stop_m;
+  setVal("v-d2stop", panelOk ? (d2s == null ? "--" : d2s + " m") : "--",
+         null, staleOf("/path_plan_status"));
+  setVal("v-taskfail", t.fail_text ? t.fail_text : (panelOk ? "无" : "--"),
+         t.fail_text ? "crit" : null, staleOf("/cloud/task/task_status"));
+
+  /* 定位 */
+  var loc = v.localization || {};
+  setVal("v-locxy", panelOk && loc.x_m != null ?
+         (loc.x_m.toFixed(1) + ", " + (loc.y_m == null ? "--" : loc.y_m.toFixed(1))) : "--",
+         null, staleOf("/navigation_msg"));
+  setVal("v-lochead", panelOk && loc.heading_deg != null ?
+         loc.heading_deg.toFixed(1) + "°" : "--", null, staleOf("/navigation_msg"));
+  var rtkOk = loc.rtk_text === "RTK固定";
+  setVal("v-rtk", panelOk ? (loc.rtk_text || "--") : "--",
+         loc.rtk_text == null ? null : (rtkOk ? "good" : "crit"),
+         staleOf("/navigation_msg"));
+
+  /* 安全 */
+  var ob = v.obstacle || {};
+  var obCls = {ok:"good", warn:"warn", danger:"crit"}[ob.level] || null;
+  setVal("v-obstacle", panelOk ? (ob.text || "--") : "--", obCls,
+         staleOf("/path_plan_status"));
+  var lat = v.lateral_dev_m;
+  setVal("v-latdev", panelOk ? (lat == null ? "--" : lat + " m") : "--",
+         lat == null ? null : (v.lateral_dev_warn ? "crit" : null),
+         staleOf("/control_msg"));
+
+  /* 电源与挂接 */
+  var batt = v.battery_pct;
+  setVal("v-batt", panelOk && batt != null ? batt + " %" : "--", null,
+         staleOf("/v2nHeartBeat"));
+  var meter = $("#v-battmeter");
+  var bar = meter.firstElementChild;
+  if (batt == null){ bar.style.width = "0%"; meter.className = "meter"; }
+  else {
+    bar.style.width = Math.max(0, Math.min(100, batt)) + "%";
+    meter.className = "meter " + (batt < 20 ? "crit" : batt < 40 ? "warn" : "");
+  }
+  var hk = v.hook || {};
+  var hkGood = hk.state === 4 || hk.state === 3;
+  setVal("v-hook", panelOk ? (hk.text || "--") : "--",
+         hk.state == null ? null : (hkGood ? "good" : hk.state === 1 ? "crit" : "warn"),
+         staleOf("/v2nHeartBeat"));
+  setVal("v-hookgeo", panelOk && hk.center_distance != null ?
+         hk.center_distance + " m / " + (hk.beta == null ? "--" : hk.beta + "°") : "--",
+         null, staleOf("/hook_position"));
+
+  /* 健康与网络 */
+  var s = v.sensors || {};
+  setSens("#s-lidar", s.lidar); setSens("#s-camera", s.camera);
+  setSens("#s-gnss", s.gnss); setSens("#s-vehicle", s.vehicle_ok);
+  var canHz = (v.can && v.can.hz != null) ? v.can.hz.toFixed(1) + " Hz" : "--";
+  setVal("v-canhz", panelOk ? canHz : "--",
+         v.can && v.can.hz != null && v.can.hz < 10 ? "warn" : null, false);
+  var fc = v.can && v.can.fault_codes && v.can.fault_codes.length ?
+           v.can.fault_codes.join(",") : null;
+  setVal("v-canfault", panelOk ? (fc || "无") : "--", fc ? "crit" : "good",
+         staleOf("/can_msg"));
+  var net = v.net || {};
+  setVal("v-net", panelOk ? (net.internet_ok == null ? "未知" :
+         (net.internet_ok ? "正常" : "断开")) : "--",
+         net.internet_ok == null ? null : (net.internet_ok ? "good" : "warn"), false);
+  setVal("v-alarm", panelOk ? (net.alarm == null ? "未知" :
+         (net.alarm ? "⚠ 围栏告警" : "正常")) : "--",
+         net.alarm == null ? null : (net.alarm ? "crit" : "good"), false);
+  var srv = ST.server || {};
+  setVal("v-master", srv.ros_available ? (srv.master_ok ? "正常" :
+         (srv.master_ok === false ? "失联" : "未知")) : "无 ROS",
+         srv.master_ok === true ? "good" : srv.master_ok === false ? "crit" : null, false);
+}
+function setSens(sel, ok){
+  var el = $(sel);
+  if (ok === true){ el.className = "sens ok"; }
+  else if (ok === false){ el.className = "sens bad"; }
+  else { el.className = "sens na"; }
+}
+
+function renderFooter(){
+  var srv = ST.server || {};
+  var errs = srv.msg_import_errors || {};
+  var errKeys = Object.keys(errs);
+  var txt = "qingwei L4 HMI v" + (srv.version || "?") +
+    " · 服务启动于 " + (srv.started_at ? new Date(srv.started_at * 1000).toLocaleString() : "--");
+  if (errKeys.length){
+    txt += " · 消息包导入失败(对应字段不可用): " + errKeys.join(", ");
+  }
+  txt += " · 软件停止不等同于硬件急停,紧急情况请使用车载急停按钮";
+  $("#ftInfo").textContent = txt;
+}
+
+/* ================= 交互 ================= */
+$("#btnStart").addEventListener("click", function(){ post("/api/start"); });
+
+$("#btnStop").addEventListener("click", function(){
+  if (window.confirm("确认停止全部组件?行驶中车辆将失去自动控制。")){
+    post("/api/stop", {confirm: "STOP"});
+  }
+});
+
+$("#components").addEventListener("click", function(e){
+  var b = e.target.closest("button[data-act]");
+  if (!b || b.disabled) return;
+  var name = b.getAttribute("data-name"), act = b.getAttribute("data-act");
+  if (act === "log"){ openLog(name); return; }
+  post("/api/components/" + encodeURIComponent(name) + "/" + act);
+});
+
+/* ---- 日志弹窗 ---- */
+function openLog(name){
+  logName = name;
+  $("#logTitle").textContent = "日志 · " + name;
+  $("#logDl").href = "/api/logs/" + encodeURIComponent(name) + "?download=1";
+  $("#logModal").classList.add("open");
+  $("#logBody").textContent = "读取中…";
+  fetchLog();
+  if (logTimer) clearInterval(logTimer);
+  logTimer = setInterval(function(){
+    if (!document.hidden) fetchLog();
+  }, 2000);
+}
+function fetchLog(){
+  if (!logName) return;
+  fetch("/api/logs/" + encodeURIComponent(logName) + "?tail=400")
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      var pre = $("#logBody");
+      var stick = $("#logStick").checked &&
+        (pre.scrollTop + pre.clientHeight >= pre.scrollHeight - 30);
+      pre.textContent = (d.lines && d.lines.length) ? d.lines.join("\n")
+                       : (d.note || "暂无日志");
+      if (stick){ pre.scrollTop = pre.scrollHeight; }
+    }).catch(function(){});
+}
+function closeLog(){
+  $("#logModal").classList.remove("open");
+  if (logTimer){ clearInterval(logTimer); logTimer = null; }
+  logName = null;
+}
+$("#logClose").addEventListener("click", closeLog);
+$("#logModal").addEventListener("click", function(e){
+  if (e.target === this) closeLog();
+});
+document.addEventListener("keydown", function(e){
+  if (e.key === "Escape") closeLog();
+});
+
+startPoll();
+</script>
+</body>
+</html>

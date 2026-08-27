@@ -1,0 +1,7 @@
+<launch>
+    <arg name="area_folder" default="qwrf"/>
+    <arg name="PROJECT_ROOT" default="/home/qwrf/mogu-master/src/"/>
+    <include file="$(arg PROJECT_ROOT)/launch/perception_scan_all.launch"/>    
+    <include file="$(arg PROJECT_ROOT)/launch/simview.launch"/>   
+    <!-- <param name="/robot/planning/backfilter" value="1"/> -->
+</launch>

@@ -1,0 +1,35 @@
+<launch>
+	<include file="$(find robot)/launch/robot_task_plan.launch"/>
+	 <include file="$(find robot)/launch/robot_path_plan.launch"/> 
+	 <include file="$(find robot)/launch/robot_control.launch"/> 
+	 <include file="$(find robot)/launch/robot_canbus.launch"/>
+	<include file="$(find robot)/launch/robot_navigation.launch"/>
+</launch>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

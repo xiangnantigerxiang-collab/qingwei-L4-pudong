@@ -1,0 +1,35 @@
+<launch>
+	<param name="config_file" value="$(find robot)/param/config.yaml"/>	
+	<arg name="config_para_file" default="$(find robot)/param/config.yaml"/>
+	<rosparam file="$(arg config_para_file)" command="load"/>
+	<node pkg="robot" type="control_node" name="control_node" output="screen">
+	</node>
+</launch>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

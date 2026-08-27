@@ -1,0 +1,29 @@
+<launch>
+  <!-- declare area id -->
+  <!-- export MODULE_PATH=/home/qwrf/mogu-master/src/src/perception/perception/config -->
+  <arg name="AREA_ID" default="map"/> 
+  <node pkg="perception" type="perception" name="perception" output="screen" >
+    <param name="lidar_main_topic" type="string" value="/lidar_pointcloud_rear" />
+    <param name="lidar_right_topic" type="string" value="/lidar_pointcloud_front_right" />
+    <param name="lidar_left_topic" type="string" value="/lidar_pointcloud_front_left" />
+    <!-- <param name="lidar_rear_topic" type="string" value="/rslidar_points_rear" /> -->
+    <param name="min_points" value="1" />
+    <param name="min_size" value="0.05" />
+    <param name="project_root" type="string" value="$(find perception)/../../" />
+    <param name="sub_pose" type="string" value="/localization" />
+    <param name="pub_topic" type="string" value="/debug" />
+    <param name="ground_remover_config" type="string" value="$(find perception)/config/ground_detector.config" />
+    <param name="dbscan_segment" type="string" value="$(find perception)/config/dbscan_cluster.config" />
+    <param name="road_polygon_path" type="string" value="/home/qwrf/mogu-master/src/data/road_area" />
+    <param name="use_hdmap" type="bool" value="true" />
+    <param name="frame_id_vcs" type="string" value="vcs"/> 
+    <param name="frame_id_wcs" type="string" value="wcs"/> 
+    <param name="min_x" value="-1.5" />
+    <param name="max_x" value="3.5" />
+    <param name="min_y" value="-1.0" />
+    <param name="max_y" value="1.0" />
+    <param name="min_z" value="-1000" />
+    <param name="max_z" value="1000" />
+    <param name="max_point_z" value="1.5" />
+  </node>
+</launch>

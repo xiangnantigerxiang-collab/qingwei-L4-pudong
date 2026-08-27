@@ -1,0 +1,7 @@
+#!/bin/bash
+
+## start camera_demo_geac.service
+sudo systemctl enable camera_demo_geac.service
+sudo systemctl start camera_demo_geac.service
+## reload daemon-reload
+sudo systemctl daemon-reload

@@ -1,0 +1,8 @@
+Package: cameraPlatform
+Version: 1.0.0
+Section: free
+Priority: optional
+Installed_Size: 22M
+Architecture: arm64
+Maintainer: xxx@xxx.com
+Description: cameraPlatform debian package

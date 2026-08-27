@@ -1,0 +1,14 @@
+<launch>
+<!-- ttyUSB* or ttyS*-->
+<param name="serial_port" value="/dev/ttyUSB50"/>
+
+<!-- the origin point -->
+<param name="refer_lon" value="120.229484558"/>
+<param name="refer_lat" value="31.9646511078"/>
+<param name="refer_altitude" value="40.0"/>
+
+<!-- if save path true,else false -->
+<param name="save_path" value="true"/>
+
+<node pkg="robot" type="navigation_node" name="navigation_node" output="screen"/>
+</launch>

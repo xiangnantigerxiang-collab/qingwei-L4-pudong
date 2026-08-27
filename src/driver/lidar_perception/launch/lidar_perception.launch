@@ -1,0 +1,31 @@
+<launch>
+  <node pkg="lidar_perception" type="lidar_perception_scan_node" name="lidar_perception_scan_node" output="screen">
+    <param name="frame_id" type="string" value="robot" />
+    <param name="front_sub_topic" type="string" value="/front_scan" />
+    <param name="back_sub_topic" type="string" value="/back_pointcloud" />/
+    <param name="hook_pos_sub_topic" type="string" value="/hook_position1" />/
+    <param name="front_bbox_pub_topic" type="string" value="/perception_front_bbox" />
+    <param name="back_bbox_pub_topic" type="string" value="/perception_back_bbox" />
+    <!-- For debug, maybe not output -->
+    <param name="segment_front_input_pc" type="string" value="/segment_front_input_pc" />
+    <param name="segment_back_input_pc" type="string" value="/segment_back_input_pc" />
+
+    <rosparam param="dis_level" >[0, 0.8, 2, 4, 6, 8]</rosparam>
+    <!-- front perception area params -->
+    <param name="front_min_x" type="double" value="0.2" />
+    <param name="front_max_x" type="double" value="10.0" />
+    <param name="front_min_y" type="double" value="-1.0" />
+    <param name="front_max_y" type="double" value="1.0" />
+    <param name="front_min_z" type="double" value="-1.4" />
+    <param name="front_max_z" type="double" value="1.4" />
+    <!-- back perception area params -->
+    <param name="back_min_x_buffer" type="double" value="0.2" />
+    <param name="back_min_x" type="double" value="-0.2" />
+    <param name="back_max_x" type="double" value="10.0" />
+    <param name="back_min_y" type="double" value="-2.0" />
+    <param name="back_max_y" type="double" value="2.0" />
+    <param name="back_min_z" type="double" value="-1.4" />
+    <param name="back_max_z" type="double" value="1.4" />
+  </node>
+  <!-- <node name="rviz" pkg="rviz" type="rviz" args="-d $(find lidar_perception)/rviz/rviz.rviz" /> -->
+</launch>

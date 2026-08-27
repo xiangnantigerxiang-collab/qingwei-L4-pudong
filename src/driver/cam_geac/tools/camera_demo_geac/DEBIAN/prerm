@@ -1,0 +1,13 @@
+#!/bin/bash
+app_dir=/usr/local/camera_demo_geac
+
+
+## stop camera_demo_geac service
+systemctl stop camera_demo_geac.service
+systemctl disable camera_demo_geac.service
+
+## remove camera_demo_geac.service
+rm /lib/systemd/system/camera_demo_geac.service
+
+## reload daemon
+sudo systemctl daemon-reload

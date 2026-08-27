@@ -1,0 +1,9 @@
+<launch>
+    <arg name="area_folder" default="qwrf"/>
+    <arg name="PROJECT_ROOT" default="/home/qwrf/mogu-master/src/"/>
+    <include file="$(arg PROJECT_ROOT)/launch/slocalization.launch"/>
+    <include file="$(arg PROJECT_ROOT)/launch/start.launch"/>
+     <include file="$(arg PROJECT_ROOT)/launch/perception_scan_all.launch"> 
+    <include file="$(arg PROJECT_ROOT)/launch/simview.launch"/>    
+    <include file="$(arg PROJECT_ROOT)/launch/control.launch" />
+</launch>
