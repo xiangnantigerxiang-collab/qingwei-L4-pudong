@@ -1,0 +1,919 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>qingwei L4 可视化</title>
+<style>
+:root{
+  --bg:#101418; --panel:#1a2027cc; --line:#2a323c; --txt:#d7dde3;
+  --dim:#8a94a0; --acc:#4fc3f7; --ok:#66bb6a; --warn:#ffa726;
+  --bad:#ef5350; --stale:#5a636e;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);
+  color:var(--txt);font:13px/1.45 "Segoe UI",system-ui,sans-serif}
+#view{position:absolute;inset:0}
+#view canvas{display:block;position:absolute;inset:0}
+
+/* 顶栏 */
+#top{position:absolute;top:0;left:0;right:0;z-index:5;display:flex;
+  align-items:center;gap:10px;padding:8px 12px;background:var(--panel);
+  border-bottom:1px solid var(--line);backdrop-filter:blur(4px)}
+#top h1{font-size:14px;margin:0 12px 0 0;font-weight:600;white-space:nowrap}
+#camBtns{display:flex;gap:6px}
+#camBtns button{background:#222b34;color:var(--txt);border:1px solid var(--line);
+  border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px}
+#camBtns button.on{background:var(--acc);color:#08131a;border-color:var(--acc)}
+#conn{margin-left:auto;display:flex;gap:8px;align-items:center}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--stale);
+  display:inline-block;margin-right:4px;vertical-align:-1px}
+.dot.ok{background:var(--ok)} .dot.bad{background:var(--bad)}
+#rosTag,#masterTag{font-size:12px;color:var(--dim);white-space:nowrap}
+
+/* 左下图层面板 */
+#layers{position:absolute;left:12px;bottom:12px;z-index:5;background:var(--panel);
+  border:1px solid var(--line);border-radius:8px;padding:10px 12px;
+  min-width:150px}
+#layers h2{font-size:12px;margin:0 0 6px;color:var(--dim);font-weight:600}
+#layers label{display:flex;align-items:center;gap:6px;padding:2px 0;
+  cursor:pointer;user-select:none}
+#layers input{accent-color:var(--acc)}
+#layers .hint{margin-top:6px;font-size:11px;color:var(--dim)}
+
+/* 右下 HUD */
+#hud{position:absolute;right:12px;bottom:12px;z-index:5;background:var(--panel);
+  border:1px solid var(--line);border-radius:8px;padding:10px 12px;
+  min-width:210px;font-variant-numeric:tabular-nums}
+#hud h2{font-size:12px;margin:0 0 6px;color:var(--dim);font-weight:600}
+#hud .row{display:flex;justify-content:space-between;gap:12px;padding:1px 0}
+#hud .k{color:var(--dim)} #hud .v{text-align:right}
+.stale{color:var(--stale);text-decoration:line-through dotted}
+#vehBox{margin-bottom:6px;padding-bottom:6px;border-bottom:1px dashed var(--line)}
+
+/* 横幅 */
+#banners{position:absolute;top:52px;left:50%;transform:translateX(-50%);
+  z-index:6;display:flex;flex-direction:column;gap:6px;align-items:center}
+.banner{padding:6px 14px;border-radius:6px;font-size:12px;
+  border:1px solid var(--line);background:var(--panel)}
+.banner.warn{border-color:var(--warn);color:var(--warn)}
+.banner.bad{border-color:var(--bad);color:var(--bad)}
+#err{position:absolute;top:52px;left:12px;z-index:7;max-width:46%;
+  color:var(--bad);font-size:12px;background:var(--panel);
+  border:1px solid var(--bad);border-radius:6px;padding:6px 10px;display:none}
+@media (max-width:760px){
+  #hud{display:none} #top h1{display:none}
+}
+</style>
+</head>
+<body>
+<div id="view"></div>
+<div id="top">
+  <h1>L4 可视化</h1>
+  <div id="camBtns">
+    <button id="camTop">俯视 2D</button>
+    <button id="cam3d">3D 环视</button>
+    <button id="camFollow">跟随车辆</button>
+  </div>
+  <div id="conn">
+    <span id="masterTag"><span class="dot" id="dotMaster"></span>master</span>
+    <span id="rosTag"><span class="dot" id="dotRos"></span>ROS</span>
+  </div>
+</div>
+<div id="banners"></div>
+<div id="err"></div>
+<div id="layers">
+  <h2>图层</h2>
+  <div id="layerList"></div>
+  <div class="hint">鼠标:左键旋转(3D) 滚轮缩放 右键平移</div>
+</div>
+<div id="hud">
+  <h2>车辆</h2>
+  <div id="vehBox">
+    <div class="row"><span class="k">速度</span><span class="v" id="hSpd">--</span></div>
+    <div class="row"><span class="k">位置 x/y</span><span class="v" id="hPos">--</span></div>
+    <div class="row"><span class="k">航向</span><span class="v" id="hYaw">--</span></div>
+  </div>
+  <h2>数据龄 (s)</h2>
+  <div id="ageList"></div>
+</div>
+
+<script src="three.min.js"></script>
+<script src="OrbitControls.js"></script>
+<script>
+"use strict";
+/* 任何未捕获 JS 错误直接显示在页面左上错误框(现场排障自诊断) */
+window.onerror = function (msg, src2, line) {
+  var el = document.getElementById("err");
+  if (el) {
+    el.style.display = "block";
+    el.textContent = "JS 错误: " + msg + " @行" + (line || "?");
+  }
+  return false;
+};
+/* =====================================================================
+ * 第一段 MonitorMath —— 全部数学纯函数(挂 window,node 测试直调)
+ * 坐标系:ROS 显示系(x东,y北,z上) -> THREE(x右,y上,z南):
+ *   three = (x_ros, z_ros, -y_ros);  rotation.y = yaw_ros(不取负)
+ * ===================================================================== */
+var MM = {
+  rosToThree: function (x, y, z) { return [x, z || 0, -y]; },
+
+  yawDeg: function (rad) { return rad * 180 / Math.PI; },
+
+  /* 位姿外推:2Hz 快照间隔内用 speed+yaw 前推,上限 0.6s 防漂 */
+  extrapolate: function (pose, dt) {
+    if (!pose) { return null; }
+    if (dt < 0) { dt = 0; }
+    if (dt > 0.6) { dt = 0.6; }
+    var d = pose.speed * dt;
+    return {
+      x: pose.x + d * Math.cos(pose.yaw),
+      y: pose.y + d * Math.sin(pose.yaw),
+      yaw: pose.yaw, speed: pose.speed
+    };
+  },
+
+  /* 二进制帧解码 -> {ts, total, channels:[{id, count, pts:Float32Array}]}
+   * 点 12B:x_mm(i32) y_mm(i32) z_mm(i16) intensity(u8) pad(u8);米制输出 */
+  decodeBin: function (buf) {
+    if (!buf || buf.byteLength < 20) { return null; }
+    var dv = new DataView(buf);
+    var magic = String.fromCharCode(dv.getUint8(0), dv.getUint8(1),
+                                    dv.getUint8(2), dv.getUint8(3));
+    if (magic !== "QWMC") { return null; }
+    var nchan = dv.getUint16(6, true);
+    var total = dv.getUint32(8, true);
+    /* ts 用双 u32 组合读法:getBigUint64 是全页唯一 ES2020 依赖,
+     * 旧平板 WebView 不支持会让 scan/cloud 静默死亡(且 ts 前端并不消费) */
+    var ts = dv.getUint32(12, true) + dv.getUint32(16, true) * 4294967296;
+    var off = 20, channels = [], i, c, cnt, pts, k;
+    for (i = 0; i < nchan; i++) {
+      if (off + 8 > buf.byteLength) { break; }
+      c = dv.getUint8(off);
+      cnt = dv.getUint32(off + 4, true);
+      off += 8;
+      if (off + cnt * 12 > buf.byteLength) { cnt = Math.max(0,
+        Math.floor((buf.byteLength - off) / 12)); }
+      pts = new Float32Array(cnt * 3);
+      for (k = 0; k < cnt; k++) {
+        pts[k * 3] = dv.getInt32(off, true) / 1000;
+        pts[k * 3 + 1] = dv.getInt16(off + 8, true) / 1000;
+        pts[k * 3 + 2] = -dv.getInt32(off + 4, true) / 1000;
+        off += 12;      /* 曾缺失:所有点重复读第一点的字节(多点才暴露) */
+      }
+      channels.push({ id: c, count: cnt, pts: pts });
+      /* 注意:off 已在点循环内逐点推进,这里不再加 cnt*12 —— 曾经双重
+       * 推进使双通道帧(scan 两路激光)的第二通道读错位(单通道测试
+       * 无法暴露, 08-28 排障时发现) */
+    }
+    return { ts: ts, total: total, channels: channels };
+  }
+};
+window.MM = MM;
+
+/* 车身轮廓(米):对标 simviewer DrawVehicle 2.3/-0.8 x ±0.73 */
+var VEH_SHAPE = [2.3, -0.8, 0.73];
+
+/* =====================================================================
+ * 第二段 场景装配
+ * ===================================================================== */
+var renderer, scene, camera, controls;
+var grpVehicle, grpScan, grpCloud;            // scan/cloud 挂车辆组(车体系)
+var meshObstacles = [], linePlan, lineRefer, lineMapC, lineMapL, lineMapR;
+var meshStop, meshPallet, grid, vehText, layers = {};
+
+function buildScene() {
+  var view = document.getElementById("view");
+  renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.setSize(view.clientWidth, view.clientHeight);
+  view.appendChild(renderer.domElement);
+
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x101418);
+  camera = new THREE.PerspectiveCamera(
+    50, view.clientWidth / view.clientHeight, 0.5, 2000);
+  camera.position.set(30, 60, 30);
+  camera.lookAt(0, 0, 0);
+
+  controls = new THREE.OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true; controls.dampingFactor = 0.12;
+  controls.maxPolarAngle = Math.PI / 2 - 0.02;
+
+  grid = new THREE.GridHelper(400, 100, 0x223040, 0x1a2530);
+  grid.visible = false; scene.add(grid);
+
+  /* 车辆组:黄框+红中心点+文字 sprite;scan/cloud 为子组 */
+  grpVehicle = new THREE.Group(); scene.add(grpVehicle);
+  var corners = [
+    [VEH_SHAPE[0], VEH_SHAPE[2]], [VEH_SHAPE[0], -VEH_SHAPE[2]],
+    [VEH_SHAPE[1], -VEH_SHAPE[2]], [VEH_SHAPE[1], VEH_SHAPE[2]],
+    [VEH_SHAPE[0], VEH_SHAPE[2]]
+  ].map(function (p) {
+    var t = MM.rosToThree(p[0], p[1], 1.0);   /* rviz 画在 z=1 */
+    return new THREE.Vector3(t[0], t[1], t[2]);
+  });
+  grpVehicle.add(new THREE.Line(
+    new THREE.BufferGeometry().setFromPoints(corners),
+    new THREE.LineBasicMaterial({ color: 0xffff00 })));
+  grpVehicle.add(new THREE.Mesh(
+    new THREE.SphereGeometry(0.15, 10, 10),
+    new THREE.MeshBasicMaterial({ color: 0xff0000 })));
+  vehText = makeTextSprite("");
+  vehText.position.set(2.0, 1.6, -2.0);
+  grpVehicle.add(vehText);
+
+  /* scan/cloud 独立顶层组(不挂车辆组):否则关"车辆"图层会连带隐藏
+   * 点云且 checkbox 状态与显示不符;位姿在 tick 里同步 */
+  grpScan = new THREE.Group(); scene.add(grpScan);
+  grpCloud = new THREE.Group(); scene.add(grpCloud);
+
+  lineRefer = makeLine(0xffff00); linePlan = makeLine(0x00ff00);
+  lineMapC = makeLine(0xffffff); lineMapL = makeLine(0xff00ff);
+  lineMapR = makeLine(0xff00ff);
+
+  meshStop = new THREE.Group();
+  var arrow = new THREE.Mesh(
+    new THREE.ConeGeometry(0.5, 1.4, 12),
+    new THREE.MeshBasicMaterial({ color: 0xff1900 }));
+  arrow.rotation.x = Math.PI / 2; arrow.position.z = 0.7;
+  var ring = new THREE.Mesh(
+    new THREE.TorusGeometry(0.45, 0.08, 8, 24),
+    new THREE.MeshBasicMaterial({ color: 0xff1900 }));
+  ring.rotation.x = Math.PI / 2;
+  meshStop.add(arrow); meshStop.add(ring); meshStop.visible = false;
+  scene.add(meshStop);
+
+  meshPallet = new THREE.Mesh(
+    new THREE.SphereGeometry(0.4, 12, 12),
+    new THREE.MeshBasicMaterial({ color: 0xff0000 }));
+  meshPallet.visible = false; scene.add(meshPallet);
+
+  var reg = { vehicle: grpVehicle, lidar: null, routing: lineRefer,
+              planning: linePlan, loadpos: meshPallet, stoppose: meshStop,
+              map: null, scan: grpScan, cloud: grpCloud, grid: grid };
+  layers = reg;
+}
+
+function makeLine(color) {
+  var g = new THREE.BufferGeometry();
+  g.setAttribute("position",
+    new THREE.BufferAttribute(new Float32Array(0), 3));
+  var l = new THREE.Line(g, new THREE.LineBasicMaterial({ color: color }));
+  l.frustumCulled = false; scene.add(l); return l;
+}
+
+function makeTextSprite(text) {
+  var cv = document.createElement("canvas");
+  cv.width = 256; cv.height = 128;
+  var tex = new THREE.CanvasTexture(cv);
+  tex.minFilter = THREE.LinearFilter;
+  var sp = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: tex, transparent: true, depthTest: false }));
+  sp.scale.set(8, 4, 1);
+  sp.userData.cv = cv; sp.userData.tex = tex;
+  drawTextSprite(sp, text);
+  return sp;
+}
+
+function drawTextSprite(sp, text) {
+  var cv = sp.userData.cv, ctx = cv.getContext("2d");
+  ctx.clearRect(0, 0, cv.width, cv.height);
+  ctx.font = "22px monospace"; ctx.fillStyle = "#ffffff";
+  ctx.textAlign = "left"; ctx.textBaseline = "top";
+  var lines = (text || "").split("\n");
+  for (var i = 0; i < lines.length; i++) { ctx.fillText(lines[i], 4, 4 + i * 26); }
+  sp.userData.tex.needsUpdate = true;
+}
+
+function setLinePoints(line, pts) {
+  var arr = new Float32Array(pts.length * 3);
+  for (var i = 0; i < pts.length; i++) {
+    arr[i * 3] = pts[i][0]; arr[i * 3 + 1] = 0; arr[i * 3 + 2] = -pts[i][1];
+  }
+  line.geometry.dispose();
+  var g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.BufferAttribute(arr, 3));
+  line.geometry = g;
+}
+
+function setPointsBuf(grp, decoded, colorFn, size) {
+  while (grp.children.length) {
+    var old = grp.children.pop();
+    if (old.geometry) { old.geometry.dispose(); }
+    if (old.material) { old.material.dispose(); }
+  }
+  for (var i = 0; i < (decoded ? decoded.channels.length : 0); i++) {
+    var ch = decoded.channels[i];
+    var geom = new THREE.BufferGeometry();
+    geom.setAttribute("position",
+      new THREE.BufferAttribute(ch.pts, 3));
+    grp.add(new THREE.Points(geom, new THREE.PointsMaterial({
+      color: colorFn ? colorFn(ch.id) : 0x9fb4c7,
+      size: size || 0.08, sizeAttenuation: true })));
+  }
+}
+
+function syncObstacles(obs) {
+  var i, m;
+  while (meshObstacles.length < obs.length) {
+    m = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1),
+      new THREE.MeshBasicMaterial({ color: 0x339999,
+        transparent: true, opacity: 0.45 }));
+    scene.add(m); meshObstacles.push(m);
+  }
+  for (i = 0; i < meshObstacles.length; i++) {
+    m = meshObstacles[i];
+    m.userData.hasData = (i < obs.length);       /* 池化项是否有数据 */
+    if (i < obs.length) {
+      var o = obs[i];
+      m.visible = (layers._lidarOn !== false);   /* 尊重图层开关 */
+      m.position.set(o.x, (o.h || 0.5) / 2, -o.y);
+      m.scale.set(o.l || 0.5, o.h || 0.5, o.w || 0.5);
+      m.rotation.y = o.yaw || 0;
+    } else { m.visible = false; }
+  }
+}
+
+/* =====================================================================
+ * 第三段(降级) 2D Canvas 俯视渲染器 —— WebGL 不可用时(Firefox/arm 等)
+ * 仍提供完整俯视可视化:地图三线/路径/障碍/车辆/停车点/托盘/点云。
+ * 数据全部来自 lastData 仓;车体局部坐标(scan/cloud)经车辆位姿变换。
+ * ===================================================================== */
+var canvas2d = null, ctx2d = null, zoom2d = 6;   /* zoom2d: 像素/米 */
+var dirty2d = true, last2dRenderAt = null;
+
+function mark2dDirty() { dirty2d = true; }
+
+function resize2d() {
+  if (!canvas2d) { return; }
+  var view = document.getElementById("view");
+  var w = view.clientWidth || 800, h = view.clientHeight || 600;
+  if (canvas2d.width !== w) { canvas2d.width = w; }
+  if (canvas2d.height !== h) { canvas2d.height = h; }
+  mark2dDirty();
+}
+
+function setup2d() {
+  if (canvas2d) { resize2d(); return true; }
+  var view = document.getElementById("view");
+  /* buildScene 若在 renderer 创建之后才失败,移除残留 WebGL canvas,
+   * 否则它会覆盖或挤走后追加的 2D canvas。 */
+  if (renderer && renderer.domElement && renderer.domElement.parentNode) {
+    renderer.domElement.parentNode.removeChild(renderer.domElement);
+  }
+  canvas2d = document.createElement("canvas");
+  view.appendChild(canvas2d);
+  ctx2d = canvas2d.getContext && canvas2d.getContext("2d");
+  if (!ctx2d) { return false; }
+  resize2d();
+  view.addEventListener("wheel", function (ev) {
+    zoom2d *= (ev.deltaY < 0) ? 1.25 : 0.8;
+    if (zoom2d < 1) { zoom2d = 1; }
+    if (zoom2d > 60) { zoom2d = 60; }
+    mark2dDirty();
+  });
+  return true;
+}
+
+function ly2d(key) {          /* 图层开关在 2D 下的读取(缺省=开) */
+  return layers["_2d_" + key] !== false;
+}
+
+function render2d() {
+  if (!ctx2d || !canvas2d) { return; }
+  var W = canvas2d.width, H = canvas2d.height;
+  ctx2d.fillStyle = "#101418";
+  ctx2d.fillRect(0, 0, W, H);
+  var s = lastData.snap, m = lastData.map;
+  var cx = 0, cy = 0, vyaw = 0;
+  if (s && s.vehicle) {
+    cx = s.vehicle.x; cy = s.vehicle.y; vyaw = s.vehicle.yaw;
+  }
+  /* 地图/路径点都已由服务端减去 origin,所以无定位时应看局部原点。
+   * m.bbox 保留的是原始全局坐标,不能拿来平移局部地图。 */
+  /* 世界(米,已减 origin,x 东 y 北) -> 屏幕(x 右,y 上为北) */
+  function px(x) { return W / 2 + (x - cx) * zoom2d; }
+  function py(y) { return H / 2 - (y - cy) * zoom2d; }
+  function line(pts, color, w) {
+    if (!pts || pts.length < 2) { return; }
+    ctx2d.strokeStyle = color;
+    ctx2d.lineWidth = w || 1;
+    ctx2d.beginPath();
+    ctx2d.moveTo(px(pts[0][0]), py(pts[0][1]));
+    for (var i = 1; i < pts.length; i++) {
+      ctx2d.lineTo(px(pts[i][0]), py(pts[i][1]));
+    }
+    ctx2d.stroke();
+  }
+  /* 地图三线 */
+  if (m && ly2d("map")) {
+    line(m.center, "#ffffff", 1);
+    line(m.left, "#ff00ff", 1);
+    line(m.right, "#ff00ff", 1);
+  }
+  /* 路径 */
+  if (s && s.paths) {
+    if (ly2d("routing")) { line(s.paths.refer, "#ffff00", 2); }
+    if (ly2d("planning")) { line(s.paths.plan, "#00ff00", 2); }
+  }
+  /* 障碍物(旋转矩形,屏幕 y 反向 -> 旋转取负) */
+  if (s && ly2d("lidar")) {
+    ctx2d.strokeStyle = "#339999";
+    ctx2d.fillStyle = "rgba(51,153,153,0.35)";
+    for (var oi = 0; oi < (s.obstacles || []).length; oi++) {
+      var o = s.obstacles[oi];
+      ctx2d.save();
+      ctx2d.translate(px(o.x), py(o.y));
+      ctx2d.rotate(-o.yaw);
+      ctx2d.fillRect(-o.l / 2 * zoom2d, -o.w / 2 * zoom2d,
+                     o.l * zoom2d, o.w * zoom2d);
+      ctx2d.strokeRect(-o.l / 2 * zoom2d, -o.w / 2 * zoom2d,
+                       o.l * zoom2d, o.w * zoom2d);
+      ctx2d.restore();
+    }
+  }
+  /* 点云/激光:车体局部坐标 -> 世界(decodeBin 的 three 系 z=-ros_y) */
+  function points(dec, colorOf, size) {
+    /* 局部点云必须有车辆位姿才能落到世界坐标;无定位时不把它误画到
+     * 地图中心。sin/cos 每帧只算一次,避免 Jetson 上逐点重复计算。 */
+    if (!dec || !s || !s.vehicle) { return; }
+    var cosYaw = Math.cos(vyaw), sinYaw = Math.sin(vyaw);
+    for (var c = 0; c < dec.channels.length; c++) {
+      var ch = dec.channels[c], p = ch.pts;
+      ctx2d.fillStyle = colorOf(ch.id);
+      for (var k = 0; k < ch.count; k++) {
+        var lx = p[k * 3], ly = -p[k * 3 + 2];
+        var wx = cx + lx * cosYaw - ly * sinYaw;
+        var wy = cy + lx * sinYaw + ly * cosYaw;
+        ctx2d.fillRect(px(wx) - size / 2, py(wy) - size / 2, size, size);
+      }
+    }
+  }
+  if (ly2d("scan")) {
+    points(lastData.scan, function (id) {
+      return id === 1 ? "#7ec8ff" : "#9fff7e"; }, 2);
+  }
+  if (ly2d("cloud")) {
+    points(lastData.cloud, function () { return "#9fb4c7"; }, 2);
+  }
+  /* 车辆:黄框+红心 */
+  if (s && s.vehicle && ly2d("vehicle")) {
+    var v = s.vehicle;
+    ctx2d.save();
+    ctx2d.translate(px(v.x), py(v.y));
+    ctx2d.rotate(-v.yaw);
+    ctx2d.strokeStyle = "#ffff00";
+    ctx2d.lineWidth = 2;
+    ctx2d.strokeRect(VEH_SHAPE[1] * zoom2d, -VEH_SHAPE[2] * zoom2d,
+                     (VEH_SHAPE[0] - VEH_SHAPE[1]) * zoom2d,
+                     2 * VEH_SHAPE[2] * zoom2d);
+    ctx2d.restore();
+    ctx2d.fillStyle = "#ff0000";
+    ctx2d.fillRect(px(v.x) - 2, py(v.y) - 2, 4, 4);
+  }
+  /* 停车点 / 托盘 */
+  if (s && s.stop && ly2d("stoppose")) {
+    ctx2d.strokeStyle = "#ff1900"; ctx2d.lineWidth = 2;
+    ctx2d.beginPath();
+    ctx2d.arc(px(s.stop.x), py(s.stop.y), 6, 0, Math.PI * 2);
+    ctx2d.stroke();
+  }
+  if (s && s.pallet && ly2d("loadpos")) {
+    ctx2d.fillStyle = "#ff0000";
+    ctx2d.fillRect(px(s.pallet.x) - 3, py(s.pallet.y) - 3, 6, 6);
+  }
+  /* 比例尺(左上角 10m) */
+  ctx2d.fillStyle = "#8a94a0";
+  ctx2d.fillRect(12, 14, 10 * zoom2d, 2);
+  ctx2d.font = "11px monospace";
+  ctx2d.fillText("10m", 12, 28);
+}
+
+/* =====================================================================
+ * 第四段 主循环:位姿外推 -> 场景更新 -> 渲染
+ * ===================================================================== */
+var snap = null, snapAt = 0, camMode = "3d";   /* 默认 3D 环视 */
+var lastPose = null, followOff = null, cameraCentered = false;
+
+/* 数据仓:与渲染器无关(3D 或 2D 降级共用同一份数据) */
+var lastData = { snap: null, scan: null, cloud: null, map: null };
+
+function tick(now) {
+  requestAnimationFrame(tick);
+  if (!sceneOk || !renderer) {
+    /* 2D 只在数据/图层/尺寸变化时重画,并限制到最多 10 FPS。车端
+     * 最多约 3.2 万点,不能在 Firefox 的每个动画帧重复遍历。 */
+    var frameNow = typeof now === "number" ? now : Date.now();
+    if (dirty2d && (last2dRenderAt === null ||
+                    frameNow - last2dRenderAt >= 100)) {
+      render2d();
+      dirty2d = false;
+      last2dRenderAt = frameNow;
+    }
+    return;
+  }
+  var p = null;
+  if (snap && snap.vehicle) {
+    p = MM.extrapolate(snap.vehicle, (Date.now() - snapAt) / 1000);
+  }
+  if (p) {
+    var t = MM.rosToThree(p.x, p.y, 0);
+    grpVehicle.position.set(t[0], 0, t[2]);
+    grpVehicle.rotation.y = p.yaw;
+    /* 独立点云组随车辆位姿同步(车体局部坐标语义不变) */
+    grpScan.position.copy(grpVehicle.position);
+    grpScan.rotation.y = grpVehicle.rotation.y;
+    grpCloud.position.copy(grpVehicle.position);
+    grpCloud.rotation.y = grpVehicle.rotation.y;
+    lastPose = p;
+  }
+  if (camMode === "follow" && lastPose) {
+    /* 只跟 target 并保留用户视距:每帧覆写 camera.position 会与
+     * OrbitControls 打架(用户一操作就被弹回) */
+    if (followOff === null) {
+      followOff = [camera.position.x - controls.target.x,
+                   camera.position.y - controls.target.y,
+                   camera.position.z - controls.target.z];
+    }
+    var ft = MM.rosToThree(lastPose.x, lastPose.y, 0);
+    controls.target.set(ft[0], 0, ft[2]);
+    camera.position.set(ft[0] + followOff[0], followOff[1],
+                        ft[2] + followOff[2]);
+  }
+  controls.update();
+  renderer.render(scene, camera);
+}
+
+function onResize() {
+  var view = document.getElementById("view");
+  if (sceneOk && renderer && camera) {
+    camera.aspect = view.clientWidth / view.clientHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(view.clientWidth, view.clientHeight);
+  }
+  resize2d();
+}
+
+/* =====================================================================
+ * 第四段 IO:快照/地图/二进制拉取,图层,相机预设,HUD
+ * ===================================================================== */
+var online = false, layerDefault = null, pollTimer = null;
+
+function fetchBin(url) {
+  return fetch(url).then(function (r) {
+    return r.ok ? r.arrayBuffer() : null;
+  }).catch(function () { return null; });
+}
+
+function poll() {
+  fetch("/api/snapshot").then(function (r) {
+    if (!r.ok) { throw new Error("snapshot HTTP error"); }
+    return r.json();
+  }).then(
+    function (d) {
+      online = true; snap = d; snapAt = Date.now();
+      /* HUD 与 3D 场景更新隔离:单个绘制异常不能伪装成服务断连。 */
+      renderHud(d);
+      try { applySnapshot(d); } catch (sceneErr) {
+        var ee = document.getElementById("err");
+        if (ee) {
+          ee.style.display = "block";
+          ee.textContent = "场景更新失败: " +
+            (sceneErr && sceneErr.message ? sceneErr.message : sceneErr);
+        }
+      }
+    }).catch(function () {
+      /* 首次请求就失败时 online 原本为 false,也必须立即把灰点改红。 */
+      online = false;
+      renderHud(null);
+    });
+}
+
+function applySnapshot(d) {
+  lastData.snap = d;
+  mark2dDirty();
+  if (!sceneOk) { return; }   /* 2D 降级渲染直接读 lastData */
+  syncObstacles(d.obstacles || []);
+  /* 路径:无数据(null=服务端丢帧/话题停发)时隐藏旧线,
+   * 与 stop/pallet 的清空分支对齐;有数据时恢复 */
+  if (d.paths && d.paths.plan) {
+    setLinePoints(linePlan, d.paths.plan);
+    linePlan.visible = layers._planningOn !== false;
+  } else { linePlan.visible = false; }
+  if (d.paths && d.paths.refer) {
+    setLinePoints(lineRefer, d.paths.refer);
+    lineRefer.visible = layers._routingOn !== false;
+  } else { lineRefer.visible = false; }
+  if (d.stop) {
+    meshStop.visible = true;
+    meshStop.position.set(d.stop.x, 0.1, -d.stop.y);
+    meshStop.rotation.y = d.stop.yaw || 0;
+  } else { meshStop.visible = false; }
+  if (d.pallet) {
+    meshPallet.visible = true;
+    meshPallet.position.set(d.pallet.x, 0.4, -d.pallet.y);
+  } else { meshPallet.visible = false; }
+  if (d.vehicle) {
+    /* 默认 3D 初始看原点;实车可能离地图原点上百米。首帧定位到来后
+     * 自动以车辆为中心建立相机预设,避免页面有数据但视野为空。 */
+    if (!cameraCentered) {
+      cameraCentered = true;
+      setCam(camMode);
+    }
+    drawTextSprite(vehText,
+      "cur_spd: " + d.vehicle.speed.toFixed(1) + " m/s\n" +
+      "cur_x: " + d.vehicle.x.toFixed(1) + "\n" +
+      "cur_y: " + d.vehicle.y.toFixed(1) + "\n" +
+      "cur_yaw: " + MM.yawDeg(d.vehicle.yaw).toFixed(1) + " deg");
+  }
+}
+
+function layerPullEnabled(key) {
+  if (!sceneOk) { return layers["_2d_" + key] !== false; }
+  var obj = layers[key];
+  return !!obj && obj.visible !== false;
+}
+
+function pullScan() {
+  if (!layerPullEnabled("scan")) { return; }
+  fetchBin("/api/scan.bin").then(function (buf) {
+    var d = MM.decodeBin(buf);
+    if (d) { lastData.scan = d; mark2dDirty(); }
+    if (d && sceneOk) { setPointsBuf(grpScan, d, function (id) {
+      return id === 1 ? 0x7ec8ff : 0x9fff7e; }, 0.06); }
+  });
+}
+
+function pullCloud() {
+  if (!layerPullEnabled("cloud")) { return; }
+  fetchBin("/api/cloud.bin").then(function (buf) {
+    var d = MM.decodeBin(buf);
+    if (d) { lastData.cloud = d; mark2dDirty(); }
+    if (d && sceneOk) { setPointsBuf(grpCloud, d, null, 0.07); }
+  });
+}
+
+function loadMapOnce() {
+  fetch("/api/map").then(function (r) { return r.json(); }).then(
+    function (m) {
+      lastData.map = m;
+      mark2dDirty();
+      if (sceneOk) {
+        setLinePoints(lineMapC, m.center || []);
+        setLinePoints(lineMapL, m.left || []);
+        setLinePoints(lineMapR, m.right || []);
+      }
+      layerDefault = m.layers || null;
+      if (layerDefault) { applyLayerDefaults(); }
+    }).catch(function () {});
+}
+
+/* ---- 图层面板 ---- */
+var LAYER_NAMES = { vehicle: "车辆", lidar: "感知障碍物", routing: "路由路径",
+  planning: "规划路径", loadpos: "托盘位置", stoppose: "停车点",
+  map: "地图", scan: "2D 补盲激光", cloud: "3D 感知点云", grid: "参考网格" };
+
+function buildLayerPanel() {
+  var box = document.getElementById("layerList");
+  var names = Object.keys(LAYER_NAMES);
+  for (var i = 0; i < names.length; i++) {
+    var key = names[i];
+    var lab = document.createElement("label");
+    var cb = document.createElement("input");
+    cb.type = "checkbox"; cb.id = "ly_" + key;
+    cb.addEventListener("change", onLayerToggle);
+    lab.appendChild(cb);
+    lab.appendChild(document.createTextNode(LAYER_NAMES[key]));
+    box.appendChild(lab);
+  }
+}
+
+function onLayerToggle(ev) {
+  var key = ev.target.id.slice(3);
+  var on = ev.target.checked;
+  try { localStorage.setItem("mon_ly_" + key, on ? "1" : "0"); } catch (e) {}
+  applyLayer(key, on);
+}
+
+function applyLayer(key, on) {
+  layers["_2d_" + key] = on;   /* 2D 降级渲染读取(场景不可用时无对象) */
+  mark2dDirty();
+  var obj = layers[key];
+  if (key === "lidar") {
+    /* 开关对称:有数据的池化项跟随开关,空位恒隐藏 */
+    layers._lidarOn = on;
+    for (var i = 0; i < meshObstacles.length; i++) {
+      meshObstacles[i].visible = on &&
+        (meshObstacles[i].userData.hasData !== false);
+    }
+    return;
+  }
+  if (key === "map") {
+    if (sceneOk && lineMapC && lineMapL && lineMapR) {
+      lineMapC.visible = on; lineMapL.visible = on; lineMapR.visible = on;
+    }
+    return;
+  }
+  if (obj) { obj.visible = on; }
+  /* 记录路径层开关态:applySnapshot 丢帧隐藏/恢复时要与图层开关复合 */
+  if (key === "planning") { layers._planningOn = on; }
+  if (key === "routing") { layers._routingOn = on; }
+}
+
+function applyLayerDefaults() {
+  var keys = Object.keys(LAYER_NAMES), i, key, saved;
+  for (i = 0; i < keys.length; i++) {
+    key = keys[i];
+    try { saved = localStorage.getItem("mon_ly_" + key); } catch (e) { saved = null; }
+    var on = saved !== null ? saved === "1"
+      : (layerDefault ? layerDefault[key] !== false : true);
+    var cb = document.getElementById("ly_" + key);
+    if (cb) { cb.checked = on; }
+    applyLayer(key, on);
+  }
+}
+
+/* lidar 图层兜底:开关关闭期间到来的新障碍也不会点亮(syncObstacles 已
+ * 尊重 _lidarOn,此定时器只是双保险,保持轻量) */
+function syncLidarLayer() {
+  if (layers._lidarOn === false) {
+    for (var i = 0; i < meshObstacles.length; i++) {
+      meshObstacles[i].visible = false;
+    }
+  }
+}
+
+/* ---- HUD ---- */
+var AGE_TOPICS = [["/navigation_msg", "定位"], ["/perception", "感知"],
+  ["/plan_path_msg", "规划路径"], ["/refer_path_msg", "路由路径"],
+  ["/path_plan_status", "状态"], ["/palletpos", "托盘"],
+  ["/back_left_scan", "左补盲"], ["/back_right_scan", "右补盲"],
+  ["/rslidar_points_mid", "3D点云"]];
+
+function setV(id, text, stale) {
+  var el = document.getElementById(id);
+  if (!el) { return; }
+  el.textContent = text;
+  if (stale) { el.className = "v stale"; } else { el.className = "v"; }
+}
+
+function renderHud(d) {
+  var bn = document.getElementById("banners");
+  bn.innerHTML = "";
+  if (!d) {
+    bn.innerHTML = '<div class="banner bad">服务连接断开</div>';
+    /* 曾漏设:提前 return 使两个状态点永远保持初始灰色(实车 08-28
+     * "master/ros 均灰"症状的直接来源之一) */
+    var dR0 = document.getElementById("dotRos");
+    var dM0 = document.getElementById("dotMaster");
+    if (dR0) { dR0.className = "dot bad"; }
+    if (dM0) { dM0.className = "dot bad"; }
+    setV("hSpd", "--", true); setV("hPos", "--", true); setV("hYaw", "--", true);
+    return;
+  }
+  if (!d.ros_available) {
+    bn.innerHTML += '<div class="banner warn">无 ROS 环境(仅静态)</div>';
+  } else if (d.master_ok === false) {
+    bn.innerHTML += '<div class="banner warn">ROS master 失联</div>';
+  }
+  if (d.typed_ok === false) {
+    bn.innerHTML += '<div class="banner warn">消息包导入失败: ' +
+      esc(d.msg_import_errors.join(",")) + "</div>";
+  }
+  var dotRos = document.getElementById("dotRos");
+  var dotM = document.getElementById("dotMaster");
+  dotRos.className = "dot" +
+    (d.ros_available === true ? " ok" : d.ros_available === false ? " bad" : "");
+  dotM.className = "dot" +
+    (d.master_ok === true ? " ok" : d.master_ok === false ? " bad" : "");
+
+  if (d.vehicle) {
+    var v = d.vehicle, staleNav = d.ages &&
+      d.ages["/navigation_msg"] != null && d.ages["/navigation_msg"] > 5;
+    setV("hSpd", v.speed.toFixed(1) + " m/s", staleNav);
+    setV("hPos", v.x.toFixed(1) + " / " + v.y.toFixed(1), staleNav);
+    setV("hYaw", MM.yawDeg(v.yaw).toFixed(0) + " °", staleNav);
+  }
+  var box = document.getElementById("ageList");
+  var html = "";
+  for (var i = 0; i < AGE_TOPICS.length; i++) {
+    var t = AGE_TOPICS[i], age = d.ages ? d.ages[t[0]] : null;
+    var cls = "", val = "--";
+    if (age != null) {
+      val = age.toFixed(1);
+      if (age > 5) { cls = "stale"; }
+    }
+    html += '<div class="row"><span class="k">' + t[1] + "</span>" +
+      '<span class="v ' + cls + '">' + val + "</span></div>";
+  }
+  box.innerHTML = html;
+}
+
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, function (c) {
+    return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;",
+             "'": "&#39;" }[c];
+  });
+}
+
+/* ---- 相机预设 ---- */
+function setCam(mode) {
+  if (!sceneOk || typeof controls === "undefined" || !controls) {
+    return;   /* 场景不可用时按钮点击不做事(曾在此抛错) */
+  }
+  camMode = mode;
+  followOff = null;                    /* 重新建立跟随偏移 */
+  var bTop = document.getElementById("camTop");
+  var b3d = document.getElementById("cam3d");
+  var bF = document.getElementById("camFollow");
+  bTop.className = mode === "top" ? "on" : "";
+  b3d.className = mode === "3d" ? "on" : "";
+  bF.className = mode === "follow" ? "on" : "";
+  controls.enableRotate = (mode !== "top");
+  var anchor = lastPose || (snap && snap.vehicle ? snap.vehicle : null);
+  var at = anchor ? MM.rosToThree(anchor.x, anchor.y, 0) : [0, 0, 0];
+  if (mode === "top") {
+    controls.target.set(at[0], 0, at[2]);
+    camera.position.set(at[0], 130, at[2] + 0.01);
+  } else if (mode === "3d") {
+    controls.target.set(at[0], 0, at[2]);
+    camera.position.set(at[0] + 40, 45, at[2] + 40);
+  }
+}
+
+/* ---- 启动 ---- */
+var scanTimer = null, cloudTimer = null;
+
+function stopIoTimers() {
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  if (scanTimer) { clearInterval(scanTimer); scanTimer = null; }
+  if (cloudTimer) { clearInterval(cloudTimer); cloudTimer = null; }
+}
+
+function startIoTimers() {
+  stopIoTimers();
+  pollTimer = setInterval(poll, 500);
+  /* scan/cloud 定时器一并管理:隐藏页若只停 snapshot,后台标签页会
+   * 持续刷新 cloud 活动戳,把"30s 无拉取自动退订"的车端省 CPU 机制
+   * 完全架空 */
+  scanTimer = setInterval(pullScan, 500);
+  cloudTimer = setInterval(pullCloud, 1000);
+  poll(); pullScan(); pullCloud();
+}
+
+var sceneOk = false;   /* 3D 场景是否可用(不可用时数据面板仍工作) */
+
+function init() {
+  window.addEventListener("resize", onResize);
+  if (typeof THREE === "undefined") {
+    var e = document.getElementById("err");
+    e.style.display = "block";
+    e.textContent = "three.min.js 加载失败,已切换 2D 俯视渲染";
+    setup2d();
+  } else {
+    /* WebGL 创建失败(车载浏览器无硬件加速等)曾使 init 中断 -> 轮询
+     * 从未启动 -> 灰点/无横幅/无任何数据(实车 08-28 症状)。现在场景
+     * 失败只降级 3D 显示,轮询与 HUD 照常,并自报错误。 */
+    try {
+      buildScene();
+      sceneOk = true;
+      setCam("3d");      /* 首帧定位到来后会自动移到车辆附近 */
+    } catch (e2) {
+      var el2 = document.getElementById("err");
+      if (el2) {
+        el2.style.display = "block";
+        el2.textContent = "3D 初始化失败,已切换 2D 俯视渲染: " +
+          (e2 && e2.message ? e2.message : e2);
+      }
+      /* 2D Canvas 降级:无 WebGL 也有完整俯视可视化 */
+      if (setup2d() && el2) {
+        el2.textContent += " (2D 模式:滚轮缩放)";
+      }
+    }
+  }
+  buildLayerPanel();
+  /* 地图接口返回前先应用本地保存态/全开缺省,避免 checkbox 与实际
+   * 图层状态短暂不一致;3D 对象已有自身初始态,仅降级模式需要先做。 */
+  if (!sceneOk) { applyLayerDefaults(); }
+  loadMapOnce();
+  startIoTimers();
+  setInterval(syncLidarLayer, 500);
+  document.getElementById("camTop").
+    addEventListener("click", function () { setCam("top"); });
+  document.getElementById("cam3d").
+    addEventListener("click", function () { setCam("3d"); });
+  document.getElementById("camFollow").
+    addEventListener("click", function () { setCam("follow"); });
+  document.addEventListener("visibilitychange", function () {
+    if (document.hidden) { stopIoTimers(); }
+    else { startIoTimers(); }
+  });
+  requestAnimationFrame(tick);
+}
+
+init();
+</script>
+</body>
+</html>

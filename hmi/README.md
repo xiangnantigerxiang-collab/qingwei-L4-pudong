@@ -31,6 +31,9 @@ bash hmi/install_autostart.sh remove    # 卸载自启,恢复手动方式
 ```
 
 - 自启的**只有网页服务**,车辆组件不会被自动拉起,上电后仍需页面手动"一键启动"
+- 安装脚本会幂等写入 `/etc/environment` 的 `MOZ_X11_EGL=1`,解决 Jetson/L4T
+  上 Firefox 创建 WebGL context 失败的问题;首次安装后需注销重新登录或重启车机
+  才能让桌面启动的 Firefox继承。卸载 HMI 自启时保留该车机级兼容配置
 - `systemctl stop/restart qingwei-hmi` 只停 HMI 本身,组件不受影响
   (unit 用 `KillMode=process`,勿改为默认值——否则停服务会连带杀掉全部组件)
 - HMI 服务日志:`journalctl -u qingwei-hmi -f`;组件日志仍在 `hmi/logs/`
@@ -55,6 +58,10 @@ bash hmi/install_autostart.sh remove    # 卸载自启,恢复手动方式
 全中文注释。调整示例:
 
 - 启用 simview/netcheck/bags:把对应组件 `"enabled": False` 改为 `True`
+- **可视化(Web)**(monitor,默认启用):卡片可单独启停 monitor 服务,
+  浏览器访问 `http://<车IP>:8081`;健康判定为存活即绿(Web 服务无
+  ROS 发布话题),ROS/master 连接状态看 monitor 页面右上状态点。
+  与 simview(rviz)互不冲突,可并存
 - simview 工作区路径不同:改其 `cwd` 与 `setup` 字段
 - 新增组件:照抄一条,`group` 决定启动顺序
 

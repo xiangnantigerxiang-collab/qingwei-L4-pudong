@@ -215,6 +215,21 @@ CONFIG = {
             "stop_pat": "simview.launch",
         },
         {
+            "name": "monitor",
+            "title": "可视化(Web)",
+            "group": 4,
+            "optional": True,
+            "enabled": True,
+            # monitor Web 可视化(浏览器访问 http://<车IP>:8081, 与 hmi 8080 并存)
+            # monitor.sh 自行 source devel 并自定位目录,无需 setup
+            "cmd": ["bash", "$ROOT/monitor/monitor.sh"],
+            "cwd": "$ROOT",
+            "health": [],   # Web 服务无 ROS 发布话题:存活即绿;
+                            # ROS/master 连接状态由页面右上状态点自示
+            "start_timeout": 15,
+            "stop_pat": "monitor_server",
+        },
+        {
             "name": "netcheck",
             "title": "外网监测",
             "group": 4,

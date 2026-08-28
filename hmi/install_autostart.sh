@@ -12,11 +12,62 @@ UNIT_SRC="$DIR/qingwei-hmi.service"
 UNIT_DST="/etc/systemd/system/qingwei-hmi.service"
 SERVICE="qingwei-hmi"
 PORT="${HMI_PORT:-8080}"
+ENV_FILE="/etc/environment"
+FIREFOX_EGL_ENV="MOZ_X11_EGL=1"
 
 SUDO=""
 if [ "$(id -u)" -ne 0 ]; then
     SUDO="sudo"
 fi
+
+# Jetson/L4T 上 Firefox 的默认 GLX 路径可能无法创建 WebGL context。
+# 写入登录环境后,从桌面启动的 Firefox 会使用 EGL;幂等更新并清理重复项,
+# 同时完整保留 /etc/environment 中的其他配置。
+configure_firefox_egl() {
+    local tmp_env
+    tmp_env="$(mktemp)" || {
+        echo "错误:无法创建 /etc/environment 临时文件" >&2
+        return 1
+    }
+
+    if [ -f "$ENV_FILE" ]; then
+        if ! $SUDO awk '
+            BEGIN { written = 0 }
+            /^[[:space:]]*(export[[:space:]]+)?MOZ_X11_EGL[[:space:]]*=/ {
+                if (!written) {
+                    print "MOZ_X11_EGL=1"
+                    written = 1
+                }
+                next
+            }
+            { print }
+            END {
+                if (!written) {
+                    print "MOZ_X11_EGL=1"
+                }
+            }
+        ' "$ENV_FILE" > "$tmp_env"; then
+            rm -f "$tmp_env"
+            echo "错误:无法读取或处理 $ENV_FILE" >&2
+            return 1
+        fi
+    else
+        printf '%s\n' "$FIREFOX_EGL_ENV" > "$tmp_env"
+    fi
+
+    if [ -f "$ENV_FILE" ] && cmp -s "$tmp_env" "$ENV_FILE"; then
+        rm -f "$tmp_env"
+        echo "Firefox EGL 环境已配置:$FIREFOX_EGL_ENV"
+        return 0
+    fi
+    if ! $SUDO install -m 0644 "$tmp_env" "$ENV_FILE"; then
+        rm -f "$tmp_env"
+        echo "错误:无法写入 $ENV_FILE" >&2
+        return 1
+    fi
+    rm -f "$tmp_env"
+    echo "已写入 $ENV_FILE:$FIREFOX_EGL_ENV"
+}
 
 # ---------- 卸载 ----------
 if [ "$1" = "remove" ]; then
@@ -26,6 +77,7 @@ if [ "$1" = "remove" ]; then
     $SUDO systemctl daemon-reload
     $SUDO systemctl reset-failed "$SERVICE" 2>/dev/null
     echo "完成。组件进程(若有)未被触碰;HMI 需要时手动: bash hmi/hmi.sh"
+    echo "说明:$ENV_FILE 中的 $FIREFOX_EGL_ENV 为车机 Firefox兼容配置,卸载 HMI 时保留"
     exit 0
 fi
 
@@ -40,6 +92,11 @@ if [ ! -f "$UNIT_SRC" ]; then
 fi
 if ! command -v systemctl >/dev/null 2>&1; then
     echo "错误: 系统无 systemctl,不支持 systemd 自启" >&2
+    exit 1
+fi
+
+# ---------- 配置车端 Firefox WebGL/EGL ----------
+if ! configure_firefox_egl; then
     exit 1
 fi
 
@@ -94,3 +151,5 @@ echo "  systemctl status $SERVICE          状态"
 echo "  journalctl -u $SERVICE -f          HMI 服务日志(组件日志仍在 hmi/logs/)"
 echo "  sudo systemctl restart $SERVICE    重启 HMI(组件不受影响)"
 echo "  bash hmi/install_autostart.sh remove   卸载自启"
+echo ""
+echo "Firefox EGL 环境将在下次登录桌面后生效;首次安装请注销重新登录或重启车机"

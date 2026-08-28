@@ -1,0 +1,3 @@
+==== start monitor 2026-08-28 15:05:24 pid=52598 ====
+   cmd: bash /home/mothotob/work/projects/claude-code/qingwei-L4-No2-pudong-rebuild/qingwei-L4-No2-pudong/monitor/monitor.sh
+[MONITOR] 已启动: http://本机IP:18095  (ROS: 不可用(仅静态/空数据))
