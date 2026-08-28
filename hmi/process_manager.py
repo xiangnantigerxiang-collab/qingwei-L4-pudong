@@ -204,6 +204,36 @@ class ComponentRunner(object):
                 self.stop_failed = False
             return self.state == "STOPPED"
 
+    def reap_foreign(self):
+        """清理本组件的外部进程(非 HMI 启动、无进程句柄,组杀不可达)。
+        依次执行 stop_cmd(如有)与 pkill -f stop_pat,成功后清 foreign 标记。"""
+        with self._lk:
+            if not self.foreign or self.state != "STOPPED":
+                return False
+        stop_cmd = self.spec.get("stop_cmd")
+        if stop_cmd:
+            try:
+                subprocess.run(["bash", "-c", stop_cmd], timeout=8,
+                               stdin=subprocess.DEVNULL,
+                               stdout=subprocess.DEVNULL,
+                               stderr=subprocess.DEVNULL)
+            except Exception:
+                pass
+        pat = self.spec.get("stop_pat")
+        if pat:
+            subprocess.run(["pkill", "-f", pat],
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        time.sleep(0.3)
+        still = bool(pat) and _pgrep(pat)
+        with self._lk:
+            self.foreign = bool(still)
+            self.stop_failed = bool(still)
+            if still:
+                self.last_error = "外部进程清理失败(pgrep -f %s 仍命中)" % pat
+            else:
+                self.last_error = None
+            return not still
+
     def poll(self):
         """monitor 线程每秒调用:收尸、启动超时、健康降级/恢复。"""
         with self._lk:
@@ -484,6 +514,12 @@ class ProcessManager(object):
 
     def _orchestrate_stop(self):
         try:
+            # 先清理外部进程(foreign 组件无进程句柄,常规停止链够不到)
+            for r in self.runners.values():
+                try:
+                    r.reap_foreign()
+                except Exception:
+                    pass
             for g in sorted(self.groups, reverse=True):
                 with self._seq_lk:
                     self._seq["current_group"] = g

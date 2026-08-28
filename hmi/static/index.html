@@ -49,6 +49,11 @@ header{
 .pill.p-warn{color:var(--warning);border-color:var(--warning)}
 .pill.p-crit{color:var(--critical);border-color:var(--critical)}
 .pill.p-info{color:var(--info);border-color:var(--info)}
+/* 大号驾驶模式 pill(页头常驻高亮) */
+.pill.modePill{font-size:1.05rem;padding:.32rem 1.05rem;font-weight:700;min-width:6.2em;text-align:center}
+.pill.m-auto{background:var(--good);border-color:var(--good);color:var(--page)}
+.pill.m-manual{color:var(--warning);border-color:var(--warning);background:rgba(250,178,25,.14)}
+.pill.m-none{color:var(--muted);text-decoration:line-through dotted}
 .spacer{flex:1}
 .btn{
   min-height:44px;min-width:72px;padding:.4rem 1.1rem;border-radius:8px;
@@ -79,7 +84,8 @@ main{
 }
 @media (max-width:1000px){
   main{grid-template-columns:1fr}
-  #vehiclePanel{position:static}
+  /* 窄屏取消 sticky,同时必须解除内滚限制,否则面板嵌在页面滚动里再滚一次 */
+  #vehiclePanel{position:static;max-height:none;overflow:visible}
 }
 
 /* ---- 组件卡片 ---- */
@@ -122,6 +128,7 @@ main{
 /* ---- 车辆状态面板 ---- */
 #vehiclePanel{
   position:sticky;top:64px;display:flex;flex-direction:column;gap:.8rem;
+  max-height:calc(100vh - 78px);overflow-y:auto;
 }
 .vsec{background:var(--surface);border:1px solid var(--ring);border-radius:10px;padding:.7rem .85rem}
 .vsec h3{
@@ -159,6 +166,13 @@ main{
 .sens.ok .dot{background:var(--good)}
 .sens.bad .dot{background:var(--critical);animation:blink .9s infinite}
 .sens.na .dot{background:var(--muted)}
+/* 异常事件时间线(前端本地记录) */
+.evtlist{max-height:9rem;overflow-y:auto;font-size:.78rem;color:var(--ink2);
+         display:flex;flex-direction:column;gap:.15rem}
+.evtlist .evt b{color:var(--muted);font-weight:400;margin-right:.4rem}
+.evtlist .evt.bad{color:var(--critical)}
+.evtlist .evt.good{color:var(--good)}
+.evtlist .evtEmpty{color:var(--muted)}
 .vehEmpty{color:var(--muted);font-size:.85rem;padding:.4rem 0}
 
 /* ============ 日志弹窗 ============ */
@@ -191,6 +205,7 @@ footer{
 <header>
   <div class="brand">清维 L4 · 车辆控制台</div>
   <div id="overall" class="pill">连接中…</div>
+  <div id="modePill" class="pill modePill m-none">模式 --</div>
   <div class="spacer"></div>
   <button id="btnStart" class="btn big b-good">一键启动</button>
   <button id="btnStop" class="btn big b-crit">全部停止</button>
@@ -203,6 +218,35 @@ footer{
   <section id="components"></section>
 
   <aside id="vehiclePanel">
+    <div class="vsec">
+      <h3>运行状态与故障</h3>
+      <div class="vrow"><span class="lbl">运行</span><span class="val" id="v-runstate">--</span></div>
+      <div class="vrow"><span class="lbl">CAN 总线</span><span class="val" id="f-can">--</span></div>
+      <div class="vrow"><span class="lbl">急停</span><span class="val" id="f-estop">--</span></div>
+      <div class="vrow"><span class="lbl">传感器</span><span class="val" id="f-sensor">--</span></div>
+      <div class="vrow"><span class="lbl">规划心跳</span><span class="val" id="f-alive">--</span></div>
+      <div class="vrow"><span class="lbl">围栏</span><span class="val" id="f-alarm">--</span></div>
+      <div class="vrow"><span class="lbl">网络</span><span class="val" id="f-net">--</span></div>
+      <div class="vrow"><span class="lbl">横向偏差</span><span class="val" id="f-latdev">--</span></div>
+      <div class="vrow"><span class="lbl">定位</span><span class="val" id="f-loc">--</span></div>
+      <div class="sensgrid" style="margin-top:.4rem">
+        <span class="sens na" id="s-lidar"><span class="dot"></span>激光雷达</span>
+        <span class="sens na" id="s-camera"><span class="dot"></span>相机</span>
+        <span class="sens na" id="s-gnss"><span class="dot"></span>GNSS</span>
+        <span class="sens na" id="s-vehicle"><span class="dot"></span>CAN 总线</span>
+        <span class="sens na" id="s-alive"><span class="dot"></span>规划软件</span>
+        <span class="sens na" id="s-cloud"><span class="dot"></span>云端 MQTT</span>
+        <span class="sens na" id="s-rtk"><span class="dot"></span>定位 RTK</span>
+      </div>
+      <div class="vrow" style="margin-top:.4rem"><span class="lbl">CAN 频率</span><span class="val" id="v-canhz">--</span></div>
+      <div class="vrow"><span class="lbl">ROS master</span><span class="val" id="v-master">--</span></div>
+    </div>
+
+    <div class="vsec">
+      <h3>异常事件</h3>
+      <div class="evtlist" id="evtList"><span class="evtEmpty">暂无异常事件</span></div>
+    </div>
+
     <div class="vsec">
       <h3>行驶</h3>
       <div class="driving">
@@ -242,21 +286,6 @@ footer{
       <div class="meter" id="v-battmeter"><div style="width:0%"></div></div>
       <div class="vrow" style="margin-top:.3rem"><span class="lbl">挂接状态</span><span class="val" id="v-hook">--</span></div>
       <div class="vrow"><span class="lbl">挂点中心距 / 夹角</span><span class="val" id="v-hookgeo">--</span></div>
-    </div>
-
-    <div class="vsec">
-      <h3>健康与网络</h3>
-      <div class="sensgrid">
-        <span class="sens na" id="s-lidar"><span class="dot"></span>激光雷达</span>
-        <span class="sens na" id="s-camera"><span class="dot"></span>相机</span>
-        <span class="sens na" id="s-gnss"><span class="dot"></span>GNSS</span>
-        <span class="sens na" id="s-vehicle"><span class="dot"></span>CAN 总线</span>
-      </div>
-      <div class="vrow" style="margin-top:.35rem"><span class="lbl">CAN 频率</span><span class="val" id="v-canhz">--</span></div>
-      <div class="vrow"><span class="lbl">CAN 故障码</span><span class="val" id="v-canfault">--</span></div>
-      <div class="vrow"><span class="lbl">互联网</span><span class="val" id="v-net">--</span></div>
-      <div class="vrow"><span class="lbl">围栏告警</span><span class="val" id="v-alarm">--</span></div>
-      <div class="vrow"><span class="lbl">ROS master</span><span class="val" id="v-master">--</span></div>
     </div>
 
     <div class="vsec" id="vehEmpty" style="display:none">
@@ -304,6 +333,15 @@ var STATE_TEXT = {STOPPED:"已停止", STARTING:"启动中", RUNNING:"运行",
 var ST = null, online = true;
 var pollTimer = null, logTimer = null, logName = null;
 
+/* 异常事件时间线(前端本地记录,刷新即清空):名称/异常文案/恢复文案 */
+var EVTS = [], LAST_SNAP = null, PENDING = {};
+var EVT_LABEL = {
+  lidar:["激光雷达"], camera:["相机"], gnss:["GNSS"], can:["CAN 总线"],
+  estop:["急停","触发","解除"], alive:["规划心跳"], net:["网络"],
+  alarm:["围栏告警","触发","解除"], rtk:["RTK 定位"], mode:["驾驶模式"],
+  cloud:["云端链路"], latdev:["横向偏差","超限","恢复"],
+};
+
 function poll(){
   fetch("/api/state").then(function(r){ return r.json(); }).then(function(d){
     ST = d; online = true; render();
@@ -343,6 +381,9 @@ function renderOffline(){
   var o = $("#overall");
   o.textContent = "无法连接车端服务";
   o.className = "pill p-crit";
+  var mp = $("#modePill");
+  mp.textContent = "模式 无数据";
+  mp.className = "pill modePill m-none";
   $("#banners").innerHTML =
     '<div class="banner crit">⚠ 无法连接车端服务,正在重试…</div>';
 }
@@ -385,6 +426,27 @@ function renderHeader(){
   var busy = ST.sequence && ST.sequence.active;
   $("#btnStart").disabled = busy;
   $("#btnStop").disabled = busy;
+
+  renderModePill();
+}
+
+/* 页头驾驶模式 pill:自动=绿实心 / 手动=黄警示 / 无数据·超时=灰+删除线 */
+function renderModePill(){
+  var el = $("#modePill"), v = ST.vehicle || {};
+  var stale = staleOf("/can_msg");
+  if (!v.ros_available){
+    el.textContent = "模式 无数据"; el.className = "pill modePill m-none";
+  } else if (v.mode == null){
+    el.textContent = "模式 --"; el.className = "pill modePill m-none";
+  } else if (stale){
+    el.textContent = "模式 " + v.mode; el.className = "pill modePill m-none";
+  } else if (v.mode === "自动"){
+    el.textContent = "自动"; el.className = "pill modePill m-auto";
+  } else if (v.mode === "手动"){
+    el.textContent = "手动"; el.className = "pill modePill m-manual";
+  } else {
+    el.textContent = "未知(" + v.mode + ")"; el.className = "pill modePill m-none";
+  }
 }
 
 function renderBanners(){
@@ -573,34 +635,173 @@ function renderVehicle(){
   var hk = v.hook || {};
   var hkGood = hk.state === 4 || hk.state === 3;
   setVal("v-hook", panelOk ? (hk.text || "--") : "--",
-         hk.state == null ? null : (hkGood ? "good" : hk.state === 1 ? "crit" : "warn"),
+         hk.state == null ? null :
+           (hkGood ? "good" : (hk.state === 1 || hk.state === 2 ? "crit" : "warn")),
          staleOf("/v2nHeartBeat"));
   setVal("v-hookgeo", panelOk && hk.center_distance != null ?
          hk.center_distance + " m / " + (hk.beta == null ? "--" : hk.beta + "°") : "--",
          null, staleOf("/hook_position"));
 
-  /* 健康与网络 */
-  var s = v.sensors || {};
+  /* 运行状态与故障 */
+  var t2 = v.task || {}, s = v.sensors || {}, net = v.net || {};
+  var runStale = staleOf("/path_plan_status") || staleOf("/v2nHeartBeat") ||
+                 staleOf("/can_msg");
+  setVal("v-runstate",
+         panelOk ? [(t2.status_text || "--"), (v.driving_state_text || "--"),
+                    (v.mode || "--")].join(" · ") : "--",
+         !panelOk ? null : (v.mode === "自动" ? (t2.status === 1 ? "good" : null)
+                            : (v.mode === "手动" ? "warn" : null)),
+         runStale);
+  /* CAN 双路径:faultCode 非零=canbus 报断流(话题仍活);ages 超时=节点数据断。
+     类型化解析不可用(msg 包导入失败退化为 AnyMsg 仅计数)时 fault_codes 恒空,不得显绿 */
+  var canAge = age("/can_msg");
+  var canTyped = !(v.typed_ok && v.typed_ok["/can_msg"] === false);
+  var fCodes = (v.can && v.can.fault_codes) || [];
+  var fCanTxt = "--", fCanCls = null, fCanStale = false;
+  if (panelOk){
+    if (!canTyped){ fCanTxt = "解析不可用"; fCanCls = "warn"; }
+    else if (canAge == null){ fCanTxt = "无数据"; fCanCls = "warn"; }
+    else if (fCodes.some(function(x){ return x !== 0; })){
+      fCanTxt = "断流(码 " + fCodes.join(",") + ")"; fCanCls = "crit";
+    } else if (canAge > 5){ fCanTxt = "数据超时"; fCanCls = "crit"; fCanStale = true; }
+    else { fCanTxt = "正常"; fCanCls = "good"; }
+  }
+  setVal("f-can", fCanTxt, fCanCls, fCanStale);
+  setVal("f-estop", !panelOk ? "--" : (es == null ? "--" : (es ? "按下" : "正常")),
+         es == null ? null : (es ? "crit" : "good"), staleOf("/can_msg"));
+  /* 传感器:点名故障设备;三路+位图全空才是"无数据" */
+  var sensBad = [];
+  if (s.lidar === false) sensBad.push("雷达");
+  if (s.camera === false) sensBad.push("相机");
+  if (s.gnss === false) sensBad.push("GNSS");
+  setVal("f-sensor", !panelOk ? "--" :
+         (sensBad.length ? sensBad.join("/") + " 故障" :
+          (s.fault ? "综合故障" :
+           (s.lidar == null && s.camera == null && s.gnss == null &&
+            s.fault == null ? "--" : "正常"))),
+         (sensBad.length || s.fault) ? "crit" : null,
+         staleOf("/v2nHeartBeat"));
+  setVal("f-alive", !panelOk ? "--" :
+         (s.alive == null ? "未知" : (s.alive ? "正常" : "丢失")),
+         s.alive == null ? null : (s.alive ? "good" : "crit"), false);
+  setVal("f-alarm", !panelOk ? "--" :
+         (net.alarm == null ? "未知" : (net.alarm ? "⚠ 围栏告警" : "正常")),
+         net.alarm == null ? null : (net.alarm ? "crit" : "good"), false);
+  setVal("f-net", !panelOk ? "--" :
+         (net.internet_ok == null ? "未知" : (net.internet_ok ? "正常" : "断开")),
+         net.internet_ok == null ? null : (net.internet_ok ? "good" : "warn"),
+         false);
+  /* 横向偏差分级(对齐 pnc:4.0m 预警/5.5m 停车;偏差为有符号量,取绝对值) */
+  var latAbs = lat == null ? null : Math.abs(lat);
+  setVal("f-latdev", (!panelOk || latAbs == null) ? "--" :
+         latAbs.toFixed(2) + " m" + (latAbs > 4.0 ? " 超限" : ""),
+         latAbs == null ? null : (latAbs > 5.5 ? "crit" : latAbs > 4.0 ? "warn" : "good"),
+         staleOf("/control_msg"));
+  setVal("f-loc", !panelOk ? "--" :
+         (loc.rtk_text == null ? "未知" : (rtkOk ? "RTK固定" : "异常(" + loc.rtk_text + ")")),
+         loc.rtk_text == null ? null : (rtkOk ? "good" : "crit"),
+         staleOf("/navigation_msg"));
+  /* 组件状态格:原四格 + 规划软件/云端 MQTT(按 hmi_config 组件名 fms)/RTK */
   setSens("#s-lidar", s.lidar); setSens("#s-camera", s.camera);
   setSens("#s-gnss", s.gnss); setSens("#s-vehicle", s.vehicle_ok);
+  setSens("#s-alive", s.alive == null ? null : !!s.alive);
+  var fmsC = null, i, csArr = ST.components || [];
+  for (i = 0; i < csArr.length; i++){
+    if (csArr[i].name === "fms"){ fmsC = csArr[i]; break; }
+  }
+  setSens("#s-cloud", fmsC == null ? null :
+          (fmsC.state === "RUNNING" ? true :
+           (fmsC.state === "DEGRADED" || fmsC.state === "CRASHED" ? false : null)));
+  setSens("#s-rtk", loc.rtk_text == null ? null : rtkOk);
+  /* CAN 频率 / ROS master(自旧"健康与网络"区迁入);warn 线 16Hz 对齐组件健康降级线(min_hz20×0.8) */
   var canHz = (v.can && v.can.hz != null) ? v.can.hz.toFixed(1) + " Hz" : "--";
   setVal("v-canhz", panelOk ? canHz : "--",
-         v.can && v.can.hz != null && v.can.hz < 10 ? "warn" : null, false);
-  var fc = v.can && v.can.fault_codes && v.can.fault_codes.length ?
-           v.can.fault_codes.join(",") : null;
-  setVal("v-canfault", panelOk ? (fc || "无") : "--", fc ? "crit" : "good",
-         staleOf("/can_msg"));
-  var net = v.net || {};
-  setVal("v-net", panelOk ? (net.internet_ok == null ? "未知" :
-         (net.internet_ok ? "正常" : "断开")) : "--",
-         net.internet_ok == null ? null : (net.internet_ok ? "good" : "warn"), false);
-  setVal("v-alarm", panelOk ? (net.alarm == null ? "未知" :
-         (net.alarm ? "⚠ 围栏告警" : "正常")) : "--",
-         net.alarm == null ? null : (net.alarm ? "crit" : "good"), false);
+         v.can && v.can.hz != null && v.can.hz < 16 ? "warn" : null, false);
   var srv = ST.server || {};
   setVal("v-master", srv.ros_available ? (srv.master_ok ? "正常" :
          (srv.master_ok === false ? "失联" : "未知")) : "无 ROS",
-         srv.master_ok === true ? "good" : srv.master_ok === false ? "crit" : null, false);
+         srv.master_ok === true ? "good" : srv.master_ok === false ? "crit" : null,
+         false);
+
+  renderEvents(v);
+}
+
+/* ---- 异常事件时间线:轮询 diff 状态跳变,unknown(null)不参与,首帧只建基线。
+   去抖:新值须连续 2 帧一致才确认记录(单帧抖动如横向偏差在 4m 边界摆动、
+   进程 IO 卡顿导致 ages 瞬态超 5s,均会被吸收,不产生事件风暴) ---- */
+function renderEvents(v){
+  var snap = null;
+  if (v.ros_available && online){
+    var s = v.sensors || {}, net = v.net || {}, lc = v.localization || {};
+    var fmsState = null, i, csArr = ST.components || [];
+    for (i = 0; i < csArr.length; i++){
+      if (csArr[i].name === "fms"){ fmsState = csArr[i].state; break; }
+    }
+    var la = v.lateral_dev_m == null ? null : Math.abs(v.lateral_dev_m);
+    var canAge0 = age("/can_msg");
+    var canTyped0 = !(v.typed_ok && v.typed_ok["/can_msg"] === false);
+    snap = {
+      lidar: s.lidar == null ? null : !s.lidar,
+      camera: s.camera == null ? null : !s.camera,
+      gnss: s.gnss == null ? null : !s.gnss,
+      can: (canAge0 == null || !canTyped0) ? null :
+           (((v.can && v.can.fault_codes &&
+              v.can.fault_codes.some(function(x){ return x !== 0; })) ||
+             canAge0 > 5) || false),
+      estop: v.emergency_stop,
+      alive: s.alive == null ? null : !s.alive,
+      net: net.internet_ok == null ? null : !net.internet_ok,
+      alarm: net.alarm == null ? null : !!net.alarm,
+      rtk: lc.rtk_text == null ? null : lc.rtk_text !== "RTK固定",
+      mode: v.mode || null,
+      cloud: fmsState == null ? null :
+             (fmsState === "DEGRADED" || fmsState === "CRASHED"),
+      latdev: la == null ? null : la > 4.0,
+    };
+  }
+  if (snap == null){ LAST_SNAP = null; PENDING = {}; return; }
+  if (LAST_SNAP == null){ LAST_SNAP = snap; PENDING = {}; return; }
+  var changed = false, k;
+  for (k in EVT_LABEL){
+    var ov = LAST_SNAP[k], nv = snap[k];
+    if (ov == null || nv == null || ov === nv){ delete PENDING[k]; continue; }
+    var p = PENDING[k];
+    if (p && p.val === nv){ p.count++; }
+    else { p = PENDING[k] = {val: nv, count: 1}; }
+    if (p.count >= 2){
+      addEvent(k, nv);
+      LAST_SNAP[k] = nv;
+      delete PENDING[k];
+      changed = true;
+    }
+  }
+  if (changed) renderEvtList();
+}
+function addEvent(key, newVal){
+  var lab = EVT_LABEL[key] || [key];
+  var isBad, text;
+  if (key === "mode"){
+    text = lab[0] + " → " + newVal; isBad = newVal !== "自动";
+  } else {
+    isBad = !!newVal;
+    text = lab[0] + " " + (isBad ? (lab[1] || "故障") : (lab[2] || "恢复"));
+  }
+  EVTS.unshift([Date.now(), text, isBad]);
+  if (EVTS.length > 50) EVTS.pop();
+}
+function renderEvtList(){
+  var box = $("#evtList");
+  if (!EVTS.length){
+    box.innerHTML = '<span class="evtEmpty">暂无异常事件</span>';
+    return;
+  }
+  var html = [], i;
+  for (i = 0; i < EVTS.length; i++){
+    var e = EVTS[i];
+    html.push('<div class="evt ' + (e[2] ? "bad" : "good") + '"><b>' +
+              new Date(e[0]).toLocaleTimeString() + "</b>" + esc(e[1]) + "</div>");
+  }
+  box.innerHTML = html.join("");
 }
 function setSens(sel, ok){
   var el = $(sel);

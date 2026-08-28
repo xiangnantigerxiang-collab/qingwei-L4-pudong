@@ -1,0 +1,31 @@
+# qingwei L4 Web HMI systemd 服务单元
+# 安装/卸载:bash hmi/install_autostart.sh (加 remove 参数卸载)
+# 手动管理:
+#   systemctl status qingwei-hmi      查看状态
+#   journalctl -u qingwei-hmi -f      跟踪 HMI 服务日志(组件日志仍在 hmi/logs/)
+#   sudo systemctl stop qingwei-hmi   停 HMI(组件不受影响,见 KillMode)
+# 改端口:编辑 Environment=HMI_PORT 后
+#   sudo systemctl daemon-reload && sudo systemctl restart qingwei-hmi
+#
+# 设计说明(勿随意改动):
+# - KillMode=process:stop/restart 只杀 HMI 主进程。组件虽由 HMI 拉起,但仍在
+#   本服务 cgroup 内,若用默认 control-group 会连同组件一起杀掉,破坏
+#   "HMI 退出不带走组件"的设计(与手动 Ctrl+C hmi.sh 行为保持一致)
+# - 本服务只负责网页服务开机自启,不会自动拉起任何车辆组件;
+#   组件仍需上电后在页面上手动"一键启动"(安全设计)
+[Unit]
+Description=qingwei L4 Web HMI
+After=network.target
+
+[Service]
+Type=simple
+User=nvidia
+WorkingDirectory=/home/nvidia/qingwei-L4-No2
+Environment=HMI_PORT=8080
+ExecStart=/bin/bash /home/nvidia/qingwei-L4-No2/hmi/hmi.sh
+KillMode=process
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

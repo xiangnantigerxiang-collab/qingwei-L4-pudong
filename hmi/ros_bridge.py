@@ -43,8 +43,20 @@ TYPED_SUBS = [
 PANEL_TOPICS = [t for t, _, _, _ in TYPED_SUBS]
 
 GEAR_MAP = {1: "P", 2: "N", 3: "R", 4: "D"}
-HOOK_TEXT_V2N = {0: "正常", 1: "脱钩告警", 2: "未到位", 3: "已释放", 4: "已挂钩"}
+# v2nHeartBeatValue.msg 注释:4-已挂钩/3-未挂钩/2-挂钩异常/1-脱钩告警
+HOOK_TEXT_V2N = {0: "无", 1: "脱钩告警", 2: "挂钩异常", 3: "未挂钩", 4: "已挂钩"}
 TASK_EXEC_TEXT = {0: "无任务", 1: "执行中", 2: "完成"}
+DRIVING_TEXT = {0: "停车", 1: "减速", 2: "加速", 3: "巡航"}   # v2nHeartBeat.drivingState
+
+
+def _to_int(x):
+    """rosparam 规范化:写入方均为 int,防御字符串形态("0"/"")造成误判或位运算异常。"""
+    if x is None:
+        return None
+    try:
+        return int(x)
+    except (TypeError, ValueError):
+        return None
 
 
 def _g(obj, attr, default=None):
@@ -132,6 +144,8 @@ class RosBridge(HealthProvider):
             veh = dict(self._veh)
             veh["ros_available"] = True
             veh["master_ok"] = self.master_ok
+            # 类型化解析可用性(AnyMsg 兜底时字段解析不可用,前端据此降级显示)
+            veh["typed_ok"] = dict(self._typed_ok)
             now = time.monotonic()
             veh["ages"] = {t: (round(now - l, 1) if l is not None else None)
                            for t, l in self._last.items() if t in PANEL_TOPICS}
@@ -394,6 +408,7 @@ class RosBridge(HealthProvider):
         self._veh = {
             "speed_kmh": None, "gear": None, "gear_raw": None,
             "mode": None, "emergency_stop": None,
+            "driving_state": None, "driving_state_text": None,
             "task": {"status": None, "status_text": None, "task_id": None,
                      "type": None, "stop_xy_m": None, "procedure": None,
                      "fail_text": None},
@@ -479,7 +494,8 @@ class RosBridge(HealthProvider):
             bia = _g(msg, "biaDistance")
             self._veh["lateral_dev_m"] = bia if bia is None else round(bia, 2)
             if bia is not None:
-                self._veh["lateral_dev_warn"] = bia > 5.5
+                # biaDistance 带符号(叉积定向, control_comply.cpp:871-874), 负值=另一侧偏差
+                self._veh["lateral_dev_warn"] = abs(bia) > 5.5
 
     def _on_task_plan(self, msg):
         self._bump("/task_plan_msg")
@@ -511,12 +527,17 @@ class RosBridge(HealthProvider):
             vals = _g(msg, "values")
             soc = _g(vals, "soc")
             v["battery_pct"] = soc
-            v["status_str"] = _g(msg, "status")
+            # status 真实消息定义在 values 内(v2nHeartBeat 顶层仅 ts/deviceId/type/values)
+            v["status_str"] = _g(msg, "status") or _g(vals, "status")
             hook = _g(vals, "hookState")
             v["hook"]["v2n"] = hook
             v["hook"]["state"] = hook
             v["hook"]["text"] = HOOK_TEXT_V2N.get(
                 hook, str(hook) if hook is not None else None)
+            ds = _g(vals, "drivingState")
+            v["driving_state"] = ds
+            v["driving_state_text"] = DRIVING_TEXT.get(
+                ds, str(ds) if ds is not None else None)
             s = v["sensors"]
             s["vehicle_ok"] = not bool(_g(vals, "vehicleState", 0))
             for name in ("lidar", "camera", "gnss"):
@@ -541,19 +562,26 @@ class RosBridge(HealthProvider):
         """聚合 params 到 sensors/net 后的完整状态(hmi_server 调用)。"""
         veh = self.vehicle_state()
         p = veh.get("params") or {}
-        ss = p.get("sensorstate")
+        ss = _to_int(p.get("sensorstate"))
         with self._lk:
             s = self._veh["sensors"]
+            # v2nHeartBeat 停更(>5s)时清 v2n 来源键,让 sensorstate 位图兜底接管:
+            # 两者来自不同节点(task_plan vs path_plan),一方停更时不能粘住旧值
+            lt = self._last.get("/v2nHeartBeat")
+            if lt is None or time.monotonic() - lt > 5:
+                for key in ("lidar", "camera", "gnss", "vehicle_ok"):
+                    if s.get(key) is not None:
+                        s[key] = None
             if ss is not None:
                 s["sensorstate"] = ss
                 s["fault"] = bool(ss & 1)
                 s["lidar"] = (not bool(ss & 2)) if s.get("lidar") is None else s["lidar"]
                 s["camera"] = (not bool(ss & 4)) if s.get("camera") is None else s["camera"]
                 s["gnss"] = (not bool(ss & 8)) if s.get("gnss") is None else s["gnss"]
-            s["alive"] = p.get("alive")
+            s["alive"] = _to_int(p.get("alive"))
             veh["sensors"] = dict(self._veh["sensors"])
-            veh["net"] = {"internet_ok": (None if p.get("netcheck") is None
-                                          else p.get("netcheck") == 0),
-                          "alarm": p.get("alarm")}
+            nc = _to_int(p.get("netcheck"))
+            veh["net"] = {"internet_ok": None if nc is None else nc == 0,
+                          "alarm": _to_int(p.get("alarm"))}
             veh["can"]["hz"] = self._rates.get("/can_msg")
         return veh

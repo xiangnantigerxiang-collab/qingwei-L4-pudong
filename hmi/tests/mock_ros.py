@@ -46,10 +46,12 @@ DEFAULT_FIELDS = {
     "/task_plan_msg": {"task_id": 88, "taskType": 1, "stopX": 3.5, "stopY": -2.0},
     "/cloud/task/task_status": {"procedure": 1, "fail_code": 0, "fail_reason": "",
                                  "task_info.task_id": 88},
-    "/v2nHeartBeat": {"status": "RUNNING", "values.speed": 9.0, "values.soc": 77,
-                      "values.hookState": 4, "values.vehicleState": 0,
-                      "values.lidarState": 0, "values.cameraState": 0,
-                      "values.gnssState": 0},
+    # status 按真实 v2nHeartBeat.msg 放在 values 内(顶层仅 ts/deviceId/type/values)
+    "/v2nHeartBeat": {"values.status": "RUNNING", "values.speed": 9.0,
+                      "values.soc": 77, "values.hookState": 4,
+                      "values.vehicleState": 0, "values.lidarState": 0,
+                      "values.cameraState": 0, "values.gnssState": 0,
+                      "values.drivingState": 3},
     "/hook_position": {"center_point_x": 0.5, "center_point_y": -0.2,
                        "center_distance": 1.8, "beta": 3.2},
     "/localization": {}, "/rslidar_points_mid": {}, "/rslidar_points_front": {},
@@ -109,9 +111,10 @@ def build_msg(topic, override_fields):
     """构造带嵌套骨架的消息对象,再用字段表覆盖。"""
     m = _Msg()
     if topic == "/v2nHeartBeat":
-        m.values = _Msg({"speed": 0, "soc": 0, "hookState": None,
+        m.values = _Msg({"status": "", "speed": 0, "soc": 0, "hookState": None,
                          "vehicleState": 0, "lidarState": None,
-                         "cameraState": None, "gnssState": None})
+                         "cameraState": None, "gnssState": None,
+                         "drivingState": 0})
     elif topic == "/cloud/task/task_status":
         m.task_info = _Msg({"task_id": None})
     merged = dict(DEFAULT_FIELDS.get(topic, {}))

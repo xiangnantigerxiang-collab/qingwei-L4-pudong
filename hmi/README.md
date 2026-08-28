@@ -23,6 +23,20 @@ http://<orin-ip>:8080
 端口被占用时:`HMI_PORT=8090 bash hmi/hmi.sh`。
 若平板/笔记本打不开页面,检查 Orin 防火墙是否放行 8080 端口。
 
+### 开机自启动(可选,systemd)
+
+```bash
+bash hmi/install_autostart.sh           # 安装并启动服务 qingwei-hmi
+bash hmi/install_autostart.sh remove    # 卸载自启,恢复手动方式
+```
+
+- 自启的**只有网页服务**,车辆组件不会被自动拉起,上电后仍需页面手动"一键启动"
+- `systemctl stop/restart qingwei-hmi` 只停 HMI 本身,组件不受影响
+  (unit 用 `KillMode=process`,勿改为默认值——否则停服务会连带杀掉全部组件)
+- HMI 服务日志:`journalctl -u qingwei-hmi -f`;组件日志仍在 `hmi/logs/`
+- 装了自启就**不要再手动** `bash hmi/hmi.sh`(8080 冲突);换端口:
+  `HMI_PORT=8090 bash hmi/install_autostart.sh` 或改 unit 后 daemon-reload
+
 ## 页面说明
 
 - **一键启动**:按分组顺序拉起全部"已启用"组件(核心平台→传感器驱动→感知挂接→
@@ -53,6 +67,7 @@ http://<orin-ip>:8080
    HMI 是日常入口;start_l4.sh 仅留作工程师救急(用前先在 HMI 里全部停止)
 2. **HMI 重启前先"全部停止"**:HMI 不收养自己没启动的进程。若 HMI 重启时组件还在跑,
    卡片会标橙色"外部"角标并提示;此时状态判断可能不准,建议全部停止后由 HMI 重新拉起
+   ("全部停止"会先清理外部进程再逆序停止;对单个外部进程也可点其卡片上的"停止"清理)
 3. **相机首次部署**:rb_camera.sh 前段有 `sudo cp`/`modprobe`(拷编解码库到 /usr/lib)。
    HMI 无终端环境,sudo 无法交互输密码。库拷贝成功过一次后会持久保留;若相机启动日志
    出现 sudo 报错且无图像,请在车端终端手动跑一次 `./rb_camera.sh ros1_jpg`(输一次密码)
@@ -81,6 +96,7 @@ python3 hmi_server.py --config test_config.py --port 18080
 | 文件 | 职责 |
 |---|---|
 | `hmi.sh` | 启动包装(source devel → python3) |
+| `qingwei-hmi.service` + `install_autostart.sh` | systemd 开机自启(安装/卸载) |
 | `hmi_config.py` | 车载组件配置(分组/命令/健康检查) |
 | `process_manager.py` | 进程状态机、停止链、日志轮转、分组编排 |
 | `ros_bridge.py` | rospy 桥:健康频率统计、车辆状态聚合、master 探活 |
@@ -102,4 +118,16 @@ cd hmi && python3 tests/test_full.py    # 47 项断言,约 2~3 分钟
 覆盖:话题频率健康与降级恢复、点云采样探测、fms 节点数统计、master 重启
 重连与失联告警、车辆面板全部字段映射(挡位/障碍物 100/200 编码/横向偏差
 阈值/挂接文案/传感器位图/参数轮询)、HTTP 鲁棒性、并发压力、坏配置拒绝启动。
+
+另两套(同为开发机用):
+
+```bash
+node tests/frontend_test.js      # 前端无头渲染:33 项(DOM 桩驱动真实页面脚本)
+python3 tests/chaos_test.py      # 混沌/浸泡:28 项(敌对子进程/日志洪水/服务器暴毙/fd与RSS)
+```
+
+混沌套件覆盖:无视 SIGTERM 的 SIGKILL 升级、同组孙进程组杀完整性、
+setsid 脱组残留检测(stop_failed)、日志洪水下轮转与并发读取、服务器 SIGKILL
+后重启的 foreign 标记与清理、15 次快速启停翻转无僵尸无 fd 泄漏、
+停止进行中操作 409、60s 浸泡(RSS/fd 零增长)、磁盘两级水位。
 **车载不部署 tests/ 目录**(仅开发用)。

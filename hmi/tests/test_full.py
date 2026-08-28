@@ -229,9 +229,26 @@ def t03_vehicle_mapping():
           str(v["can"]))
     check("挂点中心距 1.83", v["hook"]["center_distance"] == 1.83,
           str(v["hook"]))
+    check("typed_ok 暴露且 /can_msg 类型化",
+          v.get("typed_ok", {}).get("/can_msg") is True, str(v.get("typed_ok")))
+    check("status_str 取自 values(真实 msg 结构)",
+          v.get("status_str") == "RUNNING", str(v.get("status_str")))
     check("数据新鲜度 ages 存在且小",
           v["ages"]["/can_msg"] is not None and v["ages"]["/can_msg"] < 5,
           str(v["ages"]))
+    check("drivingState=3 → 巡航", v["driving_state"] == 3
+          and v["driving_state_text"] == "巡航",
+          str(v.get("driving_state")))
+    write_control(fields={"/v2nHeartBeat": {"values.drivingState": 0}})
+    time.sleep(2.0)
+    v2 = state()["vehicle"]
+    check("drivingState=0 → 停车", v2["driving_state"] == 0
+          and v2["driving_state_text"] == "停车",
+          str(v2.get("driving_state")))
+    # write_control 的 fields 是累加合并,空 dict 无法复位——须显式恢复默认值,
+    # 否则 lidarState:1/drivingState:0 会污染后续场景
+    write_control(fields={"/v2nHeartBeat": {"values.drivingState": 3,
+                                            "values.lidarState": 0}})
 
 
 def t04_obstacle_encoding():
@@ -257,6 +274,14 @@ def t05_lateral():
     write_control(fields={"/control_msg": {"biaDistance": 0.21}})
     time.sleep(2.0)
     check("恢复 0.21 → 无告警", state()["vehicle"]["lateral_dev_warn"] is False)
+    write_control(fields={"/control_msg": {"biaDistance": -6.0}})
+    time.sleep(2.0)
+    v = state()["vehicle"]
+    check("biaDistance=-6.0(负向) → warn", v["lateral_dev_m"] == -6.0
+          and v["lateral_dev_warn"] is True, str(v["lateral_dev_m"]))
+    write_control(fields={"/control_msg": {"biaDistance": -0.5}})
+    time.sleep(2.0)
+    check("恢复 -0.5 → 无告警", state()["vehicle"]["lateral_dev_warn"] is False)
 
 
 def t06_task_fail():
@@ -289,6 +314,8 @@ def t07_params():
     v = state()["vehicle"]
     check("参数恢复 → 正常", v["sensors"]["fault"] is False
           and v["net"]["internet_ok"] is True)
+    check("alive=1 → 规划心跳正常", v["sensors"]["alive"] == 1,
+          str(v["sensors"]["alive"]))
 
 
 def t08_degrade_recover():
@@ -438,8 +465,15 @@ def t14_storm():
     st = comp("pub")["state"]
     check("并发启停后状态合法(%s)且服务存活" % st,
           st in valid and _http("GET", "/api/state")[0] == 200)
-    # 收尾:等 pub 稳定 RUNNING
+    # 收尾:风暴可能以 stop 结尾把 pub 留在 STOPPED,显式拉起后等 RUNNING
     write_control(rates=healthy_rates())
+    for _ in range(10):
+        st = comp("pub")["state"]
+        if st in ("STOPPED", "CRASHED"):
+            _http("POST", "/api/components/pub/start")
+        elif st == "RUNNING":
+            break
+        time.sleep(1.5)
     wait_for("风暴后 pub 恢复 RUNNING", lambda: comp("pub")["state"] == "RUNNING",
              timeout=30)
 

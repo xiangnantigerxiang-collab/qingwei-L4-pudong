@@ -219,6 +219,9 @@ class HmiApp(object):
             return 404, {"ok": False, "error": "未知组件"}
         with r._lk:
             if r.state == "STOPPED":
+                if r.foreign:
+                    threading.Thread(target=r.reap_foreign, daemon=True).start()
+                    return 200, {"ok": True, "note": "清理外部进程中"}
                 return 200, {"ok": True, "note": "already stopped"}
             if r.state == "STOPPING":
                 return 409, {"ok": False, "error": "正在停止中"}
