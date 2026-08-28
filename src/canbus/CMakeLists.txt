@@ -65,9 +65,9 @@ include_directories (
   ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 
-add_executable(aeb_can_node 
+add_executable(aeb_can_node
   src/canbus_node.cpp
-  src/canbus_comply.cpp
+  src/canbus_core.cpp
 )
 add_dependencies(aeb_can_node 
   ${${PROJECT_NAME}_EXPORTED_TARGETS} 
