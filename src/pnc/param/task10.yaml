@@ -3,13 +3,13 @@ task_sum: 2
 
 
 #do action -- gear N and hook
-task0_task_type: 4 # 0-nothing 1-Track path  2-adaptiveloadpath 3-adaptiveunload  4-adaptivehook 5-adaptiveback 6-action
-task0_path_list: sx040901 #1.lpx 2.lpx 3.lpx
-task0_stop_x: 30.0
-task0_stop_y: -20.0
-task0_stop_angle: -1
-task0_desire_speed: 1 #3km/h
-task0_gear: 3 #2-N  3-R  4-D
+task0_task_type: 1 # 0-nothing 1-Track path  2-adaptiveloadpath 3-adaptiveunload  4-adaptivehook 5-adaptiveback 6-action
+task0_path_list: pudong_air/path6 #1.lpx 2.lpx 3.lpx
+task0_stop_x: -14.055
+task0_stop_y: 1.518
+task0_stop_angle: 341.554
+task0_desire_speed: 2 #3km/h
+task0_gear: 4 #2-N  3-R  4-D
 task0_subaction: 0 # 0-no_operation 5-hook 6-decouple  7-wait
 
 #do action -- gear N and hook
@@ -20,7 +20,7 @@ task1_stop_y: -1
 task1_stop_angle: -1
 task1_desire_speed: 0 #3km/h
 task1_gear: 2 #2-N  3-R  4-D
-task1_subaction: 5 # 0-no_operation 5-hook 6-decouple  7-wait
+task1_subaction: 0 # 0-no_operation 5-hook 6-decouple  7-wait
 
 
 
