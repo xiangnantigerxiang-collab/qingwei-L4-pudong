@@ -15,8 +15,8 @@
 #include "common/pnc_point/trajectory_point.h"
 #include "common/surface/vec2d.h"
 #include "common/fault_code.h"
-#include "../lattice_plan/lattice_planner.h"
-#include "../common/pubalgor/pubalgor.h"
+#include "lattice_plan/lattice_planner.h"
+#include "common/pubalgor/pubalgor.h"
 #include "jsk_recognition_msgs/BoundingBoxArray.h"
 #include "reference_line/reference_line.h"
 #include "reference_line/reference_line_provider.h"
@@ -38,8 +38,8 @@
 #include "robot/v2nCommandFeedback.h"
 #include "robot/CommandMsg.h"
 #include "common/struct_type.h"
-#include "../common/spline/Spline.h"
-#include "../trans/trans_data.h"
+#include "common/spline/Spline.h"
+#include "trans/trans_data.h"
 #include <ros/ros.h>
 #include "lattice/my_lattice_planner.h"
 

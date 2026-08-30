@@ -120,6 +120,10 @@ void BoxMsgCallBack(const visualization_msgs::MarkerArray &msg)
 
     for (auto i : msg.markers)
     {
+        // 仅处理 CUBE 障碍框；CenterPoint 在同一数组里还发布 TEXT_VIEW_FACING
+        // 标签(scale.x/y=0)，会被当作零尺寸幻影障碍物转发到云端
+        if (i.type != visualization_msgs::Marker::CUBE)
+            continue;
         robot::object obj;
         double x_ = i.pose.position.x;
         double y_ = i.pose.position.y;

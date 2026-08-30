@@ -167,15 +167,15 @@ int main(int argc, char **argv)
     ros::init(argc, argv, "path_plan_node");
     ros::NodeHandle nh;
     ros::Subscriber task_plan_sub = nh.subscribe(
-        "task_plan_msg", 1, TaskPlanCallBack, ros::TransportHints().tcpNoDelay());
+        "/task_plan_msg", 1, TaskPlanCallBack, ros::TransportHints().tcpNoDelay());
     ros::Subscriber can_msg_sub = nh.subscribe(
-        "can_msg", 10, CanMsgCallBack, ros::TransportHints().tcpNoDelay());
+        "/can_msg", 10, CanMsgCallBack, ros::TransportHints().tcpNoDelay());
     ros::Subscriber navigation_sub = nh.subscribe(
-        "navigation_msg", 10, NavigationMsgCallBack, ros::TransportHints().tcpNoDelay()); // 订阅定位数据
+        "/navigation_msg", 10, NavigationMsgCallBack, ros::TransportHints().tcpNoDelay()); // 订阅定位数据
     ros::Subscriber sub = nh.subscribe(
-        "localization", 10, LocalizationCallBack, ros::TransportHints().tcpNoDelay()); // 订阅定位状态
+        "/localization", 10, LocalizationCallBack, ros::TransportHints().tcpNoDelay()); // 订阅定位状态
     ros::Subscriber perception_sub = nh.subscribe(
-        "perception", 10, PerceptionMsgCallBack, ros::TransportHints().tcpNoDelay());
+        "/perception", 10, PerceptionMsgCallBack, ros::TransportHints().tcpNoDelay());
     ros::Subscriber load_pos_sub = nh.subscribe(
         "/palletpos", 10, LoadPosCallBack, ros::TransportHints().tcpNoDelay());
     ros::Subscriber pallet_pos_sub = nh.subscribe(
@@ -205,19 +205,19 @@ int main(int argc, char **argv)
         "/cam7/status", 1, Camera7CallBack, ros::TransportHints().tcpNoDelay());
 
     ros::Publisher refer_path_pub = nh.advertise<robot::path_plan_msg>(
-        "refer_path_msg", 10);
+        "/refer_path_msg", 10);
     ros::Publisher plan_path_pub = nh.advertise<robot::path_plan_msg>(
-        "plan_path_msg", 10);
+        "/plan_path_msg", 10);
     ros::Publisher plan_status_pub = nh.advertise<robot::path_plan_status>(
-        "path_plan_status", 10);
+        "/path_plan_status", 10);
     ros::Publisher sound_light_sub = nh.advertise<robot::sound_light_msg>(
-        "sound_light_msg", 10);
+        "/sound_light_msg", 10);
     ros::Subscriber command_msg_sub = nh.subscribe("/cloud/msg/command_msg", 1,
                                                    CommandMsgCallBack, ros::TransportHints().tcpNoDelay());
     ros::Subscriber airport_sub = nh.subscribe("/cloud/msg/airport_msg", 1,
                                                AirPortMsgCallback, ros::TransportHints().tcpNoDelay());
-    ros::Publisher pub_test_trajs = nh.advertise<visualization_msgs::MarkerArray>("test_trajs", 10);
-    ros::Publisher pub_obstacles = nh.advertise<visualization_msgs::MarkerArray>("planning/obstacles",1);
+    ros::Publisher pub_test_trajs = nh.advertise<visualization_msgs::MarkerArray>("/test_trajs", 10);
+    ros::Publisher pub_obstacles = nh.advertise<visualization_msgs::MarkerArray>("/planning/obstacles",1);
 
     ros::Rate loop_rate(10);
     ros::Timer T1 = nh.createTimer(ros::Duration(0.1), T1Callback);

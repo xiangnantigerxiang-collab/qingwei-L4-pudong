@@ -2,29 +2,40 @@
 <package format="2">
   <name>robot</name>
   <version>0.0.0</version>
-  <description>The robot package</description>
+  <description>The robot package: pnc planning and control nodes (task_plan / path_plan / control / can_comm / navigation / perception_msg_convert)</description>
   <maintainer email="lizhao@todo.todo">lizhao</maintainer>
   <license>TODO</license>
 
   <buildtool_depend>catkin</buildtool_depend>
+
   <build_depend>message_generation</build_depend>
   <build_depend>roscpp</build_depend>
-  <build_depend>rospy</build_depend>
   <build_depend>sensor_msgs</build_depend>
-  <build_depend>serial</build_depend>
+  <build_depend>geometry_msgs</build_depend>
   <build_depend>std_msgs</build_depend>
+  <build_depend>visualization_msgs</build_depend>
+  <build_depend>tf</build_depend>
   <build_depend>jsk_recognition_msgs</build_depend>
+  <!-- yaml-cpp：task_plan/path_plan 两目标直接包含 yaml-cpp/yaml.h 并链接 -lyaml-cpp（control 已于 08-30 剥离） -->
+  <build_depend>yaml-cpp</build_depend>
+
+  <build_export_depend>message_runtime</build_export_depend>
   <build_export_depend>roscpp</build_export_depend>
-  <build_export_depend>rospy</build_export_depend>
   <build_export_depend>sensor_msgs</build_export_depend>
-  <build_export_depend>serial</build_export_depend>
+  <build_export_depend>geometry_msgs</build_export_depend>
   <build_export_depend>std_msgs</build_export_depend>
+  <build_export_depend>visualization_msgs</build_export_depend>
+  <build_export_depend>tf</build_export_depend>
   <build_export_depend>jsk_recognition_msgs</build_export_depend>
+
+  <exec_depend>message_runtime</exec_depend>
   <exec_depend>roscpp</exec_depend>
-  <exec_depend>rospy</exec_depend>
   <exec_depend>sensor_msgs</exec_depend>
-  <exec_depend>serial</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
   <exec_depend>std_msgs</exec_depend>
+  <exec_depend>visualization_msgs</exec_depend>
+  <exec_depend>tf</exec_depend>
   <exec_depend>jsk_recognition_msgs</exec_depend>
+  <exec_depend>yaml-cpp</exec_depend>
 
 </package>

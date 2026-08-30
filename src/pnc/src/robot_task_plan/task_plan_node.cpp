@@ -239,11 +239,11 @@ int main(int argc, char **argv)
     ros::init(argc, argv, "task_plan_node");
     ros::NodeHandle nh;
 
-    ros::Subscriber path_plan_sub = nh.subscribe("path_plan_status", 1,
+    ros::Subscriber path_plan_sub = nh.subscribe("/path_plan_status", 1,
                                                  PathPlanStatusCallBack, ros::TransportHints().tcpNoDelay());
-    ros::Subscriber can_msg_sub = nh.subscribe("can_msg", 10,
+    ros::Subscriber can_msg_sub = nh.subscribe("/can_msg", 10,
                                                CanMsgCallBack, ros::TransportHints().tcpNoDelay());
-    ros::Subscriber navigation_sub = nh.subscribe("navigation_msg", 1,
+    ros::Subscriber navigation_sub = nh.subscribe("/navigation_msg", 1,
                                                   NavigationMsgCallBack, ros::TransportHints().tcpNoDelay());
     ros::Subscriber task_info_sub = nh.subscribe("/cloud/task/task_info", 10,
                                                  TaskInfoMsgCallBack, ros::TransportHints().tcpNoDelay());
@@ -259,15 +259,15 @@ int main(int argc, char **argv)
                                                   NotifyMsgCallBack, ros::TransportHints().tcpNoDelay());
 
     task_plan_pub = nh.advertise<robot::task_plan_msg>(
-        "task_plan_msg", 10);
+        "/task_plan_msg", 10);
     task_status_pub = nh.advertise<robot::TaskStatus>(
         "/cloud/task/task_status", 10);
     v2nHeartBeat_pub = nh.advertise<robot::v2nHeartBeat>(
-        "v2nHeartBeat", 10);
+        "/v2nHeartBeat", 10);
     v2nCommandFeedback_pub = nh.advertise<robot::v2nCommandFeedback>(
-        "v2nCommandFeedback", 10);
+        "/v2nCommandFeedback", 10);
     v2nRunningFeedback_pub = nh.advertise<robot::v2nRunningFeedback>(
-        "v2nRunningFeedback", 10);
+        "/v2nRunningFeedback", 10);
 
     ros::Timer T1 = nh.createTimer(ros::Duration(0.1), T1Callback);
 

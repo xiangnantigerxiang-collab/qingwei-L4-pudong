@@ -4,7 +4,7 @@
 #include <typeinfo>
 #include <math.h>
 #include "Eigen/Eigen"
-#include "../common/pubalgor/pubalgor.h"
+#include "robot_path_plan/common/pubalgor/pubalgor.h"
 
 //serial::Serial ser;
 using Eigen::Vector3d;

@@ -22,14 +22,14 @@ int main(int argc,char **argv){
     ros::NodeHandle nh;
 
     ros::Subscriber task_plan_sub = nh.subscribe(
-        "task_plan_msg", 1, TaskPlanMsgCallBack);
+        "/task_plan_msg", 1, TaskPlanMsgCallBack);
     ros::Subscriber control_sub = nh.subscribe(
-        "control_msg", 1 , ControlMsgCallBack);
+        "/control_msg", 1 , ControlMsgCallBack);
     ros::Subscriber sound_light_sub = nh.subscribe(
-        "sound_light_msg", 1, SoundLightMsgCallBack);
+        "/sound_light_msg", 1, SoundLightMsgCallBack);
 	
     ros::Publisher can_comm_pub = nh.advertise<robot::can_comm_msg>(
-        "can_comm_msg", 1);
+        "/can_comm_msg", 1);
 
     ros::Rate loop_rate(20);
 

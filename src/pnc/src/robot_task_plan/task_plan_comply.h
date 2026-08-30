@@ -7,7 +7,7 @@
 #include <string.h>
 #include <vector>
 
-#include "../common/pubalgor/pubalgor.h"
+#include "robot_path_plan/common/pubalgor/pubalgor.h"
 #include "robot/TaskInfo.h"
 #include "robot/TaskStatus.h"
 #include "robot/can_msg.h"

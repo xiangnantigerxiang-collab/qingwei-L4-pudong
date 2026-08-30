@@ -128,16 +128,16 @@ int main(int argc,char **argv)
     ros::NodeHandle nh;
 
     ros::Subscriber sub = nh.subscribe(
-        "localization", 1, NavigationCallBack,
+        "/localization", 1, NavigationCallBack,
         ros::TransportHints().tcpNoDelay());
     ros::Subscriber task_plan_sub = nh.subscribe(
-        "task_plan_msg", 1, TaskPlanCallBack,
+        "/task_plan_msg", 1, TaskPlanCallBack,
         ros::TransportHints().tcpNoDelay());
     ros::Subscriber pallet_pos_sub = nh.subscribe(
         "/hook_position", 1, PalletCoorCallback,
         ros::TransportHints().tcpNoDelay());
     ros::Publisher read_pub = nh.advertise<robot::navigation_msg>(
-        "navigation_msg",10);
+        "/navigation_msg",10);
 
     ros::Rate loop_rate(50);
 

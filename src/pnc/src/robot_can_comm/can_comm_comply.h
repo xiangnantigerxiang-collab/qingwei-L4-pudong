@@ -1,7 +1,7 @@
 #ifndef CAN_COMM_COMPLY
 #define CAN_COMM_COMPLY
 
-#include "../common/pubalgor/pubalgor.h"
+#include "robot_path_plan/common/pubalgor/pubalgor.h"
 #include "ros/ros.h"
 #include "robot/control_msg.h"
 #include "robot/sound_light_msg.h"

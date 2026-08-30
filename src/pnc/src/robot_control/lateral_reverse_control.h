@@ -1,0 +1,51 @@
+// R 挡横向几何控制 GeometricConstrol 类声明：预瞄点+转弯半径法
+// （仅 GEAR_R 时经 VehicleLateralControl 调用）。
+
+#ifndef ROBOT_CONTROL_LATERAL_REVERSE_CONTROL_H_
+#define ROBOT_CONTROL_LATERAL_REVERSE_CONTROL_H_
+
+#include <cstdint>
+#include <iostream>
+#include <stdlib.h>
+#include <math.h>
+#include <vector>
+
+#include "common/struct_type.h"
+#include <cmath>
+#include <limits>
+
+using namespace std;
+
+class GeometricConstrol {
+ public:
+  GeometricConstrol();
+  ~GeometricConstrol() {}
+
+  float LateralControlTrack1(vector<XYZ_COOR_S> tPathList,
+                             XYZ_COOR_S tPosition, const int tKeyPoint,
+                             float tSpeed, uint8_t tGear);
+
+ private:
+  // 0403
+  unsigned int FindNearestPoint2VehicleID(vector<XYZ_COOR_S> lpath,
+                                          XYZ_COOR_S tPosition);
+  XYZ_COOR_S global2local(double ox, double oy, double oheading, double gx,
+                          double gy, double gheading, double lx, double ly,
+                          double lheading);
+  float GetPreviewDistance(float speed, uint8_t tGear);
+  unsigned int FindPreviewPointOnPath(vector<XYZ_COOR_S> lpath, float d,
+                                      int nearest_id);
+  double GetTurningRadiusByPosAndHeading(vector<XYZ_COOR_S> lpath,
+                                         int prev_id);
+  double GetDesiredSteeringAng(double L, double r);
+  double GetLength(double x1, double y1, double x2, double y2);
+  double CalculateLineDirection(XYZ_COOR_S p2);
+
+ private:
+  XYZ_COOR_S nearest_p_;
+  const double very_less_dir_ = 0.000001;
+
+  const double max_turning_R_ = 100000.0;
+};
+
+#endif

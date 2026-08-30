@@ -1,0 +1,10 @@
+# robot_control 目录代码风格（2026-08-30 已按此标准手工整理）
+# 依据 Google C++ Style Guide 裁剪；SortIncludes 必须保持 false：
+# 本目录遗留代码存在隐式 include 顺序依赖，禁止自动排序/分组。
+BasedOnStyle: Google
+Standard: c++11
+SortIncludes: false
+InsertBraces: false
+ColumnLimit: 80
+IndentWidth: 2
+UseTab: Never

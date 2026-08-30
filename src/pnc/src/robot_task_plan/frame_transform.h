@@ -1,5 +1,5 @@
 #ifndef LOCALIZATION_FRAME_TRANSFORM_H_
-#define LOCALIZATIONFRAME_TRANSFORM_H_
+#define LOCALIZATION_FRAME_TRANSFORM_H_
 
 #include <Eigen/Core>
 #include <Eigen/Geometry>
