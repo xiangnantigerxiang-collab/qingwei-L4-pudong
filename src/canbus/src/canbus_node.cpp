@@ -70,37 +70,36 @@ static void StateToMsg(const VehicleState &s, canbus::can_msg *m) {
 
 static void PublishState() {
     canbus::can_msg m;
-    StateToMsg(g_core.state, &m);
+    StateToMsg(g_core.mState, &m);
     g_state_pub.publish(m);
 }
 
 // ---- core event -> ROS call, in exactly the order the core emits them ----
-static void CoreEventToRos(void *ctx, const CoreEvent *ev) {
-    (void)ctx;
-    switch (ev->type) {
+static void CoreEventToRos(const CoreEvent &ev) {
+    switch (ev.type) {
     case CORE_FRAME: {
         can_msgs::Frame f;
-        f.id = ev->frame.id;
+        f.id = ev.frame.id;
         f.is_rtr = 0;
         f.is_extended = 0;
         f.is_error = 0;
         f.dlc = 8;
         for (int i = 0; i < 8; i++)
-            f.data[i] = ev->frame.data[i];
+            f.data[i] = ev.frame.data[i];
         g_frame_pub.publish(f);
         break;
     }
     case CORE_PARAM:
-        ros::param::set(ev->paramKey, ev->paramValue);
+        ros::param::set(ev.paramKey, ev.paramValue);
         break;
     case CORE_PUBLISH_STATE:
         PublishState();
         break;
     case CORE_LOG_ERROR:
-        ROS_ERROR("%s", ev->text);
+        ROS_ERROR("%s", ev.text.c_str());
         break;
     case CORE_LOG_INFO:
-        ROS_INFO("%s", ev->text);
+        ROS_INFO("%s", ev.text.c_str());
         break;
     default:
         break;
@@ -113,7 +112,7 @@ static void CanFrameCallback(const can_msgs::Frame &msg) {
     for (int i = 0; i < 8; i++)
         d[i] = msg.data[i];
 
-    g_core.OnCanFrame(msg.id, d, CoreEventToRos, 0);
+    g_core.OnCanFrame(msg.id, d, CoreEventToRos);
     // publish the parsed state right after each feedback frame
     PublishState();
     g_core.MarkCanRx();
@@ -147,7 +146,7 @@ static void SafetyCheckTimerCallback(const ros::TimerEvent &ev) {
     ros::param::get("/planning/alive", in.planningAlive);
     ros::param::get("/alarmcmd", in.fenceAlarm);
     ros::param::get("/canbus/light", in.lightCmd);
-    g_core.RunSafetyCheck(in, CoreEventToRos, 0);
+    g_core.RunSafetyCheck(in, CoreEventToRos);
 }
 
 // Local clock hour, needed for the automatic head lamp.
@@ -170,8 +169,8 @@ static void ControlSendTimerCallback(const ros::TimerEvent &ev) {
     ros::param::get("/planning/sensorstate", in.sensorState);
     ros::param::get("/alarmcmd", in.fenceAlarm);
     ros::param::get("/canbus/light", in.lightCmd);
-    g_core.RunControlCycle(in, CoreEventToRos, 0);
-    g_core.RunCameraPoll(CoreEventToRos, 0);
+    g_core.RunControlCycle(in, CoreEventToRos);
+    g_core.RunCameraPoll(CoreEventToRos);
 }
 
 int main(int argc, char **argv) {
@@ -197,8 +196,8 @@ int main(int argc, char **argv) {
                      "see console output", warns);
         else
             ROS_INFO("config.cfg loaded: hook [%d..%d], pallet [%d..%d]",
-                     g_core.hookPosMin_, g_core.hookPosMax_,
-                     g_core.palletPosMin_, g_core.palletPosMax_);
+                     g_core.mHookPosMin, g_core.mHookPosMax,
+                     g_core.mPalletPosMin, g_core.mPalletPosMax);
     }
 
     ros::Subscriber comm_sub = nh.subscribe(
@@ -222,11 +221,11 @@ int main(int argc, char **argv) {
     ros::Timer control_timer =
         nh.createTimer(ros::Duration(0.2), ControlSendTimerCallback);
 
-    g_core.initSec = ros::Time::now().toSec();
-    g_core.nowSec = g_core.initSec;
+    g_core.mInitSec = ros::Time::now().toSec();
+    g_core.mNowSec = g_core.mInitSec;
 
     while (ros::ok()) {
-        g_core.nowSec = ros::Time::now().toSec();
+        g_core.mNowSec = ros::Time::now().toSec();
         loop_rate.sleep();
         ros::spinOnce();
     }

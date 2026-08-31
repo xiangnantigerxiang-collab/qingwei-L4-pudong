@@ -1,8 +1,11 @@
 #ifndef CANBUS_CORE_H
 #define CANBUS_CORE_H
 
-#include <stdint.h>
-#include <string.h>
+#include <cstdint>
+#include <cstdio>
+#include <cstring>
+#include <functional>
+#include <string>
 #include <unistd.h>
 #include <vector>
 
@@ -23,19 +26,22 @@
 //   subscribe /task_plan_msg   ------>   OnTaskType()
 //   read rosparams             ------>   RunSafetyCheck() / RunControlCycle()
 //   publish frames / params    <------   ... both emit an ordered event stream
-//   publish "can_msg"          <------   state (public member)
+//   publish "can_msg"          <------   state (public member mState)
 //
 // The core reports results ONLY through:
 //   - an ordered event stream (CoreEvent via CoreSink): outgoing CAN frames,
 //     rosparam writes, "publish state now" requests, log lines. The ROS layer
 //     turns each event into the matching ROS call, in exactly this order.
-//   - the public member `state`, the parsed vehicle state.
-// Frame timing matters (the camera commands keep a 10/50 ms gap between the
-// two ids), which is why frames are delivered one by one through the sink
-// instead of being collected in a list.
+//   - the public member mState, the parsed vehicle state.
+// Frame timing matters (the camera commands keep a 10/50 ms gap between
+// the two ids), which is why frames are delivered one by one through the
+// sink instead of being collected in a list.
 //
 // Threading: everything runs in the single threaded spinner of the node,
 // no locking is needed anywhere.
+//
+// Naming: members use the project wide m-prefix PascalCase convention
+// (unified 2026-08-30, was Google trailing-underscore before).
 // ===========================================================================
 
 // ---- CAN ids used by this node (vehicle CAN matrix, 250 kbit/s) ----
@@ -88,9 +94,10 @@ const double STALL_STUCK_SEC           = 1.0;  // frozen window
 const double STALL_RELEASE_TIMEOUT_SEC = 8.0;  // release backstop (> 6.5 s)
 
 // One classic CAN data frame (all frames here carry 8 data bytes).
+// 全字段零初始化: 非帧事件不填 frame, 保持与旧 memset 整体清零一致的语义
 struct CanFrame {
-    uint32_t id;
-    uint8_t data[8];
+    uint32_t id = 0;
+    uint8_t data[8] = {0, 0, 0, 0, 0, 0, 0, 0};
 };
 
 // Parsed vehicle state. Field-by-field mirror of the canbus/can_msg ROS
@@ -169,27 +176,29 @@ struct ControlInputs {         // for RunControlCycle (5 Hz)
 enum CoreEventType {
     CORE_FRAME,         // publish one CAN frame on /can_send
     CORE_PARAM,         // write a rosparam
-    CORE_PUBLISH_STATE, // publish `state` on "can_msg" right now
+    CORE_PUBLISH_STATE, // publish mState on "can_msg" right now
     CORE_LOG_ERROR,     // ROS_ERROR
     CORE_LOG_INFO       // ROS_INFO
 };
 
 struct CoreEvent {
-    CoreEventType type;
+    CoreEventType type = CORE_FRAME;
     CanFrame frame;            // valid when type == CORE_FRAME
-    const char *paramKey;      // valid when type == CORE_PARAM
-    int paramValue;
-    char text[160];            // valid for CORE_LOG_*
+    std::string paramKey;      // valid when type == CORE_PARAM
+    int paramValue = 0;
+    std::string text;          // valid for CORE_LOG_*
 };
 
-// ctx is caller data, passed back untouched on every call.
-typedef void (*CoreSink)(void *ctx, const CoreEvent *event);
+// Event exit: the core calls it synchronously once per outgoing side
+// effect, the ROS layer converts each event in exactly this order.
+// An empty std::function means "no receiver" (allowed in tests/reuse).
+typedef std::function<void(const CoreEvent &)> CoreSink;
 
 class CanbusCore {
 public:
-    double nowSec;             // node clock, refreshed by the 50 Hz main loop
-    double initSec;            // node start time, set once by the node
-    VehicleState state;        // published by the node as "can_msg"
+    double mNowSec;            // node clock, refreshed by the 50 Hz main loop
+    double mInitSec;           // node start time, set once by the node
+    VehicleState mState;       // published by the node as "can_msg"
 
     // Hook/pallet position limits, raw 0x285 codes (pin = byte4, seat =
     // byte6, both 0..255). Defaults equal the previously hard coded
@@ -199,19 +208,19 @@ public:
     // higher position. min limit = reached the TOP end (hook up /
     // pallet up), max limit = reached the BOTTOM end (hook down /
     // pallet down). The state machine comments below follow this.
-    //   hookPosMin_:   pin below this -> hook fully UP (top end, locked):
+    //   mHookPosMin:   pin below this -> hook fully UP (top end, locked):
     //                  HOOK_LINKED part 1; hook control first step
-    //   hookPosMax_:   pin above this -> hook fully DOWN (bottom end,
+    //   mHookPosMax:   pin above this -> hook fully DOWN (bottom end,
     //                  withdrawn): HOOK_RELEASED, camera fold, adaptive
     //                  release stop
-    //   palletPosMin_: seat below this -> pallet fully UP (top end);
+    //   mPalletPosMin: seat below this -> pallet fully UP (top end);
     //                  adaptive release stop condition (seat side)
-    //   palletPosMax_: seat above this -> pallet fully DOWN (bottom end,
+    //   mPalletPosMax: seat above this -> pallet fully DOWN (bottom end,
     //                  seated): HOOK_LINKED part 2
-    int hookPosMin_;
-    int hookPosMax_;
-    int palletPosMin_;
-    int palletPosMax_;
+    int mHookPosMin;
+    int mHookPosMax;
+    int mPalletPosMin;
+    int mPalletPosMax;
 
     // Parse config.cfg (key = value lines, '#' comments). Returns -1 when
     // the file cannot be opened, otherwise the number of warning lines
@@ -222,77 +231,76 @@ public:
     CanbusCore();
 
     // ---- inputs pushed in by the ROS layer ----
-    void OnCanFrame(uint32_t id, const uint8_t data[8], CoreSink sink,
-                    void *ctx);
+    void OnCanFrame(uint32_t id, const uint8_t data[8], CoreSink sink);
     void OnControlCommand(const ControlCommand &cmd);
     void OnTaskType(int taskType);
     void OnPlanningHeartbeat();
     void MarkCanRx();          // call after OnCanFrame work is done
 
     // ---- 5 Hz jobs, called by the node timers ----
-    void RunSafetyCheck(const SafetyInputs &in, CoreSink sink, void *ctx);
-    void RunControlCycle(const ControlInputs &in, CoreSink sink, void *ctx);
-    void RunCameraPoll(CoreSink sink, void *ctx);
+    void RunSafetyCheck(const SafetyInputs &in, CoreSink sink);
+    void RunControlCycle(const ControlInputs &in, CoreSink sink);
+    void RunCameraPoll(CoreSink sink);
 
     // ---- camera presets, also used by the hook state machine ----
-    void ForwardCamera(CoreSink sink, void *ctx);   // extend cameras
-    void BackwardCamera(CoreSink sink, void *ctx);  // fold cameras back
-    void CheckCameras(CoreSink sink, void *ctx);    // periodic camera poll
+    void ForwardCamera(CoreSink sink);   // extend cameras
+    void BackwardCamera(CoreSink sink);  // fold cameras back
+    void CheckCameras(CoreSink sink);    // periodic camera poll
 
 private:
     // latest command / task
-    ControlCommand cmd_;
-    int taskType_;
+    ControlCommand mCmd;
+    int mTaskType;
 
     // planning heartbeat supervision
-    double lastPlanBeatSec_;
+    double mLastPlanBeatSec;
 
     // CAN receive supervision
-    double lastCanRxSec_;
+    double mLastCanRxSec;
 
     // hook command duration timer (see OnControlCommand for the quirk)
-    bool hookCmdSeen_;
-    int firstHookCmd_;
-    double lastHookCmdSec_;
-    double hookDurationSec_;
+    bool mHookCmdSeen;
+    int mFirstHookCmd;
+    double mLastHookCmdSec;
+    double mHookDurationSec;
 
     // hook state machine
-    int hookState_;
-    int hookStatePrev_;
-    std::vector<int> fenceWindow_;   // 3 samples of fenceAlarm
-    std::vector<int> linkWindow_;    // 4 samples of linkPallet
-    int cameraCmdLast_;              // 0 none, 1 extended, 2 folded
-    bool readyBeepSent_;
+    int mHookState;
+    int mHookStatePrev;
+    std::vector<int> mFenceWindow;   // 3 samples of fenceAlarm
+    std::vector<int> mLinkWindow;    // 4 samples of linkPallet
+    int mCameraCmdLast;              // 0 none, 1 extended, 2 folded
+    bool mReadyBeepSent;
 
     // warning beep rate limit stamps
-    double beepNetSec_;
-    double beepLidarSec_;
-    double beepCameraSec_;
-    double beepGnssSec_;
-    double beepFenceSec_;
+    double mBeepNetSec;
+    double mBeepLidarSec;
+    double mBeepCameraSec;
+    double mBeepGnssSec;
+    double mBeepFenceSec;
 
     // stall check state (hook/pallet jam protection, see RunSafetyCheck)
-    int stallLastPinPos_;          // last sampled positions
-    int stallLastSeatPos_;
-    double stallLastPinMoveSec_;   // per-actuator last-move stamps: a
-    double stallLastSeatMoveSec_;  // single jammed actuator is caught even
+    int mStallLastPinPos;          // last sampled positions
+    int mStallLastSeatPos;
+    double mStallLastPinMoveSec;   // per-actuator last-move stamps: a
+    double mStallLastSeatMoveSec;  // single jammed actuator is caught even
                                    // while the other one still moves
-    int stallPrevKind_;            // 0 none / 1 hook / 2 decouple / 3 adapt
-    double stallLastInactiveSec_;  // last cycle with NO action command
-    bool stallReleasing_;          // jam confirmed, sending release command
-    bool stallLocked_;             // release done: commands suppressed
-    double stallReleaseStartSec_;  // release backstop start
-    double lastHookFbSec_;         // last 0x285 frame time - the ONLY
+    int mStallPrevKind;            // 0 none / 1 hook / 2 decouple / 3 adapt
+    double mStallLastInactiveSec;  // last cycle with NO action command
+    bool mStallReleasing;          // jam confirmed, sending release command
+    bool mStallLocked;             // release done: commands suppressed
+    double mStallReleaseStartSec;  // release backstop start
+    double mLastHookFbSec;         // last 0x285 frame time - the ONLY
                                    // writer of the positions above
 
     // event emitters
-    void emitFrame(CoreSink sink, void *ctx, uint32_t id, const uint8_t d[8]);
-    void emitParam(CoreSink sink, void *ctx, const char *key, int value);
-    void emitPublishState(CoreSink sink, void *ctx);
-    void emitLog(CoreSink sink, void *ctx, CoreEventType level, const char *text);
+    void emitFrame(CoreSink sink, uint32_t id, const uint8_t d[8]);
+    void emitParam(CoreSink sink, const char *key, int value);
+    void emitPublishState(CoreSink sink);
+    void emitLog(CoreSink sink, CoreEventType level, const char *text);
 
     // per-frame-id parsers (drive feedback may emit an info log event)
-    void ParseDriveFeedback(const uint8_t d[8], CoreSink sink, void *ctx);
+    void ParseDriveFeedback(const uint8_t d[8], CoreSink sink);
     void ParseHookFeedback(const uint8_t d[8]);    // 0x285
     void ParseEps2Feedback(const uint8_t d[8]);    // 0x0C02A0A2
 };

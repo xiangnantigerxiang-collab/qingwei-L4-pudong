@@ -7,7 +7,9 @@ monitor 配置(纯数据模块,无逻辑)
 
 顶层键:
   PORT            HTTP 端口(默认 8081,与 hmi 8080 并存)
-  MAP_PATH        地图 csv(x,y,heading 三列,无表头);$MON 替换为本目录
+  MAP_PATH        地图目录(其下全部 .csv 按文件名排序依次全部绘制,
+                  x,y,heading 三列无表头);$MON 替换为本目录;
+                  rosparam /robot/mapfile 指向单文件时只画该张
   SCAN_EXTRINSICS 每路 2D 激光的安装外参(车体坐标系,米/度)。
                   工程内没有任何 laser->车体 的静态 tf,rviz 里这两路
                   从未正确落位;默认 0 需实车标定一次(README 有步骤)
@@ -21,7 +23,7 @@ CONFIG = {
     "PORT": 8081,
 
     # 地图文件。rosparam /robot/mapfile 存在时优先(rospy 可用才读)。
-    "MAP_PATH": "$MON/map/view.csv",
+    "MAP_PATH": "$MON/map",
 
     # 2D 补盲激光:话题名 -> 车体安装外参 {x, y, yaw_deg}
     # 语义:scan 点先在传感器系极坐标->笛卡尔,再平移 (x,y)、旋转 yaw_deg。

@@ -113,8 +113,8 @@ def main():
     viz = rv.RosVisualizer({"MAP_PATH": "$MON/map/_nope_.csv",
                             "SCAN_EXTRINSICS": {}, "CLOUD": {}})
     mp = viz.map_payload()
-    chk("地图缺失 -> 空三线+bbox[0]",
-        mp["center"] == [] and mp["bbox"] == [0, 0, 0, 0])
+    chk("地图缺失 -> 空 maps+bbox[0]",
+        mp["maps"] == [] and mp["n"] == 0 and mp["bbox"] == [0, 0, 0, 0])
     sn = viz.snapshot()
     chk("无地图 origin=(0,0) 快照不崩",
         sn["origin"] == [0.0, 0.0] and sn["vehicle"] is None)
@@ -127,6 +127,35 @@ def main():
     chk("坏行免疫(CRLF/空行/短行/空白)",
         len(lines["center"]) == 3, str(len(lines["center"])))
     os.unlink(tp)
+
+    # ---- 多地图目录加载(map/ 下全部 csv 依次绘制) ----
+    with tempfile.TemporaryDirectory() as td:
+        with open(os.path.join(td, "a_map.csv"), "w") as f:
+            f.write("0,0,90\n10,0,90\n20,0,90\n")
+        with open(os.path.join(td, "b_map.csv"), "w") as f:
+            f.write("100,100,90\n110,100,90\n")
+        with open(os.path.join(td, "broken.csv"), "w") as f:
+            f.write("not,a,map\n\n1,2\n")   # 全坏行 -> 空文件跳过
+        open(os.path.join(td, "readme.txt"), "w").write("ignore me")
+        viz2 = rv.RosVisualizer({"MAP_PATH": td, "SCAN_EXTRINSICS": {},
+                                 "CLOUD": {}})
+        mp2 = viz2.map_payload()
+        chk("多地图: 2 张有效(broken 空文件与 txt 跳过)",
+            mp2["n"] == 2 and [x["name"] for x in mp2["maps"]] ==
+            ["a_map.csv", "b_map.csv"], str(mp2["n"]))
+        chk("多地图: 合并 bbox", mp2["bbox"] == [0.0, 0.0, 110.0, 100.0],
+            str(mp2["bbox"]))
+        ox2 = (0.0 + 110.0) / 2.0
+        oy2 = (0.0 + 100.0) / 2.0
+        chk("多地图: origin=合并中心", abs(viz2.snapshot()["origin"][0] - ox2) < 0.01
+            and abs(viz2.snapshot()["origin"][1] - oy2) < 0.01,
+            str(viz2.snapshot()["origin"]))
+        chk("多地图: 坐标已减 origin",
+            mp2["maps"][0]["center"][0] == [-ox2, -oy2],
+            str(mp2["maps"][0]["center"][0]))
+        chk("多地图: 第二张含两线",
+            len(mp2["maps"][1]["center"]) == 2 and
+            len(mp2["maps"][1]["left"]) == 2)
 
     # ---- pack 边界 ----
     blob = rv.pack_bin([(1, 2, rv._BIN_POINT.pack(1500, -2250, 500, 200, 0)

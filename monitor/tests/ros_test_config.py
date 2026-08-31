@@ -3,13 +3,14 @@
 
 与车载 monitor_config.py 的差异:
 - SCAN_EXTRINSICS 给了已知外参(验证旋转变换):x=+1m, yaw=90°
+- MAP_PATH 指向双地图 fixture 目录(覆盖生产默认的目录模式 HTTP 链路)
 - CLOUD stride=1 / voxel=0(关体素,便于确定性断言)/ parse_interval 0.3s 加速
 - 其余话题与默认一致
 """
 
 CONFIG = {
     "PORT": 18081,
-    "MAP_PATH": "$MON/map/view.csv",
+    "MAP_PATH": "$MON/tests/maps_fixture",
     "SCAN_EXTRINSICS": {
         "/back_left_scan":  {"x": 1.0, "y": 0.0, "yaw_deg": 90.0},
         "/back_right_scan": {"x": 0.0, "y": 0.0, "yaw_deg": 0.0},

@@ -212,9 +212,23 @@ async function main() {
       { x: 9.9, y: 3.4, l: 2.0, w: 0.9, h: 1.2, yaw: 0.1, id: 2, vx: 0, vy: 0 }],
     paths: { plan: [[0, 0], [1, 1], [2, 2]], refer: [[0, 0], [3, 3]] },
     stop: { x: 10.7, y: -1.5, yaw: 1.57 }, pallet: { x: 9.8, y: -2.4 },
+    task: { id: 88, type: 1, work_mode: 1, exec: 1, cloud_proc: 1,
+            fail_code: 0, fail_reason: "" },
+    plan: { desire_speed: 2.5, planspeed: 2.4, safety: true },
+    control: { steer: -11.0, brake: 0, throttle: 18, bia: 0.21 },
+    can: { gear: 4, mode: 1, estop: 0, battery: 77, hook: 1,
+           steer_fb: -220.0, fault: [0], speed: 1.2, brake_fb: 30,
+           link_pallet: 1, eab: 1, hook_btn: 1, link_btn: 2,
+           eps_mode: 3, eps_current: -4.75, pin_pos: 185, seat_pos: 130 },
   };
-  const MAP = { center: [[0, 0], [1, 1]], left: [[0, 1]], right: [[0, -1]],
-                bbox: [0, 0, 1, 1],
+  const MAP = { n: 2,
+                maps: [
+                  { name: "a.csv", center: [[0, 0], [1, 1]],
+                    left: [[0, 1]], right: [[0, -1]] },
+                  { name: "b.csv", center: [[5, 5], [6, 6]],
+                    left: [[5, 6]], right: [[5, 4]] },
+                ],
+                bbox: [0, 0, 6, 6],
                 layers: { vehicle: true, lidar: true, routing: true,
                           planning: false, loadpos: true, stoppose: true,
                           map: false, scan: true, cloud: true, grid: false } };
@@ -334,7 +348,99 @@ async function main() {
   }
   check("HUD 速度文本", el("#hSpd")._text.indexOf("2.5") >= 0,
         el("#hSpd")._text);
-  check("HUD ages 灰化类", el("#ageList")._html.indexOf("stale") >= 0);
+  // 数据龄列表段已按需求移除:灰化能力回归改走数值行(见 F2b)
+  check("HUD 任务段: #88 执行中",
+        el("#hTaskId")._text.indexOf("88") >= 0 &&
+        el("#hTaskExec")._text.indexOf("执行中") >= 0,
+        el("#hTaskId")._text + "/" + el("#hTaskExec")._text);
+  check("HUD 规划段: 期望速度/安全",
+        el("#hDesire")._text.indexOf("2.5") >= 0 &&
+        el("#hSafety")._text.indexOf("安全") >= 0,
+        el("#hDesire")._text + "/" + el("#hSafety")._text);
+  check("HUD 控制段: 前轮转角/踏板",
+        el("#hSteer")._text.indexOf("-11.0") >= 0 &&
+        el("#hPedal")._text.indexOf("T18") >= 0,
+        el("#hSteer")._text + "/" + el("#hPedal")._text);
+  check("HUD CAN 段: 挡位模式/方向盘转角",
+        el("#hGearMode")._text.indexOf("D") >= 0 &&
+        el("#hGearMode")._text.indexOf("自动") >= 0 &&
+        el("#hCanFb")._text.indexOf("-220.0") >= 0 &&
+        el("#hCanFb")._text.indexOf("无") >= 0,   /* [0] 滤零 */
+        el("#hGearMode")._text + "/" + el("#hCanFb")._text);
+  check("HUD 安全段: ✗不安全+红色强调(极性锁定)",
+        el("#hSafety")._text.indexOf("✗不安全") >= 0 &&
+        el("#hSafety").className.indexOf("bad") >= 0 &&
+        el("#hSafety").className.indexOf("stale") < 0,
+        el("#hSafety")._text + "/" + el("#hSafety").className);
+  check("HUD 挂接: 0/1 域文案",
+        el("#hEbat")._text.indexOf("已挂") >= 0,
+        el("#hEbat")._text);
+  check("HUD CAN 扩展: 车速/制动反馈+限位/EAB(精确串)",
+        el("#hCanVeh")._text === "1.2 m/s / B30%" &&
+        el("#hCanLink")._text === "已连 / 1",
+        el("#hCanVeh")._text + "/" + el("#hCanLink")._text);
+  /* 精确串锁列序(挂钩列在前):无序 indexOf 曾放过 hook/link 两列互换
+   * (对抗校验轮实测,列一换断言照绿);eps_mode 也一并锁定 */
+  check("HUD CAN 扩展: 按钮/EPS/位置码(精确串,锁列序)",
+        el("#hCanBtn")._text === "升 / 降" &&
+        el("#hCanEps")._text === "3 / -4.75" &&
+        el("#hCanPos")._text === "185 / 130",
+        el("#hCanBtn")._text + "/" + el("#hCanEps")._text + "/" +
+        el("#hCanPos")._text);
+  // F2d HTML 结构锁定:DOM 桩对任意 id 按需造元素,行节点被删/标签错/
+  // 数据龄段回加都不会让上面的断言变红 -> 直接对页面源文本断言
+  check("F2d CAN 行节点与标签在页面源中存在",
+        ["hCanVeh", "hCanLink", "hCanBtn", "hCanEps", "hCanPos",
+         "hGearMode", "hEbat", "hCanFb"].every(
+          (id) => html.indexOf('id="' + id + '"') >= 0) &&
+        ["车速/制动(反馈)", "托盘限位/EAB面板", "挂钩/链接按钮",
+         "EPS模式/电流", "挂钩/托盘位置(码)"].every(
+          (t) => html.indexOf(t) >= 0),
+        "行节点/标签缺失");
+  check("F2d 数据龄展示未回加(R1)",
+        html.indexOf('id="ageList"') < 0 && html.indexOf("AGE_TOPICS") < 0,
+        "ageList/AGE_TOPICS 仍存在");
+
+  // F2b 数据龄列表已移除,>5s 灰化回归改走数值行:定位龄推高 -> hSpd stale
+  SNAP.ages["/navigation_msg"] = 8.0;
+  await sleep(1300);
+  check("F2b 数值行 stale 灰化(数据龄列表已移除)",
+        el("#hSpd").className.indexOf("stale") >= 0,
+        el("#hSpd").className);
+  SNAP.ages["/navigation_msg"] = 0.2;
+  await sleep(1300);
+  check("F2b 新鲜数据不灰(灰化极性反向锁定)",
+        el("#hSpd").className.indexOf("stale") < 0,
+        el("#hSpd").className);
+
+  // F2c 旧服务端快照(无 CAN 扩展字段):不抛异常伪装断连,五行全部 "--"
+  const CAN_KEYS = ["speed", "brake_fb", "link_pallet", "eab", "hook_btn",
+                    "link_btn", "eps_mode", "eps_current", "pin_pos",
+                    "seat_pos"];
+  const savedCan = {};
+  CAN_KEYS.forEach((k) => { savedCan[k] = SNAP.can[k]; delete SNAP.can[k]; });
+  await sleep(1300);
+  check("F2c 旧服务端形态:五行扩展行全 -- 且不误报断连",
+        el("#hCanVeh")._text === "--" && el("#hCanLink")._text === "--" &&
+        el("#hCanBtn")._text === "--" && el("#hCanEps")._text === "--" &&
+        el("#hCanPos")._text === "--" &&
+        el("#banners")._html.indexOf("断开") < 0,
+        el("#hCanVeh")._text + el("#hCanLink")._text + el("#hCanBtn")._text +
+        el("#hCanEps")._text + el("#hCanPos")._text + "/" +
+        el("#banners")._html);
+  Object.assign(SNAP.can, savedCan);
+
+  // F2e 位置码 0 哨兵(0x285 从未到达):显示 "--" 而非可读作"最高位"的 0
+  const savedPos = [SNAP.can.pin_pos, SNAP.can.seat_pos];
+  SNAP.can.pin_pos = 0; SNAP.can.seat_pos = 0;
+  await sleep(1300);
+  check("F2e 位置码 0 哨兵显示 --",
+        el("#hCanPos")._text === "-- / --",
+        el("#hCanPos")._text);
+  [SNAP.can.pin_pos, SNAP.can.seat_pos] = savedPos;
+  check("HUD 任务: fail_reason 透传(桩无失败不拼)",
+        el("#hTaskCloud")._text.indexOf("执行中") >= 0,
+        el("#hTaskCloud")._text);
 
   // 3D 路径必须与车辆/停车点使用同一 ROS -> Three z=-y 映射
   const planLine = OBJ_SEQ.find((o) => o.__kind === "line" &&
@@ -349,6 +455,26 @@ async function main() {
         near(ctrlObj.target.z, -SNAP.vehicle.y),
         JSON.stringify(ctrlObj && ctrlObj.target));
 
+  // F6b 多地图 3D 锁定:mapGroup 6 条线(2 张×3) + 首点数值
+  // (突变证明:buildMapLines slice(0,1) 时旧断言全绿)
+  {
+    const groups = OBJ_SEQ.filter((o) => o.__kind === "group");
+    const mg = groups.filter(
+      (g) => g.children.length === 6 &&
+             g.children.every((c) => c.__kind === "line"))[0] || null;
+    check("F6b 多地图: mapGroup 6 条线(2张x3)",
+          !!mg, JSON.stringify(groups.map((g) => g.children.length)));
+    if (mg) {
+      const a0 = mg.children[0].geometry._attrs.position.array;
+      const b0 = mg.children[3].geometry._attrs.position.array;
+      check("F6b 首图中心线首点 [0,0,0](z=-y)",
+            a0.length === 6 && a0[0] === 0 && a0[1] === 0 && a0[2] === 0,
+            JSON.stringify(Array.from(a0)));
+      check("F6b 次图中心线首点 [5,0,-5]",
+            b0[0] === 5 && b0[1] === 0 && b0[2] === -5,
+            JSON.stringify(Array.from(b0)));
+    }
+  }
   check("图层 10 项", el("#layerList")._children.length === 10,
         String(el("#layerList")._children.length));
   check("map 默认关", document.getElementById("ly_map").checked === false);

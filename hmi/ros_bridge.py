@@ -494,7 +494,7 @@ class RosBridge(HealthProvider):
             bia = _g(msg, "biaDistance")
             self._veh["lateral_dev_m"] = bia if bia is None else round(bia, 2)
             if bia is not None:
-                # biaDistance 带符号(叉积定向, control_comply.cpp:871-874), 负值=另一侧偏差
+                # biaDistance 带符号(叉积定向, control_comply.cpp:596-603), 负值=另一侧偏差
                 self._veh["lateral_dev_warn"] = abs(bia) > 5.5
 
     def _on_task_plan(self, msg):

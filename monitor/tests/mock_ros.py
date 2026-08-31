@@ -45,11 +45,28 @@ DEFAULT_FIELDS = {
         {"id": 1, "type": 0, "x": 58.0, "y": -10.0, "dx": 1.0, "dy": 4.0,
          "heading": 100.0, "height": 1.8, "vx": 0.0, "vy": 0.0},
     ]},
-    "/plan_path_msg": {"x": [55.0, 56.0, 57.0], "y": [-12.0, -12.1, -12.2]},
+    "/plan_path_msg": {"x": [55.0, 56.0, 57.0], "y": [-12.0, -12.1, -12.2],
+                       "desireSpeed": 1.8, "planspeed": 1.6,
+                       "safety": False},
     "/refer_path_msg": {"x": [55.0, 56.0], "y": [-12.0, -12.1]},
     "/path_plan_status": {"stopX": 60.0, "stopY": -11.0, "stopAngle": 90.0,
                           "taskExecuStatus": 1},
     "/palletpos": {"xg": 59.0, "yg": -13.0},
+    "/task_plan_msg": {"task_id": 88, "taskType": 1, "workMode": 1},
+    "/cloud/task/task_status": {"procedure": 1, "fail_code": 0,
+                                "fail_reason": "",
+                                "task_info.task_id": 88},
+    "/control_msg": {"wheelAngle": -11.0, "brakePercent": 0,
+                     "throttlePercent": 18, "biaDistance": 0.21},
+    "/can_msg": {"curGear": 4, "controlPanelState": 1, "emergencyStop": 0,
+                 "batteryPower": 77, "hookState": 1, "faultCode": [0],
+                 "wheelAngle": -220.0, "vehicleSpeed": 1.2,
+                 "brakePercent": 30, "linkPallet": 1,
+                 # eab/link_btn 取非零值:与 getattr 默认 0 错开,
+                 # 字段名拼错(静默回落默认值)时快照可见地变化
+                 "eabPanelState": 1,
+                 "hookButton": 1, "linkButton": 2, "epsMode": 3,
+                 "epsCurrent": -4.75, "epsERR1": 185, "epsERR2": 130},
     "/back_left_scan": {"__scan__": {
         "amin": -math.pi, "ainc": math.pi / 4, "rmin": 0.1, "rmax": 100.0,
         "ranges": [2.0, 2.0, float("inf"), 0.0, -1.0, 2.0, 2.0, 2.0],
@@ -177,7 +194,10 @@ def build_msg(topic, override):
         m.objs = objs
         m.header = _Msg({})
         return m
-    return _Msg(merged)
+    m = _Msg(merged)
+    if topic == "/cloud/task/task_status":
+        m.task_info = _Msg({"task_id": merged.get("task_info.task_id", 0)})
+    return m
 
 
 # ---------------------------------------------------------------- 假 rospy
@@ -267,7 +287,9 @@ def install():
 
     for pkg, cls_names in (
             ("robot.msg", ["navigation_msg", "perception", "path_plan_msg",
-                           "path_plan_status", "palletpos"]),
+                           "path_plan_status", "palletpos",
+                           "task_plan_msg", "TaskStatus", "control_msg"]),
+            ("canbus.msg", ["can_msg"]),
             ("sensor_msgs.msg", ["LaserScan", "PointCloud2"])):
         parts = pkg.split(".")
         parent = types.ModuleType(parts[0])

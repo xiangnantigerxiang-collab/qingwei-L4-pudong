@@ -30,7 +30,7 @@ bash ~/qingwei-L4-No2/monitor/monitor.sh     # 默认 0.0.0.0:8081
 | 规划绿线/路由黄线 | 相同 | 路径 x/y 不等长整帧丢弃,一致 |
 | 停车点红箭头 | 相同 | stopAngle 有值时用于朝向(C++ 忽略恒指东,增强) |
 | 托盘红点 | 相同 | 不含 C++ 里从未参与渲染的 hook_xg-2.8 死偏移 |
-| 地图白中心线+紫双边 | 相同(±1m,>0.1m 抽稀) | 文件拷至 monitor/map/,不再依赖 simview 包 |
+| 地图白中心线+紫双边 | 相同(±1m,>0.1m 抽稀) | **多地图**:map/ 下全部 .csv 按文件名排序依次全部绘制;rosparam /robot/mapfile 指向单文件时只画该张 |
 | 2D 补盲 LaserScan×2 | 按通道着色(左蓝右绿) | intensity 已解码暂未参与着色(rviz 为 intensity 灰度);**需配安装外参**(下节) |
 | 3D 感知点云 | 新增(4 路,车体坐标) | rviz 未显示过 |
 | 图层开关 | checkbox 面板 | 默认态照抄 robot.rviz(map/planning/grid 关) |
@@ -141,9 +141,9 @@ tests/frontend_test.js F4)。
 
 ```bash
 cd monitor
-python3 tests/test_full.py        # 伪 ROS 全栈 60 项
-python3 tests/edge_test.py       # 边界值 23 项
-node tests/frontend_test.js       # 前端无头 45 项(DOM+THREE/2D Canvas 桩)
+python3 tests/test_full.py        # 伪 ROS 全栈 72 项
+python3 tests/edge_test.py       # 边界值 28 项
+node tests/frontend_test.js       # 前端无头 62 项(DOM+THREE/2D Canvas 桩)
 python3 tests/chaos_test.py      # 混沌/浸泡 11 项(约 2 分钟)
 python3 tests/fuzz_proto.py      # 协议双解码对账 fuzz(50 轮随机数据)
 bash monitor.sh                   # 起服务,页面显示"无 ROS 环境"横幅

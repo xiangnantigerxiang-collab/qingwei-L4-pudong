@@ -41,14 +41,20 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);
 #layers input{accent-color:var(--acc)}
 #layers .hint{margin-top:6px;font-size:11px;color:var(--dim)}
 
-/* 右下 HUD */
+/* 右下 HUD(内容超高时自身滚动:底部锚定 + max-height + overflow) */
 #hud{position:absolute;right:12px;bottom:12px;z-index:5;background:var(--panel);
   border:1px solid var(--line);border-radius:8px;padding:10px 12px;
-  min-width:210px;font-variant-numeric:tabular-nums}
+  min-width:210px;font-variant-numeric:tabular-nums;
+  max-height:calc(100vh - 84px);overflow-y:auto;
+  scrollbar-width:thin;scrollbar-color:var(--line) transparent}
+#hud::-webkit-scrollbar{width:8px}
+#hud::-webkit-scrollbar-thumb{background:var(--line);border-radius:4px}
+#hud::-webkit-scrollbar-track{background:transparent}
 #hud h2{font-size:12px;margin:0 0 6px;color:var(--dim);font-weight:600}
 #hud .row{display:flex;justify-content:space-between;gap:12px;padding:1px 0}
 #hud .k{color:var(--dim)} #hud .v{text-align:right}
 .stale{color:var(--stale);text-decoration:line-through dotted}
+.v.bad{color:var(--bad);font-weight:600}
 #vehBox{margin-bottom:6px;padding-bottom:6px;border-bottom:1px dashed var(--line)}
 
 /* 横幅 */
@@ -94,8 +100,33 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);
     <div class="row"><span class="k">位置 x/y</span><span class="v" id="hPos">--</span></div>
     <div class="row"><span class="k">航向</span><span class="v" id="hYaw">--</span></div>
   </div>
-  <h2>数据龄 (s)</h2>
-  <div id="ageList"></div>
+  <h2>任务 (pnc task)</h2>
+  <div id="taskBox">
+    <div class="row"><span class="k">任务号/类型</span><span class="v" id="hTaskId">--</span></div>
+    <div class="row"><span class="k">执行状态</span><span class="v" id="hTaskExec">--</span></div>
+    <div class="row"><span class="k">云端/失败</span><span class="v" id="hTaskCloud">--</span></div>
+  </div>
+  <h2>规划 (plan)</h2>
+  <div id="planBox">
+    <div class="row"><span class="k">期望速度</span><span class="v" id="hDesire">--</span></div>
+    <div class="row"><span class="k">安全</span><span class="v" id="hSafety">--</span></div>
+  </div>
+  <h2>控制 (control)</h2>
+  <div id="ctrlBox">
+    <div class="row"><span class="k">转向角(前轮)</span><span class="v" id="hSteer">--</span></div>
+    <div class="row"><span class="k">制动/油门</span><span class="v" id="hPedal">--</span></div>
+  </div>
+  <h2>CAN 反馈</h2>
+  <div id="canBox">
+    <div class="row"><span class="k">挡位/模式</span><span class="v" id="hGearMode">--</span></div>
+    <div class="row"><span class="k">急停/电量/挂接</span><span class="v" id="hEbat">--</span></div>
+    <div class="row"><span class="k">方向盘转角/故障</span><span class="v" id="hCanFb">--</span></div>
+    <div class="row"><span class="k">车速/制动(反馈)</span><span class="v" id="hCanVeh">--</span></div>
+    <div class="row"><span class="k">托盘限位/EAB面板</span><span class="v" id="hCanLink">--</span></div>
+    <div class="row"><span class="k">挂钩/链接按钮</span><span class="v" id="hCanBtn">--</span></div>
+    <div class="row"><span class="k">EPS模式/电流</span><span class="v" id="hCanEps">--</span></div>
+    <div class="row"><span class="k">挂钩/托盘位置(码)</span><span class="v" id="hCanPos">--</span></div>
+  </div>
 </div>
 
 <script src="three.min.js"></script>
@@ -180,8 +211,8 @@ var VEH_SHAPE = [2.3, -0.8, 0.73];
  * ===================================================================== */
 var renderer, scene, camera, controls;
 var grpVehicle, grpScan, grpCloud;            // scan/cloud 挂车辆组(车体系)
-var meshObstacles = [], linePlan, lineRefer, lineMapC, lineMapL, lineMapR;
-var meshStop, meshPallet, grid, vehText, layers = {};
+var meshObstacles = [], linePlan, lineRefer, mapGroup = null;
+var meshStop, meshPallet, grid, layers = {};
 
 function buildScene() {
   var view = document.getElementById("view");
@@ -220,9 +251,6 @@ function buildScene() {
   grpVehicle.add(new THREE.Mesh(
     new THREE.SphereGeometry(0.15, 10, 10),
     new THREE.MeshBasicMaterial({ color: 0xff0000 })));
-  vehText = makeTextSprite("");
-  vehText.position.set(2.0, 1.6, -2.0);
-  grpVehicle.add(vehText);
 
   /* scan/cloud 独立顶层组(不挂车辆组):否则关"车辆"图层会连带隐藏
    * 点云且 checkbox 状态与显示不符;位姿在 tick 里同步 */
@@ -230,8 +258,6 @@ function buildScene() {
   grpCloud = new THREE.Group(); scene.add(grpCloud);
 
   lineRefer = makeLine(0xffff00); linePlan = makeLine(0x00ff00);
-  lineMapC = makeLine(0xffffff); lineMapL = makeLine(0xff00ff);
-  lineMapR = makeLine(0xff00ff);
 
   meshStop = new THREE.Group();
   var arrow = new THREE.Mesh(
@@ -250,9 +276,10 @@ function buildScene() {
     new THREE.MeshBasicMaterial({ color: 0xff0000 }));
   meshPallet.visible = false; scene.add(meshPallet);
 
+  mapGroup = new THREE.Group(); scene.add(mapGroup);
   var reg = { vehicle: grpVehicle, lidar: null, routing: lineRefer,
               planning: linePlan, loadpos: meshPallet, stoppose: meshStop,
-              map: null, scan: grpScan, cloud: grpCloud, grid: grid };
+              map: mapGroup, scan: grpScan, cloud: grpCloud, grid: grid };
   layers = reg;
 }
 
@@ -264,27 +291,36 @@ function makeLine(color) {
   l.frustumCulled = false; scene.add(l); return l;
 }
 
-function makeTextSprite(text) {
-  var cv = document.createElement("canvas");
-  cv.width = 256; cv.height = 128;
-  var tex = new THREE.CanvasTexture(cv);
-  tex.minFilter = THREE.LinearFilter;
-  var sp = new THREE.Sprite(new THREE.SpriteMaterial({
-    map: tex, transparent: true, depthTest: false }));
-  sp.scale.set(8, 4, 1);
-  sp.userData.cv = cv; sp.userData.tex = tex;
-  drawTextSprite(sp, text);
-  return sp;
+/* 地图列表兼容读取:新版 /api/map 为 {maps:[...]};旧缓存页面可能仍
+ * 收到单地图形状 {center,...} -- 统一折算成数组 */
+function mapListOf(m) {
+  if (!m) { return []; }
+  if (m.maps && m.maps.length) { return m.maps; }
+  if (m.center && m.center.length) { return [m]; }
+  return [];
 }
 
-function drawTextSprite(sp, text) {
-  var cv = sp.userData.cv, ctx = cv.getContext("2d");
-  ctx.clearRect(0, 0, cv.width, cv.height);
-  ctx.font = "22px monospace"; ctx.fillStyle = "#ffffff";
-  ctx.textAlign = "left"; ctx.textBaseline = "top";
-  var lines = (text || "").split("\n");
-  for (var i = 0; i < lines.length; i++) { ctx.fillText(lines[i], 4, 4 + i * 26); }
-  sp.userData.tex.needsUpdate = true;
+/* 依次绘制全部地图(每张:白中心线+双紫边线)到 mapGroup */
+function buildMapLines(m) {
+  if (!mapGroup) { return; }
+  while (mapGroup.children.length) {
+    var old = mapGroup.children.pop();
+    if (old.geometry) { old.geometry.dispose(); }
+    if (old.material) { old.material.dispose(); }
+  }
+  var list = mapListOf(m);
+  for (var i = 0; i < list.length; i++) {
+    var mm = list[i];
+    var c = makeLine(0xffffff);
+    setLinePoints(c, mm.center || []);
+    mapGroup.add(c);
+    var l = makeLine(0xff00ff);
+    setLinePoints(l, mm.left || []);
+    mapGroup.add(l);
+    var r = makeLine(0xff00ff);
+    setLinePoints(r, mm.right || []);
+    mapGroup.add(r);
+  }
 }
 
 function setLinePoints(line, pts) {
@@ -407,11 +443,14 @@ function render2d() {
     }
     ctx2d.stroke();
   }
-  /* 地图三线 */
-  if (m && ly2d("map")) {
-    line(m.center, "#ffffff", 1);
-    line(m.left, "#ff00ff", 1);
-    line(m.right, "#ff00ff", 1);
+  /* 地图三线(依次绘制全部地图) */
+  if (ly2d("map")) {
+    var mlist = mapListOf(m);
+    for (var mi = 0; mi < mlist.length; mi++) {
+      line(mlist[mi].center, "#ffffff", 1);
+      line(mlist[mi].left, "#ff00ff", 1);
+      line(mlist[mi].right, "#ff00ff", 1);
+    }
   }
   /* 路径 */
   if (s && s.paths) {
@@ -622,11 +661,6 @@ function applySnapshot(d) {
       cameraCentered = true;
       setCam(camMode);
     }
-    drawTextSprite(vehText,
-      "cur_spd: " + d.vehicle.speed.toFixed(1) + " m/s\n" +
-      "cur_x: " + d.vehicle.x.toFixed(1) + "\n" +
-      "cur_y: " + d.vehicle.y.toFixed(1) + "\n" +
-      "cur_yaw: " + MM.yawDeg(d.vehicle.yaw).toFixed(1) + " deg");
   }
 }
 
@@ -661,9 +695,7 @@ function loadMapOnce() {
       lastData.map = m;
       mark2dDirty();
       if (sceneOk) {
-        setLinePoints(lineMapC, m.center || []);
-        setLinePoints(lineMapL, m.left || []);
-        setLinePoints(lineMapR, m.right || []);
+        buildMapLines(m);
       }
       layerDefault = m.layers || null;
       if (layerDefault) { applyLayerDefaults(); }
@@ -711,8 +743,8 @@ function applyLayer(key, on) {
     return;
   }
   if (key === "map") {
-    if (sceneOk && lineMapC && lineMapL && lineMapR) {
-      lineMapC.visible = on; lineMapL.visible = on; lineMapR.visible = on;
+    if (sceneOk && mapGroup) {
+      mapGroup.visible = on;
     }
     return;
   }
@@ -746,11 +778,6 @@ function syncLidarLayer() {
 }
 
 /* ---- HUD ---- */
-var AGE_TOPICS = [["/navigation_msg", "定位"], ["/perception", "感知"],
-  ["/plan_path_msg", "规划路径"], ["/refer_path_msg", "路由路径"],
-  ["/path_plan_status", "状态"], ["/palletpos", "托盘"],
-  ["/back_left_scan", "左补盲"], ["/back_right_scan", "右补盲"],
-  ["/rslidar_points_mid", "3D点云"]];
 
 function setV(id, text, stale) {
   var el = document.getElementById(id);
@@ -771,6 +798,13 @@ function renderHud(d) {
     if (dR0) { dR0.className = "dot bad"; }
     if (dM0) { dM0.className = "dot bad"; }
     setV("hSpd", "--", true); setV("hPos", "--", true); setV("hYaw", "--", true);
+    var resetIds = ["hTaskId", "hTaskExec", "hTaskCloud", "hDesire",
+                    "hSafety", "hSteer", "hPedal", "hGearMode", "hEbat",
+                    "hCanFb", "hCanVeh", "hCanLink", "hCanBtn", "hCanEps",
+                    "hCanPos"];
+    for (var ri = 0; ri < resetIds.length; ri++) {
+      setV(resetIds[ri], "--", true);
+    }
     return;
   }
   if (!d.ros_available) {
@@ -796,19 +830,106 @@ function renderHud(d) {
     setV("hPos", v.x.toFixed(1) + " / " + v.y.toFixed(1), staleNav);
     setV("hYaw", MM.yawDeg(v.yaw).toFixed(0) + " °", staleNav);
   }
-  var box = document.getElementById("ageList");
-  var html = "";
-  for (var i = 0; i < AGE_TOPICS.length; i++) {
-    var t = AGE_TOPICS[i], age = d.ages ? d.ages[t[0]] : null;
-    var cls = "", val = "--";
-    if (age != null) {
-      val = age.toFixed(1);
-      if (age > 5) { cls = "stale"; }
+  /* 任务/规划/控制/CAN 分组 */
+  var TASK_EXEC = { 0: "无任务", 1: "执行中", 2: "完成" };
+  var GEAR_TXT = { 2: "N", 3: "R", 4: "D" };
+  var stg = function (v) { return v ? "✗不安全" : "✓安全"; };
+  if (d.task) {
+    /* /task_plan_msg 与 /cloud/task/task_status 是事件型话题(仅新任务
+     * /子任务完成时单发,见 task_plan_node.cpp:289),任务执行期 >5s 是
+     * 常态 —— 不可套 5s 灰化;仅"从未到达"(ages 键缺失)才灰 */
+    var tAge = d.ages ? d.ages["/task_plan_msg"] : null;
+    setV("hTaskId",
+         "#" + (d.task.id != null ? d.task.id : "--") + " / T" +
+         (d.task.type != null ? d.task.type : "--"),
+         tAge == null);
+    setV("hTaskExec",
+         d.task.exec == null ? "--" :
+         (TASK_EXEC[d.task.exec] || ("?(" + d.task.exec + ")")),
+         d.ages && d.ages["/path_plan_status"] > 5);
+    var cl = (d.task.cloud_proc === 1) ? "执行中" :
+             (d.task.cloud_proc == null ? "--" :
+              "proc" + d.task.cloud_proc);
+    if (d.task.fail_code) {
+      cl += " 失败" + d.task.fail_code +
+            (d.task.fail_reason ? (" " + d.task.fail_reason) : "");
     }
-    html += '<div class="row"><span class="k">' + t[1] + "</span>" +
-      '<span class="v ' + cls + '">' + val + "</span></div>";
+    var cAge = d.ages ? d.ages["/cloud/task/task_status"] : null;
+    setV("hTaskCloud", cl, cAge == null);   /* 事件型:同上 */
   }
-  box.innerHTML = html;
+  if (d.plan) {
+    var planAge = d.ages ? d.ages["/plan_path_msg"] : null;
+    setV("hDesire", d.plan.desire_speed.toFixed(1) + " m/s",
+         planAge != null && planAge > 5);
+    /* 不安全用红色强调(.v.bad);stale 灰化只给数据龄(曾误用 !safety
+     * 占 stale 通道,致正常"✓安全"常年灰删除线而真不安全无强调) */
+    setV("hSafety", stg(d.plan.safety),
+         planAge != null && planAge > 5);
+    var elS = document.getElementById("hSafety");
+    if (elS) {
+      elS.className = "v" +
+        ((planAge != null && planAge > 5) ? " stale" : "") +
+        (d.plan.safety ? " bad" : "");
+    }
+  }
+  if (d.control) {
+    setV("hSteer", d.control.steer.toFixed(1) + " °",
+         d.ages && d.ages["/control_msg"] > 5);
+    setV("hPedal", "B" + d.control.brake + "% / T" +
+         d.control.throttle + "%",
+         d.ages && d.ages["/control_msg"] > 5);
+  }
+  if (d.can) {
+    setV("hGearMode", (GEAR_TXT[d.can.gear] || d.can.gear) + " / " +
+         (d.can.mode === 1 ? "自动" : (d.can.mode === 0 ? "手动" : "?")),
+         d.ages && d.ages["/can_msg"] > 5);
+    /* hookState 取值仅 0/1(0x285 bit0;0-4 枚举属于 v2nHeartBeat) */
+    setV("hEbat", (d.can.estop ? "急停!" : "正常") + " / " +
+         d.can.battery + "% / " +
+         (d.can.hook === 1 ? "已挂" : "未挂"),
+         d.ages && d.ages["/can_msg"] > 5);
+    /* canbus 正常态在 [0]/[] 间振荡(0x285 清零重置/安全周期清空),
+     * 滤零后判定,否则 "[0]"/"无" 间闪烁 */
+    var fc = (d.can.fault || []).filter(function (x) { return x; });
+    setV("hCanFb", d.can.steer_fb.toFixed(1) + "° / " +
+         (fc.length ? ("[" + fc.join(",") + "]") : "无"),
+         d.ages && d.ages["/can_msg"] > 5);
+    /* 扩展段(车速~位置码):旧服务端快照无这些字段(浏览器缓存页与新
+     * 服务端/反向混部署),toFixed 会抛异常并伪装成"服务断开" -> 缺省
+     * 时整段保持 "--" 不渲染 */
+    if (d.can.speed != null) {
+      /* 车速/制动为 0x185 反馈侧(区别于控制段的指令值) */
+      setV("hCanVeh", d.can.speed.toFixed(1) + " m/s / B" +
+           d.can.brake_fb + "%",
+           d.ages && d.ages["/can_msg"] > 5);
+      /* linkPallet 0x285 bit2 链接限位(pnc 读作"连接托盘");eabPanelState
+       * bit3 全工程无消费者,取值语义未文档化 -> 显示原始 0/1 不臆测 */
+      setV("hCanLink", (d.can.link_pallet ? "已连" : "未连") + " / " +
+           d.can.eab, d.ages && d.ages["/can_msg"] > 5);
+      /* 0x285 bits4-5/bits6-7:0 停 1 升 2 降(canbus_core.cpp Parse 注释) */
+      var BTN = ["停", "升", "降"];
+      /* epsCurrent 换算式 raw*0.000152-5.0 的量纲全仓库无文档(对比:
+       * vehicleSpeed 有 "# m/s" 注释) -> 只显示数值,不臆测单位 */
+      setV("hCanBtn",
+           (BTN[d.can.hook_btn] || ("?(" + d.can.hook_btn + ")")) + " / " +
+           (BTN[d.can.link_btn] || ("?(" + d.can.link_btn + ")")),
+           d.ages && d.ages["/can_msg"] > 5);
+      setV("hCanEps", d.can.eps_mode + " / " +
+           d.can.eps_current.toFixed(2),
+           d.ages && d.ages["/can_msg"] > 5);
+      /* epsERR1/2 实为挂钩/托盘位置原始码(码值越小位置越高,181/122 为
+       * 最高点),显示码值便于与标定对照。0 是 0x285 零初始化哨兵(文档
+       * 码域 181..254/122..254 不含 0)且 /can_msg 龄不反映 0x285 存活
+       * (任意帧后都发布) -> 显示 "--" 而非可被读作"最高位"的 0 */
+      setV("hCanPos",
+           (d.can.pin_pos ? String(d.can.pin_pos) : "--") + " / " +
+           (d.can.seat_pos ? String(d.can.seat_pos) : "--"),
+           d.ages && d.ages["/can_msg"] > 5);
+    } else {
+      setV("hCanVeh", "--"); setV("hCanLink", "--"); setV("hCanBtn", "--");
+      setV("hCanEps", "--"); setV("hCanPos", "--");
+    }
+  }
 }
 
 function esc(s) {

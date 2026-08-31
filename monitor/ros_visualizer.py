@@ -67,6 +67,11 @@ TYPED_SUBS = [
     ("/refer_path_msg",   "robot.msg", "path_plan_msg",    "_on_refer_path"),
     ("/path_plan_status", "robot.msg", "path_plan_status", "_on_path_status"),
     ("/palletpos",        "robot.msg", "palletpos",        "_on_palletpos"),
+    # 右侧状态栏扩展:任务/控制/CAN 反馈(2026-08-28)
+    ("/task_plan_msg",      "robot.msg",  "task_plan_msg", "_on_task"),
+    ("/cloud/task/task_status", "robot.msg", "TaskStatus", "_on_task_status"),
+    ("/control_msg",        "robot.msg",  "control_msg",   "_on_control"),
+    ("/can_msg",            "canbus.msg", "can_msg",       "_on_can_msg"),
 ]
 
 
@@ -113,7 +118,12 @@ def load_map_lines(path):
     - 边线 = 中心点 ± 1m * (sin(zg), -cos(zg))(对标 DrawMap 紫线)
     """
     center = []
-    with open(path, "r") as f:
+    # errors="replace":GBK 表头等非 UTF-8 字节降级为 U+FFFD 后按坏行
+    # 跳过(默认严格模式会让 UnicodeDecodeError 整文件丢弃);
+    # isfinite 守卫:float('inf'/'nan') 能解析成功,不滤则 inf 进环绕
+    # 循环死循环(实测挂死 API 线程)、nan 毒化文件 bbox 使合并 origin
+    # 静默偏移 —— 与 yaw_from_heading 的守卫同源
+    with open(path, "r", encoding="utf-8", errors="replace") as f:
         for line in f:
             line = line.strip()
             if not line:
@@ -124,6 +134,9 @@ def load_map_lines(path):
             try:
                 x, y, z = float(parts[0]), float(parts[1]), float(parts[2])
             except ValueError:
+                continue
+            if not (math.isfinite(x) and math.isfinite(y)
+                    and math.isfinite(z)):
                 continue
             zg = 90.0 - z
             while zg > 360.0:
@@ -360,6 +373,16 @@ class RosVisualizer(object):
         self._cloud_cache = b""    # 最新 packed 帧
         self._cloud_worker = None
 
+    @staticmethod
+    def _safe_print(text):
+        """请求路径打印守卫:stdout 断开(终端关闭)或编码异常时,日志
+        丢失可以,API 挂掉不行(实测 BrokenPipeError 会沿 map_payload
+        ->snapshot 传播且因缓存未设而每请求重炸)。"""
+        try:
+            print(text)
+        except Exception:
+            pass
+
     # ---------------- 生命周期 ----------------
 
     def start(self):
@@ -503,6 +526,18 @@ class RosVisualizer(object):
     def _on_palletpos(self, msg):
         self._stash("/palletpos", msg)
 
+    def _on_task(self, msg):
+        self._stash("/task_plan_msg", msg)
+
+    def _on_task_status(self, msg):
+        self._stash("/cloud/task/task_status", msg)
+
+    def _on_control(self, msg):
+        self._stash("/control_msg", msg)
+
+    def _on_can_msg(self, msg):
+        self._stash("/can_msg", msg)
+
     # ---------------- 快照组装 ----------------
 
     def _age(self, topic, now):
@@ -587,6 +622,101 @@ class RosVisualizer(object):
             pallet = {"x": _r2(getattr(m, "xg", 0.0) - ox),
                       "y": _r2(getattr(m, "yg", 0.0) - oy)}
 
+        # ---- 任务(pnc task 模块) ----
+        # exec 来自 path_plan_status.taskExecuStatus(0 无任务/1 执行中
+        # /2 完成);0 是合法值,不可用 or 兜底(会把 0 吞成缺省)
+        st = None
+        mps = latest.get("/path_plan_status")
+        if mps:
+            v = getattr(mps[0], "taskExecuStatus", None)
+            st = {"exec": None if v is None else int(v)}
+        task = None
+        m = latest.get("/task_plan_msg")
+        if m:
+            m = m[0]
+            task = {
+                "id": int(getattr(m, "task_id", 0) or 0),
+                "type": int(getattr(m, "taskType", 0) or 0),
+                "work_mode": int(getattr(m, "workMode", 0) or 0),
+                # 执行状态来自 path_plan_status(10Hz,同属任务链)
+                "exec": (st["exec"] if st else None),
+            }
+        if st and task is None:
+            # 仅状态链存活时:任务字段用 None(前端显示 "--"),
+            # 不可合成 0 —— 真实任务 id 均非 0,"#0" 会被读作真实任务
+            task = {"id": None, "type": None, "work_mode": None,
+                    "exec": st["exec"]}
+        # 云端任务状态(/cloud/task/task_status:1=执行中)
+        m = latest.get("/cloud/task/task_status")
+        if m:
+            m = m[0]
+            ti = getattr(m, "task_info", None)
+            if task is None:
+                task = {"id": None, "type": None, "work_mode": None,
+                        "exec": None}
+            # procedure 0 是潜在合法值(协议未注释取值域),不可用 or
+            # 兜底吞 0(与 taskExecuStatus 同款 None 检查式)
+            pv = getattr(m, "procedure", None)
+            task["cloud_proc"] = None if pv is None else int(pv)
+            task["fail_code"] = int(getattr(m, "fail_code", 0) or 0)
+            fr = str(getattr(m, "fail_reason", "") or "")
+            task["fail_reason"] = fr[:40]
+            if ti is not None and not task["id"]:
+                task["id"] = int(getattr(ti, "task_id", 0) or 0)
+
+        # ---- 规划(plan 模块:期望速度/safety) ----
+        plan = None
+        m = latest.get("/plan_path_msg") or latest.get("/refer_path_msg")
+        if m:
+            m = m[0]
+            plan = {
+                "desire_speed": _r2(getattr(m, "desireSpeed", 0.0)),
+                "planspeed": _r2(getattr(m, "planspeed", 0.0)),
+                "safety": bool(getattr(m, "safety", True)),
+            }
+
+        # ---- 控制(control 模块:转角/制动/油门) ----
+        control = None
+        m = latest.get("/control_msg")
+        if m:
+            m = m[0]
+            control = {
+                "steer": _r2(getattr(m, "wheelAngle", 0.0)),
+                "brake": int(getattr(m, "brakePercent", 0) or 0),
+                "throttle": int(getattr(m, "throttlePercent", 0) or 0),
+                "bia": _r2(getattr(m, "biaDistance", 0.0)),
+            }
+
+        # ---- CAN 反馈(can_msg 有效字段) ----
+        # 不入栏:throttlePercent/epsCMD/wheelAngleCMD/epsCentring(反馈侧
+        # 无写入者恒 0,见 canbus_core.h 字段注释)与 rawcommand/rawfeedback
+        # (原始帧字节,调试用)。epsERR1/2 名为 eps 实为 0x285 的挂钩/托盘
+        # 位置码(码值越小位置越高,181/122 为最高点),按语义命名输出。
+        can = None
+        m = latest.get("/can_msg")
+        if m:
+            m = m[0]
+            can = {
+                "gear": int(getattr(m, "curGear", 0) or 0),
+                "mode": int(getattr(m, "controlPanelState", 0) or 0),
+                "estop": int(getattr(m, "emergencyStop", 0) or 0),
+                "battery": int(getattr(m, "batteryPower", 0) or 0),
+                "hook": int(getattr(m, "hookState", 0) or 0),
+                "steer_fb": _r2(getattr(m, "wheelAngle", 0.0)),
+                "fault": [int(x) for x in
+                          (getattr(m, "faultCode", None) or [])][:8],
+                "speed": _r2(getattr(m, "vehicleSpeed", 0.0)),
+                "brake_fb": int(getattr(m, "brakePercent", 0) or 0),
+                "link_pallet": int(getattr(m, "linkPallet", 0) or 0),
+                "eab": int(getattr(m, "eabPanelState", 0) or 0),
+                "hook_btn": int(getattr(m, "hookButton", 0) or 0),
+                "link_btn": int(getattr(m, "linkButton", 0) or 0),
+                "eps_mode": int(getattr(m, "epsMode", 0) or 0),
+                "eps_current": _r2(getattr(m, "epsCurrent", 0.0)),
+                "pin_pos": int(getattr(m, "epsERR1", 0) or 0),
+                "seat_pos": int(getattr(m, "epsERR2", 0) or 0),
+            }
+
         ages = {}
         for topic in list(latest.keys()):
             ages[topic] = self._age(topic, now)
@@ -612,40 +742,122 @@ class RosVisualizer(object):
                       "refer": path_of("/refer_path_msg")},
             "stop": stop,
             "pallet": pallet,
+            "task": task,
+            "plan": plan,
+            "control": control,
+            "can": can,
         }
 
     # ---------------- 地图 ----------------
 
     def map_payload(self):
+        """加载全部地图文件(monitor/map/*.csv 逐个绘制)。
+
+        数据源优先级:rosparam /robot/mapfile 显式单文件(只画该张)
+        > MAP_PATH 目录(按文件名排序加载全部 .csv)。
+        单个文件坏行由 load_map_lines 逐行免疫;整文件失败/空文件跳过。
+        """
         if self._map_payload is not None:
             return self._map_payload
-        path = self._cfg.get("MAP_PATH", "$MON/map/view.csv")
-        path = path.replace("$MON", MON_DIR)
-        # rosparam 覆盖(rospy 可用时)
+        sources = []
+        explicit = None
         if ROS_AVAILABLE:
             try:
                 p = rospy.get_param("/robot/mapfile", None)
                 if p and os.path.isfile(p):
-                    path = p
+                    explicit = p
             except Exception:
                 pass
-        data = {"center": [], "left": [], "right": [], "bbox": [0, 0, 0, 0]}
-        try:
-            data = load_map_lines(path)
-        except (OSError, ValueError):
-            pass
-        ox = (data["bbox"][0] + data["bbox"][2]) / 2.0
-        oy = (data["bbox"][1] + data["bbox"][3]) / 2.0
+        if explicit is not None:
+            sources = [explicit]
+            self._safe_print("[MONITOR] rosparam /robot/mapfile=%s "
+                             "覆盖目录模式(仅画该张地图)" % explicit)
+        else:
+            mdir = self._cfg.get("MAP_PATH", "$MON/map")
+            mdir = mdir.replace("$MON", MON_DIR)
+            try:
+                if os.path.isdir(mdir):
+                    # lower():Windows 导出的 .CSV 大写扩展名同样加载
+                    sources = sorted(
+                        os.path.join(mdir, f) for f in os.listdir(mdir)
+                        if f.lower().endswith(".csv"))
+                elif os.path.isfile(mdir):  # 兼容:配置指向单个文件
+                    sources = [mdir]
+            except OSError as exc:
+                # 权限/目录竞态:按空目录处理,绝不能让 /api/snapshot
+                # (经 _origin)持续失败(实测会每请求重炸且不缓存)
+                self._safe_print("[MONITOR] 地图目录不可读 %s: %s"
+                                 % (mdir, exc))
+                sources = []
+
+        loaded = []
+        for src in sources:
+            try:
+                data = load_map_lines(src)
+            except (OSError, ValueError) as exc:
+                self._safe_print("[MONITOR] 地图文件跳过 %s: %s"
+                                 % (src, exc))
+                continue
+            if not data["center"]:
+                self._safe_print("[MONITOR] 地图文件无有效点,跳过 %s" % src)
+                continue
+            name = os.path.basename(src)
+            self._safe_print("[MONITOR] 地图 %s: %d 点"
+                             % (name, len(data["center"])))
+            loaded.append((name, data))
+        if not loaded and explicit is not None:
+            # rosparam 显式文件无有效点:回退目录扫描(车端残留参数指向
+            # 空/坏文件时,不能让含有效地图的目录整体失效)
+            self._safe_print("[MONITOR] 显式地图 %s 无有效点,回退目录扫描"
+                             % explicit)
+            try:
+                mdir2 = self._cfg.get("MAP_PATH", "$MON/map")
+                mdir2 = mdir2.replace("$MON", MON_DIR)
+                if os.path.isdir(mdir2):
+                    for f2 in sorted(os.listdir(mdir2)):
+                        if not f2.lower().endswith(".csv"):
+                            continue
+                        p2 = os.path.join(mdir2, f2)
+                        try:
+                            d2 = load_map_lines(p2)
+                        except (OSError, ValueError):
+                            continue
+                        if d2["center"]:
+                            loaded.append((f2, d2))
+                            self._safe_print("[MONITOR] 地图 %s: %d 点"
+                                             % (f2, len(d2["center"])))
+            except OSError:
+                pass
+        if not loaded:
+            # 无任何有效地图:干净的空语义(origin 回落 (0,0))
+            self._map_payload = {"maps": [], "n": 0, "bbox": [0, 0, 0, 0]}
+            return self._map_payload
+
+        # 合并 bbox -> origin(全部地图的整体中心)
+        xs0 = min(d["bbox"][0] for _, d in loaded)
+        ys0 = min(d["bbox"][1] for _, d in loaded)
+        xs1 = max(d["bbox"][2] for _, d in loaded)
+        ys1 = max(d["bbox"][3] for _, d in loaded)
+        ox = (xs0 + xs1) / 2.0
+        oy = (ys0 + ys1) / 2.0
 
         def line(pts):
             # center 是 (x,y,zg) 三元组,边线是 (x,y) 二元组,统一兼容
             return [[_r2(p[0] - ox), _r2(p[1] - oy)] for p in pts]
 
+        maps = []
+        for name, d in loaded:
+            maps.append({
+                "name": name,
+                "center": line(d["center"]),
+                "left": line(d["left"]),
+                "right": line(d["right"]),
+            })
         self._map_payload = {
-            "center": line(data["center"]),
-            "left": line(data["left"]),
-            "right": line(data["right"]),
-            "bbox": [_r2(v) for v in data["bbox"]],
+            "maps": maps,
+            "n": len(maps),
+            # bbox 保留原始全局坐标(合并全部地图;_origin 依赖它定 origin)
+            "bbox": [_r2(xs0), _r2(ys0), _r2(xs1), _r2(ys1)],
         }
         return self._map_payload
 

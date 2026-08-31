@@ -133,10 +133,15 @@ def t01_static():
     check("未知路径 404", code == 404)
     _, body = http("/api/map")
     m = json.loads(body.decode("utf-8"))
-    check("地图中心线 689 点", len(m["center"]) == 689, str(len(m["center"])))
-    check("三线等长", len(m["left"]) == len(m["center"]) ==
-          len(m["right"]))
-    check("bbox 合理", 18 < m["bbox"][0] < 19 and 79 < m["bbox"][2] < 80,
+    check("地图目录模式: 2 张按名有序",
+          m.get("n") == 2 and [x["name"] for x in m["maps"]] ==
+          ["m1.csv", "m2.csv"], str(m.get("n")))
+    check("地图中心线点数 3+2",
+          len(m["maps"][0]["center"]) == 3 and
+          len(m["maps"][1]["center"]) == 2)
+    check("三线等长", len(m["maps"][0]["left"]) ==
+          len(m["maps"][0]["center"]) == len(m["maps"][0]["right"]))
+    check("合并 bbox(目录模式)", m["bbox"] == [0.0, 0.0, 110.0, 100.0],
           str(m["bbox"]))
     check("图层默认态照 rviz",
           m["layers"]["map"] is False and m["layers"]["planning"] is False
@@ -199,6 +204,55 @@ def t02_conversions():
                                                 "stopAngle": 0.0}})
     time.sleep(0.8)
     check("stopAngle=0 -> yaw=0(identity)", snap()["stop"]["yaw"] == 0.0)
+
+
+def t02b_statusbar():
+    """右侧状态栏四段:task/plan/control/can 快照映射。"""
+    print("== t02b 状态栏四段 ==")
+    write_control(rates={"/task_plan_msg": 5, "/path_plan_status": 5,
+                         "/cloud/task/task_status": 5, "/plan_path_msg": 5,
+                         "/control_msg": 10, "/can_msg": 20})
+    wait_for("task 段就位(真实数据而非 exec 兜底)",
+             lambda: snap()["task"] and snap()["task"].get("id") == 88
+             and snap()["task"].get("cloud_proc") is not None)
+    d = snap()
+    t_ = d["task"]
+    check("任务: id/type/workMode", t_["id"] == 88 and t_["type"] == 1
+          and t_["work_mode"] == 1, str(t_))
+    check("任务: exec(0合法值不被or吞)", t_["exec"] == 1, str(t_["exec"]))
+    check("任务: 云端 procedure/嵌套 task_id",
+          t_["cloud_proc"] == 1 and t_["fail_code"] == 0, str(t_))
+    check("规划: desireSpeed/planspeed/safety 精确锁定",
+          d["plan"]["desire_speed"] == 1.8 and
+          d["plan"]["planspeed"] == 1.6 and
+          d["plan"]["safety"] is False, str(d["plan"]))
+    co = d["control"]
+    check("控制: 前轮转角/制动/油门", co["steer"] == -11.0 and
+          co["brake"] == 0 and co["throttle"] == 18, str(co))
+    ca = d["can"]
+    check("CAN: 挡位/模式/电量/挂接(0-1域)/故障",
+          ca["gear"] == 4 and ca["mode"] == 1 and ca["battery"] == 77
+          and ca["hook"] == 1 and ca["fault"] == [0], str(ca))
+    check("CAN: 方向盘转角(22倍于前轮基准)", ca["steer_fb"] == -220.0,
+          str(ca["steer_fb"]))
+    check("CAN: 扩展段(车速/制动反馈/限位/按钮/EPS/位置码)",
+          ca["speed"] == 1.2 and ca["brake_fb"] == 30 and
+          ca["link_pallet"] == 1 and ca["eab"] == 1 and
+          ca["hook_btn"] == 1 and ca["link_btn"] == 2 and
+          ca["eps_mode"] == 3 and ca["eps_current"] == -4.75 and
+          ca["pin_pos"] == 185 and ca["seat_pos"] == 130, str(ca))
+    check("数据龄含新话题", "/can_msg" in d["ages"] and
+          "/control_msg" in d["ages"], str(list(d["ages"])[:12]))
+    # 执行状态 0(无任务)与 procedure 0 不被 or 兜底吞
+    write_control(rates={"/path_plan_status": 5, "/cloud/task/task_status": 5},
+                  fields={"/path_plan_status": {"taskExecuStatus": 0},
+                          "/cloud/task/task_status": {"procedure": 0}})
+    time.sleep(0.8)
+    d0 = snap()
+    check("exec=0 透传(无任务)", d0["task"]["exec"] == 0)
+    check("procedure=0 透传(不被吞成-1)",
+          d0["task"]["cloud_proc"] == 0, str(d0["task"].get("cloud_proc")))
+    write_control(rates={})
 
 
 def t03_scan():
@@ -516,7 +570,8 @@ def main():
         up = wait_for("服务就绪", lambda: snap()["ros_available"] is True,
                       timeout=15)
         if up:
-            for fn in (t01_static, t02_conversions, t03_scan,
+            for fn in (t01_static, t02_conversions, t02b_statusbar,
+                       t03_scan,
                        t04_cloud_variants, t05_byte_lock, t06_ages,
                        t07_concurrent, t08_rss, t10_master_restart,
                        t11_nan_safety, t09_py38):
