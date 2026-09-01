@@ -28,6 +28,9 @@ HMI_DIR = os.path.dirname(HERE)
 sys.path.insert(0, HERE)
 import mock_ros  # noqa: E402
 
+# 标定超时兜底场景(T18)等不起 100s:把服务端超时调短(经环境变量传入子进程)
+os.environ.setdefault("HMI_CALIB_TIMEOUT_S", "6")
+
 CONTROL = "/tmp/hmi_mock_control_%d.json" % os.getpid()
 HMI_PORT = None
 MASTER = None
@@ -318,6 +321,259 @@ def t07_params():
           str(v["sensors"]["alive"]))
 
 
+def _read_params():
+    """读控制文件当前 params(注意:驱动进程不能走 mock_ros.read_control,
+    其 MOCK_CONTROL 只在子进程环境里生效)。"""
+    try:
+        with open(CONTROL, "r") as f:
+            return json.load(f).get("params", {})
+    except Exception:
+        return {}
+
+
+def t17_calib():
+    print("[T17] 脱挂钩一键标定:前置提醒/触发/日志解析(完成与失败)")
+    # 先启动 canbus 组件:标定触发的时刻它必须已有日志文件(结果行从日志
+    # 增量解析,晚于触发启动会拿不到 log_path 而走 config 比对兜底)
+    _code, _r = _http("POST", "/api/components/canbus/start")
+    wait_for("canbus 组件 RUNNING", lambda: comp("canbus")["state"] == "RUNNING",
+             timeout=15)
+    logf = comp("canbus")["log_file"]
+    check("canbus 日志文件路径存在", bool(logf) and os.path.exists(logf), str(logf))
+
+    # t03 后 /can_msg 为 2.5m/s·D 档·自动 → 前置检查应拒绝并给提醒
+    code, r = _http("POST", "/api/calibrate")
+    check("行驶中拒绝(code 200 + ok False)", code == 200 and r.get("ok") is False,
+          "%s %r" % (code, r))
+    check("提醒文案", r.get("reminder") ==
+          "一键标定前请停车挂N档，切换到自动驾驶模式", str(r.get("reminder")))
+    check("拒绝详情点名车速/档位",
+          "车速" in (r.get("detail") or "") and "档位" in (r.get("detail") or ""),
+          str(r.get("detail")))
+    check("未触发(参数保持 0)",
+          _read_params().get("/canbus/calibration/hook", 0) == 0)
+
+    # 手动模式同样拒绝
+    write_control(fields={"/can_msg": {"vehicleSpeed": 0.0, "curGear": 2,
+                                       "controlPanelState": 0}})
+    time.sleep(2.5)
+    code, r = _http("POST", "/api/calibrate")
+    check("手动模式拒绝", code == 200 and r.get("ok") is False
+          and "模式" in (r.get("detail") or ""), str(r))
+
+    # 就绪:自动 + N + 0 速 → 触发成功,进入 running
+    write_control(fields={"/can_msg": {"vehicleSpeed": 0.0, "curGear": 2,
+                                       "controlPanelState": 1}})
+    time.sleep(2.5)
+    code, r = _http("POST", "/api/calibrate")
+    check("就绪触发受理", code == 200 and r.get("ok") is True, "%s %r" % (code, r))
+    check("参数已置 1(真实 rosparam 写)",
+          _read_params().get("/canbus/calibration/hook") == 1)
+    c = state()["calibration"]
+    check("state.calibration running", c["phase"] == "running" and c["active"] is True,
+          str(c))
+    check("进行中重复触发 → 409",
+          _http("POST", "/api/calibrate")[0] == 409)
+
+    # 模拟 canbus 节点:日志写结果行 + 参数清零
+    with open(logf, "a") as f:
+        f.write("[INFO] [1756000000.0] [canbus]: calibration: started, hook up\n")
+        f.write("[INFO] [1756000001.0] [canbus]: calibration done: "
+                "hook [186..249], pallet [127..249] "
+                "applied and written to config.cfg\n")
+    write_control(params=dict(_read_params(),
+                              **{"/canbus/calibration/hook": 0}))
+    ok_done = wait_for("参数清零后 phase=done",
+                       lambda: state()["calibration"]["phase"] == "done", timeout=15)
+    if ok_done:
+        c = state()["calibration"]
+        check("完成值取自日志行", c["hook_range"] == [186, 249]
+              and c["pallet_range"] == [127, 249], str(c))
+    check("current 为 config.cfg 实际值",
+          state()["calibration"]["current"] ==
+          {"hook": [185, 240], "pallet": [130, 240]},
+          str(state()["calibration"]["current"]))
+
+    # 失败路径:重新触发,写 aborted 行 + 清参数 → failed 带原因
+    code, r = _http("POST", "/api/calibrate")
+    check("失败路径再次触发受理", code == 200 and r.get("ok") is True, str(r))
+    with open(logf, "a") as f:
+        f.write("[ERROR] [1756000002.0] [canbus]: calibration aborted: "
+                "hook action command appeared, limits unchanged\n")
+    write_control(params=dict(_read_params(),
+                              **{"/canbus/calibration/hook": 0}))
+    ok_fail = wait_for("参数清零后 phase=failed",
+                       lambda: state()["calibration"]["phase"] == "failed",
+                       timeout=15)
+    if ok_fail:
+        c = state()["calibration"]
+        check("失败原因取自日志行",
+              "aborted:hook action command appeared" in (c["message"] or ""),
+              str(c.get("message")))
+
+    # 复位车速/档位,避免影响后续场景
+    write_control(fields={"/can_msg": {"vehicleSpeed": 2.5, "curGear": 4}})
+
+
+def t19_calib_hardening():
+    print("[T19] 标定加固:并发竞态/截断不回放/失败优先/NOT-written/坏值/体排空")
+    _code, _r = _http("POST", "/api/components/canbus/start")
+    wait_for("canbus 组件 RUNNING", lambda: comp("canbus")["state"] == "RUNNING",
+             timeout=15)
+    logf = comp("canbus")["log_file"]
+
+    # 1) 并发触发:8 个同时 POST,恰一个 ok(修前可 3-4 个)
+    write_control(fields={"/can_msg": {"vehicleSpeed": 0.0, "curGear": 2,
+                                       "controlPanelState": 1}})
+    time.sleep(2.5)
+    import threading as _th
+    bar = _th.Barrier(8)
+    out = {}
+
+    def _fire(i):
+        bar.wait()
+        out[i] = _http("POST", "/api/calibrate")
+
+    ts = [_th.Thread(target=_fire, args=(i,)) for i in range(8)]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join()
+    accepted = [v for v in out.values() if v[0] == 200 and v[1].get("ok")]
+    check("并发 8 点击恰 1 个受理", len(accepted) == 1,
+          "accepted=%d" % len(accepted))
+    check("其余 409", all(v[0] == 409 for i, v in out.items()
+                          if v not in accepted), str({i: v[0] for i, v in out.items()}))
+
+    # 2) 触发前写入"旧 done 行";本轮无任何新行 + 截断到更小 → 不得回放旧行
+    with open(logf, "a") as f:
+        f.write("[INFO] [1.0] [canbus]: calibration done: "
+                "hook [101..102], pallet [103..104] applied\n")
+    # 结束本轮(不写新行)
+    write_control(params=dict(_read_params(), **{"/canbus/calibration/hook": 0}))
+    wait_for("本轮结束", lambda: state()["calibration"]["phase"] != "running",
+             timeout=15)
+    c = state()["calibration"]
+    check("无新行+参数清零 → failed(未冒充成功)", c["phase"] == "failed",
+          str(c))
+
+    # 3) 截断日志到更小再触发:旧行不得回放
+    with open(logf, "r+b") as f:
+        f.truncate(10)
+    code, r = _http("POST", "/api/calibrate")
+    check("截断后再触发受理", code == 200 and r.get("ok") is True, str(r))
+    write_control(params=dict(_read_params(), **{"/canbus/calibration/hook": 0}))
+    wait_for("截断轮结束", lambda: state()["calibration"]["phase"] != "running",
+             timeout=15)
+    c = state()["calibration"]
+    check("截断后不回放旧行", c["phase"] == "failed" and
+          c["hook_range"] is None, str(c))
+
+    # 4) done 行与 refused 行同轮(带本轮标记):失败优先
+    code, r = _http("POST", "/api/calibrate")
+    with open(logf, "a") as f:
+        f.write("[INFO] [1.5] [canbus]: calibration: started, hook up\n")
+        f.write("[INFO] [2.0] [canbus]: calibration done: "
+                "hook [186..249], pallet [127..249] applied\n")
+        f.write("[ERROR] [3.0] [canbus]: calibration aborted: "
+                "hook action command appeared, limits unchanged\n")
+    write_control(params=dict(_read_params(), **{"/canbus/calibration/hook": 0}))
+    wait_for("混合行轮结束", lambda: state()["calibration"]["phase"] != "running",
+             timeout=15)
+    c = state()["calibration"]
+    check("done+refused 混合 → 失败优先",
+          c["phase"] == "failed" and "aborted" in (c["message"] or ""), str(c))
+
+    # 5) done 行带 NOT written(写盘失败,带本轮标记)→ 按失败上报
+    code, r = _http("POST", "/api/calibrate")
+    with open(logf, "a") as f:
+        f.write("[INFO] [3.5] [canbus]: calibration: started, hook up\n")
+        f.write("[ERROR] [4.0] [canbus]: calibration done: "
+                "hook [186..249], pallet [127..249] applied in memory, "
+                "config.cfg NOT written (cannot write /x.tmp: Permission "
+                "denied; values lost on restart)\n")
+    write_control(params=dict(_read_params(), **{"/canbus/calibration/hook": 0}))
+    wait_for("NOT-written 轮结束", lambda: state()["calibration"]["phase"] != "running",
+             timeout=15)
+    c = state()["calibration"]
+    check("NOT written → 失败并带原因",
+          c["phase"] == "failed" and "写入失败" in (c["message"] or ""),
+          str(c.get("message")))
+
+    # 6) 坏值域 done 行(带本轮标记)→ 拒绝为结果异常
+    code, r = _http("POST", "/api/calibrate")
+    with open(logf, "a") as f:
+        f.write("[INFO] [4.5] [canbus]: calibration: started, hook up\n")
+        f.write("[INFO] [5.0] [canbus]: calibration done: "
+                "hook [999..0], pallet [65635..7] applied\n")
+    write_control(params=dict(_read_params(), **{"/canbus/calibration/hook": 0}))
+    wait_for("坏值轮结束", lambda: state()["calibration"]["phase"] != "running",
+             timeout=15)
+    c = state()["calibration"]
+    check("坏值域 → 结果异常", c["phase"] == "failed" and
+          "异常" in (c["message"] or ""), str(c.get("message")))
+
+    # 7) 参数已置位时再触发 → 409(不叠加)
+    write_control(params=dict(_read_params(), **{"/canbus/calibration/hook": 1}))
+    time.sleep(0.3)
+    write_control(fields={"/can_msg": {"vehicleSpeed": 0.0, "curGear": 2,
+                                       "controlPanelState": 1}})
+    time.sleep(2.5)
+    code, r = _http("POST", "/api/calibrate")
+    check("参数已置位 → 409 不叠加", code == 409 and
+          "置位" in (r.get("error") or ""), "%s %r" % (code, r))
+    write_control(params=dict(_read_params(), **{"/canbus/calibration/hook": 0}))
+
+    # 8) keep-alive 体排空:同一连接 POST(带体)后跟 GET,应为 200
+    import socket as _sk
+    s = _sk.create_connection(("127.0.0.1", HMI_PORT), timeout=6)
+    body = b"{}"
+    s.sendall(b"POST /api/calibrate HTTP/1.1\r\nHost: h\r\n"
+              b"Content-Type: application/json\r\n"
+              b"Content-Length: %d\r\n\r\n%s" % (len(body), body))
+    time.sleep(0.4)
+    s.recv(65536)
+    s.sendall(b"GET /api/state HTTP/1.1\r\nHost: h\r\n\r\n")
+    time.sleep(0.5)
+    buf = b""
+    s.settimeout(3)
+    try:
+        while True:
+            b = s.recv(65536)
+            if not b:
+                break
+            buf += b
+            if b"\r\n\r\n" in buf and len(buf) > 16:
+                break
+    except Exception:
+        pass
+    s.close()
+    first = buf.split(b"\r\n")[0].decode("utf-8", "replace") if buf else ""
+    check("同连接 POST->GET 不再 501", " 200 " in first + " ", first)
+
+    # 复位
+    write_control(fields={"/can_msg": {"vehicleSpeed": 2.5, "curGear": 4}})
+
+
+def t18_calib_timeout():
+    print("[T18] 标定超时兜底(参数不清零 → failed)")
+    write_control(fields={"/can_msg": {"vehicleSpeed": 0.0, "curGear": 2,
+                                       "controlPanelState": 1}})
+    time.sleep(2.5)
+    code, r = _http("POST", "/api/calibrate")
+    check("触发受理", code == 200 and r.get("ok") is True, str(r))
+    # 参数保持 1(模拟 canbus 节点卡死),等服务端超时判定
+    ok_to = wait_for("超时后 phase=failed",
+                     lambda: state()["calibration"]["phase"] == "failed",
+                     timeout=15)
+    if ok_to:
+        c = state()["calibration"]
+        check("超时文案", "超时" in (c["message"] or ""), str(c.get("message")))
+    write_control(fields={"/can_msg": {"vehicleSpeed": 2.5, "curGear": 4}})
+    write_control(params=dict(_read_params(),
+                              **{"/canbus/calibration/hook": 0}))
+
+
 def t08_degrade_recover():
     print("[T08] 频率丢失 → DEGRADED → 恢复")
     write_control(rates={**healthy_rates(), "/can_msg": 0})
@@ -518,7 +774,8 @@ def main():
     print("HMI 全栈校验(伪 ROS 环境)")
     print("=" * 62)
     steps = [t01_start, t02_health, t03_vehicle_mapping, t04_obstacle_encoding,
-             t05_lateral, t06_task_fail, t07_params, t08_degrade_recover,
+             t05_lateral, t06_task_fail, t07_params, t17_calib, t18_calib_timeout,
+             t19_calib_hardening, t08_degrade_recover,
              t09_sampled, t10_nodes, t11_master_restart, t12_master_death,
              t13_api_robust, t14_storm, t15_bad_config, t16_output_scan]
     try:

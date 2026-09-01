@@ -201,20 +201,6 @@ CONFIG = {
             "stop_pat": "data_logger.launch",
         },
         {
-            "name": "simview",
-            "title": "可视化(RViz)",
-            "group": 4,
-            "optional": True,
-            "enabled": False,
-            # 车载上 simview 在另一工作区;如路径不同请修改 setup 与 cwd
-            "cmd": ["roslaunch", "src/simview/launch/simview.launch"],
-            "cwd": "/home/nvidia/zyd/0522",
-            "setup": ["/home/nvidia/zyd/0522/devel/setup.bash"],
-            "health": [{"topic": "/robot/simviewer/vehicle", "min_hz": 2}],
-            "start_timeout": 40,
-            "stop_pat": "simview.launch",
-        },
-        {
             "name": "monitor",
             "title": "可视化(Web)",
             "group": 4,
@@ -248,13 +234,9 @@ CONFIG = {
             "group": 4,
             "optional": True,
             "enabled": False,
-            # 车载原脚本(qingwei-L4-No2/bags/record_*.sh)未随工程拷贝,这里按
-            # record_lidar.sh 的格式重写录制命令,输出到工程根 bags/ 目录
-            "cmd": ["bash", "-c",
-                    "mkdir -p \"$ROOT/bags\" && exec rosbag record -O "
-                    "\"$ROOT/bags/hmi_$(date +%Y%m%d_%H%M%S).bag\" "
-                    "/rslidar_points_mid /rslidar_points_left /rslidar_points_right "
-                    "/rslidar_points_front /perception /hook_position"],
+            # 每次启动都读取 record_rostopic_list.md，按 0/1 选择 topic；
+            # 输出到工程根 data/bags/，目录超过 2 GiB 时先清理旧 rosbag。
+            "cmd": ["python3", "$ROOT/hmi/record_rosbag.py"],
             "cwd": "$ROOT",
             "setup": ["$ROOT/devel/setup.bash"],
             "health": [],

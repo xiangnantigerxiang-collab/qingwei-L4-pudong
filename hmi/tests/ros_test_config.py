@@ -38,5 +38,15 @@ CONFIG = {
                 {"type": "nodes", "pattern": "/cloud", "min": 2},
             ],
         },
+        {
+            # 一键标定场景的日志源:CalibrationManager 从该组件日志增量里
+            # 解析 canbus 节点的结果行(calibration done/refused/aborted)
+            "name": "canbus",
+            "title": "CAN 总线",
+            "group": 1,
+            "cmd": ["sleep", "600"],
+            "cwd": "$ROOT",
+            "health": [{"topic": "/can_msg", "min_hz": 20}],
+        },
     ],
 }

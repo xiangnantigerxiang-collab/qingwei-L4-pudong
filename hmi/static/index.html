@@ -198,6 +198,30 @@ footer{
   color:var(--muted);font-size:.75rem;padding:.6rem 1rem 1rem;
   border-top:1px solid var(--hairline);margin-top:.5rem;line-height:1.5;
 }
+
+/* ============ 标定结果弹窗(卡片在左侧组件区,复用 .card) ============ */
+#calibModal{
+  position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.55);
+  display:none;align-items:center;justify-content:center;padding:1.5rem;
+}
+#calibModal.open{display:flex}
+.calibBox{
+  background:var(--surface2);border:1px solid var(--ring);border-radius:12px;
+  width:min(560px,100%);max-height:70vh;display:flex;flex-direction:column;
+  overflow:hidden;
+}
+.calibHead{
+  display:flex;align-items:center;gap:.8rem;padding:.6rem .9rem;
+  border-bottom:1px solid var(--ring);
+}
+.calibHead b{font-size:1rem}
+.calibBody{
+  padding:1rem 1.1rem;font-size:.95rem;line-height:1.7;color:var(--ink2);
+  overflow-y:auto;white-space:pre-wrap;word-break:break-all;
+}
+.calibBody.good{color:var(--good)}
+.calibBody.warn{color:var(--warning)}
+.calibBody.crit{color:var(--critical)}
 </style>
 </head>
 <body>
@@ -307,6 +331,14 @@ footer{
   </div>
 </div>
 
+<div id="calibModal">
+  <div class="calibBox">
+    <div class="calibHead"><b id="calibTitle">提示</b><span class="spacer"></span>
+      <button class="btn" id="calibClose">关闭</button></div>
+    <div class="calibBody" id="calibMsg"></div>
+  </div>
+</div>
+
 <footer>
   <span id="ftInfo"></span>
 </footer>
@@ -342,8 +374,13 @@ var EVT_LABEL = {
   cloud:["云端链路"], latdev:["横向偏差","超限","恢复"],
 };
 
+var POLL_SEQ = 0, POLL_APPLIED = 0;
 function poll(){
+  var seq = ++POLL_SEQ;
   fetch("/api/state").then(function(r){ return r.json(); }).then(function(d){
+    if (seq < POLL_APPLIED) return;   /* 乱序到达的旧快照丢弃(red-team:
+                                        曾把 CALIB_PREV 回退导致同一结果弹两次) */
+    POLL_APPLIED = seq;
     ST = d; online = true; render();
   }).catch(function(){
     if (online){ online = false; renderOffline(); }
@@ -374,7 +411,8 @@ function post(url, body){
 /* ================= 渲染 ================= */
 function render(){
   if (!ST) return;
-  renderHeader(); renderBanners(); renderComponents(); renderVehicle(); renderFooter();
+  renderHeader(); renderBanners(); renderComponents(); renderVehicle();
+  renderCalib(); renderFooter();
 }
 
 function renderOffline(){
@@ -482,6 +520,52 @@ function renderBanners(){
   $("#banners").innerHTML = bs.join("");
 }
 
+/* 标定布防:点击后短期锁按钮(防 innerHTML 重建丢禁用导致的双击 409) */
+var CALIB_ARM = false, CALIB_ARM_AT = 0;
+
+/* 脱挂钩标定卡片(与外网监测同形的组件卡,渲染进左侧"业务与辅助"组;
+   无该组的测试态则自成一组追加在末尾)。dot 颜色复用组件状态类:
+   idle=灰 / running=st-STARTING 蓝脉冲 / done=st-RUNNING 绿 / failed=st-CRASHED 红闪。 */
+function calibCardHtml(busy){
+  var c = (ST && ST.calibration) || {};
+  var v = (ST && ST.vehicle) || {};
+  var cur = c.current;
+  /* 形状防御:current 必须是 {hook:[a,b],pallet:[c,d]};畸形形状(服务端
+     回归/中间人)不得让 calibCardHtml 抛异常——render() 无 try/catch,
+     一处抛错会把整个页面打成假离线(红队实证,冻结全部面板) */
+  var curOk = cur && Array.isArray(cur.hook) && Array.isArray(cur.pallet) &&
+              cur.hook.length === 2 && cur.pallet.length === 2;
+  var stCls = c.phase === "running" ? "st-STARTING" :
+              c.phase === "done" ? "st-RUNNING" :
+              c.phase === "failed" ? "st-CRASHED" : "st-STOPPED";
+  var stateTxt = c.phase === "running"
+    ? "进行中 " + Math.round(c.elapsed_s || 0) + "s,人员离开作业半径"
+    : c.phase === "done" ? "已完成"
+    : c.phase === "failed" ? "失败" : "未标定";
+  var health = curOk
+    ? "当前行程 销子 " + cur.hook[0] + "-" + cur.hook[1] +
+      " · 托盘 " + cur.pallet[0] + "-" + cur.pallet[1]
+    : "当前行程 --";
+  /* CALIB_ARM:点击后的布防窗口(见 calibStartClick)。轮询驱动的 disabled
+     有 ~1s 空窗且 innerHTML 每轮重建会丢掉同步禁用(实测:重建后新按钮
+     双击→第二次 POST→409→误导性"无法开始标定"红窗)。布防 5s 自动解除,
+     防止触发失败后按钮永久锁死 */
+  var armed = CALIB_ARM && (Date.now() - CALIB_ARM_AT < 5000);
+  var dis = c.phase === "running" || busy || !v.ros_available || armed;
+  return '<div class="card ' + stCls + '">' +
+    '<div class="crow"><span class="dot"></span>' +
+      '<span class="ctitle">脱挂钩标定</span></div>' +
+    '<div class="cstate">' + esc(stateTxt) + "</div>" +
+    '<div class="chealth">' + esc(health) + "</div>" +
+    (c.phase === "failed" && c.message
+      ? '<div class="cerr">' + esc(c.message) + "</div>" : "") +
+    '<div class="cbtns">' +
+      '<button data-act="calibrate" data-name="calib" class="op-start"' +
+      (dis ? " disabled" : "") + ">一键标定</button>" +
+      '<button data-act="log" data-name="canbus">日志</button>' +
+    "</div></div>";
+}
+
 function renderComponents(){
   var cs = ST.components;
   var groups = {};
@@ -494,11 +578,14 @@ function renderComponents(){
   order.sort(function(a,b){ return a-b; });
   var busy = ST.sequence && ST.sequence.active;
   var html = [];
+  var calibGroupSeen = false;
   for (i = 0; i < order.length; i++){
     g = order[i];
     var gtitle = cs.length ? (groups[g][0].group_title || ("组 " + g)) : ("组 " + g);
+    if (gtitle.indexOf("业务与辅助") >= 0) calibGroupSeen = true;
     html.push('<div class="groupSec"><div class="groupTitle">' + esc(gtitle) + "</div>" +
-              '<div class="cards">');
+              '<div class="cards">' +
+              (gtitle.indexOf("业务与辅助") >= 0 ? calibCardHtml(busy) : ""));
     var list = groups[g], j, c;
     for (j = 0; j < list.length; j++){
       c = list[j];
@@ -532,6 +619,10 @@ function renderComponents(){
         "</div>");
     }
     html.push("</div></div>");
+  }
+  if (!calibGroupSeen){
+    html.push('<div class="groupSec"><div class="groupTitle">业务与辅助</div>' +
+              '<div class="cards">' + calibCardHtml(busy) + "</div></div>");
   }
   $("#components").innerHTML = html.join("");
 }
@@ -823,6 +914,72 @@ function renderFooter(){
   $("#ftInfo").textContent = txt;
 }
 
+/* ================= 脱挂钩一键标定 ================= */
+/* 卡片渲染在 renderComponents(左侧"业务与辅助"组,同外网监测形态);
+   这里只负责 running→done/failed 的跳变弹结果窗(轮询驱动,多客户端各自弹一次)。 */
+var CALIB_PREV = "idle";
+function renderCalib(){
+  var c = (ST && ST.calibration) || {};
+
+  if (CALIB_PREV === "running" && c.phase === "done" &&
+      c.hook_range && c.pallet_range){
+    showCalibModal("标定已完成，当前行程为销子：" + c.hook_range[0] +
+                   "(min)-" + c.hook_range[1] + "(max)  托盘：" +
+                   c.pallet_range[0] + "(min)-" + c.pallet_range[1] + "(max)",
+                   "good", "标定完成");
+  } else if (CALIB_PREV === "running" && c.phase === "failed"){
+    showCalibModal("标定未完成：" + (c.message || "未知原因"),
+                   "crit", "标定未完成");
+  }
+  CALIB_PREV = c.phase || "idle";
+}
+function showCalibModal(text, cls, title){
+  $("#calibTitle").textContent = title || "提示";
+  var body = $("#calibMsg");
+  body.textContent = text;
+  body.className = "calibBody" + (cls ? " " + cls : "");
+  $("#calibModal").classList.add("open");
+}
+/* 标定点击(经 #components 事件委托,data-act="calibrate") */
+function calibStartClick(btn){
+  /* 布防(而非仅同步禁用):innerHTML 每轮重建会丢掉按钮上的 disabled,
+     重建后的新按钮双击会再发一次 POST 吃到 409(实测)。布防由
+     calibCardHtml 读取,5s 自动解除 */
+  CALIB_ARM = true;
+  CALIB_ARM_AT = Date.now();
+  if (btn && btn.disabled !== undefined) btn.disabled = true;
+  post("/api/calibrate").then(function(j){
+    if (!j){
+      /* 传输层失败(post 的 catch 吞掉了):不能毫无反馈;解除布防允许重试 */
+      CALIB_ARM = false;
+      showCalibModal("无法连接车端服务,请检查网络后重试", "crit", "无法开始标定");
+      return;
+    }
+    if (j.ok){ poll(); return; }   /* 保持布防:phase=running 马上接管禁用 */
+    if (j.reminder){
+      /* 前置检查未过:未触发,解除布防允许纠正后重试 */
+      CALIB_ARM = false;
+      showCalibModal(j.reminder + (j.detail ? "\n\n" + j.detail : ""),
+                     "warn", "无法开始标定");
+      return;
+    }
+    if (j.error && (j.error.indexOf("进行中") >= 0 ||
+                    j.error.indexOf("正在进行") >= 0)){
+      /* 已有一次标定在进行(多为双击/他端触发):提示而非报错 */
+      showCalibModal(j.error, "", "标定进行中");
+      return;
+    }
+    CALIB_ARM = false;
+    showCalibModal(j.error || "请求失败", "crit", "无法开始标定");
+  });
+}
+$("#calibClose").addEventListener("click", function(){
+  $("#calibModal").classList.remove("open");
+});
+$("#calibModal").addEventListener("click", function(e){
+  if (e.target === this) this.classList.remove("open");
+});
+
 /* ================= 交互 ================= */
 $("#btnStart").addEventListener("click", function(){ post("/api/start"); });
 
@@ -837,6 +994,7 @@ $("#components").addEventListener("click", function(e){
   if (!b || b.disabled) return;
   var name = b.getAttribute("data-name"), act = b.getAttribute("data-act");
   if (act === "log"){ openLog(name); return; }
+  if (act === "calibrate"){ calibStartClick(b); return; }
   post("/api/components/" + encodeURIComponent(name) + "/" + act);
 });
 
@@ -862,7 +1020,7 @@ function fetchLog(){
       var stick = $("#logStick").checked &&
         (pre.scrollTop + pre.clientHeight >= pre.scrollHeight - 30);
       pre.textContent = (d.lines && d.lines.length) ? d.lines.join("\n")
-                       : (d.note || "暂无日志");
+                       : (d.error || d.note || "暂无日志");
       if (stick){ pre.scrollTop = pre.scrollHeight; }
     }).catch(function(){});
 }
@@ -876,7 +1034,14 @@ $("#logModal").addEventListener("click", function(e){
   if (e.target === this) closeLog();
 });
 document.addEventListener("keydown", function(e){
-  if (e.key === "Escape") closeLog();
+  if (e.key !== "Escape") return;
+  /* 分层关闭:标定弹窗在最上层(z-60)时只关它——之前 ESC 会把底下
+     的日志窗一起关掉(对抗审查:看日志等结果时被打断) */
+  if ($("#calibModal").classList.contains("open")){
+    $("#calibModal").classList.remove("open");
+    return;
+  }
+  closeLog();
 });
 
 startPoll();

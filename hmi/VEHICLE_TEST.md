@@ -54,8 +54,8 @@ bash hmi/hmi.sh          # 建议放 tmux 里跑,便于看服务端输出
 | 10 | 云端网关 | 绿(cloud 节点≥5) | MQTT 连不上云端不影响绿灯,但云端功能不可用 |
 | 11 | 行车记录 | 绿(存活即绿) | 看 logData/ 有无新 CSV |
 
-> simview/外网监测/数据录制默认"未启用"(灰显),需要时改 `hmi/hmi_config.py`
-> 对应项 `"enabled": False` → `True`(simview 还需确认其工作区路径)。
+> 外网监测/数据录制默认"未启用"(灰显),需要时改 `hmi/hmi_config.py`
+> 对应项 `"enabled": False` → `True`。RViz 可视化(simview)已移除(09-01)。
 
 ## 阶段 3:车辆状态面板数据核对(重点,实车独有)
 

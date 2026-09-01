@@ -406,7 +406,7 @@ class RosBridge(HealthProvider):
 
     def _veh_default(self):
         self._veh = {
-            "speed_kmh": None, "gear": None, "gear_raw": None,
+            "speed_kmh": None, "speed_ms": None, "gear": None, "gear_raw": None,
             "mode": None, "emergency_stop": None,
             "driving_state": None, "driving_state_text": None,
             "task": {"status": None, "status_text": None, "task_id": None,
@@ -434,6 +434,7 @@ class RosBridge(HealthProvider):
         with self._lk:
             v = self._veh
             spd = _g(msg, "vehicleSpeed")
+            v["speed_ms"] = spd     # 原始 m/s(取整会掩盖 0.36~0.45 km/h 区间)
             v["speed_kmh"] = round(spd * 3.6, 1) if spd is not None else None
             gear = _g(msg, "curGear")
             v["gear_raw"] = gear

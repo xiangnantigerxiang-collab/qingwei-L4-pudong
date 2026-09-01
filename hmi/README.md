@@ -51,22 +51,85 @@ bash hmi/install_autostart.sh remove    # 卸载自启,恢复手动方式
 - **车辆状态面板**:车速(里程表大数字)、挡位、自动/手动模式、急停、任务执行状态、
   RTK 定位、障碍物距离、横向偏差、电量、挂接状态、传感器健康、CAN/网络状态;
   字段超 5 秒无数据会变灰划线(数据冻结而非清零,便于判断是哪一环断了)
+- **脱挂钩一键标定**:左侧"业务与辅助"分组里的"脱挂钩标定"组件卡(与外网监测
+  同形态:状态点/当前行程/一键标定与日志按钮),点击"一键标定"触发 canbus 的
+  hook/pallet 行程标定(`rosparam /canbus/calibration/hook`)。触发前检查
+  自动驾驶模式 + N 档 + 车速≈0 + CAN 数据新鲜,不满足弹提醒
+  "一键标定前请停车挂N档，切换到自动驾驶模式"(不触发);完成后弹
+  "标定已完成，当前行程为销子：xxx(min)-xxx(max)  托盘：xxx(min)-xxx(max)",
+  失败/超时弹原因。卡片常显当前行程(读 config.cfg)
 
 ## 组件配置
 
 `hmi_config.py` 纯 Python 数据模块,每个组件定义命令/目录/健康检查/超时/停止方式,
 全中文注释。调整示例:
 
-- 启用 simview/netcheck/bags:把对应组件 `"enabled": False` 改为 `True`
+- 启用 netcheck/bags:把对应组件 `"enabled": False` 改为 `True`
+- **数据录制**(bags,默认不参与一键启动):在 `record_rostopic_list.md` 中把需要录制的
+  topic 值从 `0` 改为 `1`,再单独启动“数据录制”卡片。每次启动都会重新读取配置；
+  文件按时间戳写入工程根 `data/bags/`。启动时若该目录超过 2 GiB,会先清空其中的
+  `.bag`/`.bag.active` 文件；全部为 `0`、配置错误或清理失败时拒绝开始录制
 - **可视化(Web)**(monitor,默认启用):卡片可单独启停 monitor 服务,
   浏览器访问 `http://<车IP>:8081`;健康判定为存活即绿(Web 服务无
-  ROS 发布话题),ROS/master 连接状态看 monitor 页面右上状态点。
-  与 simview(rviz)互不冲突,可并存
-- simview 工作区路径不同:改其 `cwd` 与 `setup` 字段
+  ROS 发布话题),ROS/master 连接状态看 monitor 页面右上状态点
 - 新增组件:照抄一条,`group` 决定启动顺序
+
+(RViz 可视化组件 simview 已按需求移除(09-01)。注意:`start_l4.sh`
+救急脚本仍会启动 simview 的旧终端,且 HMI 的"全部停止"不再管理该进程——
+用 start_l4.sh 后切换回 HMI 前,请手动关闭 simview 的 gnome-terminal。)
 
 健康检查四种形态:话题频率(默认)、采样型(点云,省 CPU)、master 探活(roscore)、
 节点数统计(fms)。
+
+## 数据录制(rosbag)使用方法
+
+卡片位置:左侧"业务与辅助"分组里的**数据录制**卡片(默认"未启用"灰显,不参与
+一键启动——录制是按次的人工操作)。完整流程:
+
+1. **选 topic**:编辑 `hmi/record_rostopic_list.md`,把要录制的 topic 行尾开关
+   从 `0` 改为 `1`,保存即可,**无需重启 HMI**(每次启动录制都会重新读这份文件)。
+   文件按类别分节(激光雷达/惯导/挂接/感知/CAN 与规划控制/云端网关等),格式:
+
+   ```
+   - /can_msg: 1        # 录制
+   - /rosout: 0         # 不录制
+   ```
+
+   规则:topic 必须是以 `/` 开头的绝对名;同一 topic 只能出现一次;开关只认
+   `0`/`1` 两个值——写错值、写重复、格式不对都会**拒绝开始录制**(卡片转"故障",
+   原因见卡片上的错误信息和日志按钮);一个都没开同样拒绝。
+2. **启动**:点数据录制卡片上的**启动**。启动器(`record_rosbag.py`)依次:
+   建 `data/bags/` 目录 → 检查容量 → 按当前时间戳命名 → `exec rosbag record`。
+   正常后卡片转"运行",健康行显示"仅进程监控"(录制进程无健康话题)。
+3. **停止**:点卡片上的**停止**。rosbag 收到 SIGTERM 后会把进行中的
+   `.bag.active` 收尾成完整 `.bag` 再退出——**务必先停止再关机/重启 HMI**,
+   直接断电会留下未收尾的 `.bag.active`(下次启动录制时会被容量清理一并删掉,
+   但该文件本身不可回放)。
+4. **取文件**:bag 都在工程根 `data/bags/`,文件名即录制开始时间
+   (如 `20260901_153012_345.bag`,毫秒级防重名)。拷回分析机:
+   `scp nvidia@<车IP>:/home/nvidia/qingwei-L4-No2/data/bags/*.bag .`
+
+**容量规则**:每次启动录制前统计 `data/bags/` 总大小,超过 **2 GiB** 就先清空
+其中的 `.bag`/`.bag.active`(其它文件不动);清完仍超(比如有大体积非 bag 文件)
+则拒绝录制并报错。注意两点:
+- 是**启动时**检查,录制过程中不设上限——长时间高码率 topic(如 4 路 32 线点云)
+  可能写满磁盘,长录请控制时长或只开必要 topic(点云类建议优先用 packets/低频
+  points,或参考文件里现成的开关组合);
+- 清空是**全删**不是按时间删最旧的——需要保留的 bag 请提前拷走。
+
+**常见问题**:
+
+| 现象 | 原因与处理 |
+|---|---|
+| 启动即"故障",卡片错误提示找不到 rosbag | 组件 `setup` 没 source devel 环境,或 ROS 未装——检查 hmi_config 里 bags 的 `setup` 字段 |
+| 启动即"故障",提示"没有启用任何 topic" | 全部开关为 0——改 `record_rostopic_list.md` 后再启动 |
+| 启动即"故障",提示配置格式错误/ topic 重复 | 按提示的行号改文件 |
+| 启动即"故障",提示清理后仍超过限制 | `data/bags/` 里有超量非 bag 文件,手动清理后重试 |
+| 卡片"运行"但 data/bags/ 没有新文件 | 看 HMI 日志按钮(该卡)与 `hmi/logs/bags/`;另外确认磁盘没满 |
+| 想默认参与一键启动 | 把 hmi_config.py 中 bags 的 `"enabled": False` 改 `True`(不建议:每次一键启动都会开录) |
+
+(维护者注:录制逻辑在 `hmi/record_rosbag.py`,单测 `tests/test_record_rosbag.py`;
+输出目录、2 GiB 阈值、配置文件路径都是该脚本顶部的常量。)
 
 ## 已知事项与注意事项
 
@@ -119,7 +182,9 @@ python3 hmi_server.py --config test_config.py --port 18080
 让 ros_bridge 的全部 ROS 侧代码在无 ROS 的开发机上可运行、可验证:
 
 ```bash
-cd hmi && python3 tests/test_full.py    # 47 项断言,约 2~3 分钟
+cd hmi && python3 tests/test_full.py                 # 80 项断言,约 2~3 分钟
+node tests/frontend_test.js                          # 66 项断言(需 Node)
+python3 -m unittest tests.test_record_rosbag         # 9 项单元测试
 ```
 
 覆盖:话题频率健康与降级恢复、点云采样探测、fms 节点数统计、master 重启
@@ -129,7 +194,7 @@ cd hmi && python3 tests/test_full.py    # 47 项断言,约 2~3 分钟
 另两套(同为开发机用):
 
 ```bash
-node tests/frontend_test.js      # 前端无头渲染:33 项(DOM 桩驱动真实页面脚本)
+node tests/frontend_test.js      # 前端无头渲染:66 项(DOM 桩驱动真实页面脚本)
 python3 tests/chaos_test.py      # 混沌/浸泡:28 项(敌对子进程/日志洪水/服务器暴毙/fd与RSS)
 ```
 

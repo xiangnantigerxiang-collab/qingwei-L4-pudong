@@ -58,11 +58,11 @@ DEFAULT_FIELDS = {
     "/rslidar_points_left": {}, "/rslidar_points_right": {},
     "/can_recv": {}, "/box": {}, "/back_pointcloud": {},
     "/perception_back_bbox": {}, "/cam0/compressed": {},
-    "/robot/simviewer/vehicle": {},
 }
 
 DEFAULT_PARAMS = {"/planning/sensorstate": 0, "/planning/alive": 1,
-                  "/robot/planning/netcheck": 0, "/alarmcmd": 0}
+                  "/robot/planning/netcheck": 0, "/alarmcmd": 0,
+                  "/canbus/calibration/hook": 0}
 
 
 def read_control():
@@ -228,6 +228,14 @@ class _FakeRoSpy(object):
             raise RuntimeError("mock: master 不可达")
         return c.get("params", {}).get(name, default)
 
+    def set_param(self, name, value):
+        c = read_control()
+        c.setdefault("params", {})[name] = value
+        tmp = _CONTROL_PATH + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump(c, f)
+        os.replace(tmp, _CONTROL_PATH)
+
     def signal_shutdown(self, reason=""):
         self._initialized = False
 
@@ -240,6 +248,7 @@ def install():
     spy_mod.is_initialized = impl.is_initialized
     spy_mod.Subscriber = impl.Subscriber
     spy_mod.get_param = impl.get_param
+    spy_mod.set_param = impl.set_param
     spy_mod.signal_shutdown = impl.signal_shutdown
     spy_mod.AnyMsg = AnyMsg
     spy_mod.ERROR = _FakeRoSpy.ERROR

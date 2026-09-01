@@ -63,12 +63,15 @@ global.window = { confirm: () => window._confirmResult !== false };
 // ---------------- fetch 桩 ----------------
 let currentState = null;
 let logResponse = { lines: ["L1", "L2", "L3"] };
+let calibResponse = null;   // /api/calibrate 的应答桩(null=回落 currentState)
 let rejectFetch = false;
 const fetchCalls = [];
 global.fetch = function (url, opts) {
   fetchCalls.push({ url, opts });
   if (rejectFetch) return Promise.reject(new Error("offline"));
-  const payload = String(url).indexOf("/api/logs") >= 0 ? logResponse : currentState;
+  let payload = String(url).indexOf("/api/logs") >= 0 ? logResponse : currentState;
+  if (String(url).indexOf("/api/calibrate") >= 0 && calibResponse)
+    payload = calibResponse;
   return Promise.resolve({ ok: true, json: async () => payload });
 };
 
@@ -317,6 +320,108 @@ eval(script);
   await apply(mkst({ components: [comp({ state: "RUNNING" })], vehicle: veh() }));
   await apply(mkst({ components: [comp({ state: "RUNNING" })], vehicle: veh() }));
   check("S15 恢复事件", el("#evtList").innerHTML.indexOf("激光雷达 恢复") >= 0);
+
+  // S16 脱挂钩标定:左侧"业务与辅助"组件卡(同外网监测形态)/
+  //    进行中/完成弹窗(精确文案)/失败原因/前置提醒/日志入口
+  await apply(mkst({ components: [comp({ state: "RUNNING" })], vehicle: veh(),
+    calibration: { phase: "idle", current: { hook: [185, 240], pallet: [130, 240] } } }));
+  var ch = el("#components").innerHTML;
+  check("S16 卡片在业务与辅助栏(同组件卡形态)",
+        ch.indexOf("业务与辅助") >= 0 && ch.indexOf("脱挂钩标定") >= 0
+        && ch.indexOf('data-act="calibrate"') >= 0, ch.slice(0, 120));
+  check("S16 当前行程显示", ch.indexOf("销子 185-240 · 托盘 130-240") >= 0,
+        ch.slice(ch.indexOf("当前行程"), ch.indexOf("当前行程") + 40));
+  check("S16 未标定态+按钮可用", ch.indexOf("未标定") >= 0
+        && ch.indexOf('data-act="calibrate" data-name="calib" class="op-start">') >= 0, "");
+  await apply(mkst({ components: [comp({ state: "RUNNING" })], vehicle: veh(),
+    calibration: { phase: "running", elapsed_s: 5,
+                   current: { hook: [185, 240], pallet: [130, 240] } } }));
+  ch = el("#components").innerHTML;
+  check("S16 进行中:按钮禁用+计时", ch.indexOf("进行中 5s") >= 0
+        && ch.indexOf('data-act="calibrate" data-name="calib" class="op-start" disabled') >= 0,
+        "");
+  check("S16 进行中不弹窗", el("#calibModal").classList.contains("open") === false);
+  await apply(mkst({ components: [comp({ state: "RUNNING" })], vehicle: veh(),
+    calibration: { phase: "done", hook_range: [186, 249], pallet_range: [127, 249],
+                   current: { hook: [186, 249], pallet: [127, 249] } } }));
+  check("S16 完成弹窗精确文案",
+        el("#calibModal").classList.contains("open") === true
+        && el("#calibMsg").textContent ===
+          "标定已完成，当前行程为销子：186(min)-249(max)  托盘：127(min)-249(max)",
+        el("#calibMsg").textContent);
+  ch = el("#components").innerHTML;
+  check("S16 完成态绿(st-RUNNING 卡)", ch.indexOf("已完成") >= 0
+        && ch.indexOf("st-RUNNING") >= 0, "");
+  el("#calibClose").fire("click");
+  check("S16 关闭弹窗", el("#calibModal").classList.contains("open") === false);
+  await apply(mkst({ components: [comp({ state: "RUNNING" })], vehicle: veh(),
+    calibration: { phase: "running", elapsed_s: 8 } }));
+  await apply(mkst({ components: [comp({ state: "RUNNING" })], vehicle: veh(),
+    calibration: { phase: "failed", message: "refused:manual mode active" } }));
+  check("S16 失败弹窗带原因",
+        el("#calibModal").classList.contains("open") === true
+        && el("#calibMsg").textContent.indexOf("标定未完成：refused") === 0
+        && el("#calibMsg").className.indexOf("crit") >= 0,
+        el("#calibMsg").textContent);
+  ch = el("#components").innerHTML;
+  check("S16 失败态红闪+原因常显卡片",
+        ch.indexOf("st-CRASHED") >= 0 && ch.indexOf("refused:manual mode active") >= 0, "");
+  el("#calibClose").fire("click");
+  // 真配置注入路径:已有"业务与辅助"组时卡片进组且全页唯一(此前 S16
+  // 只测过 fallback 追加路径——review 指出的覆盖缺口)
+  await apply(mkst({ components: [
+    comp({ name: "pnc", group: 3, group_title: "规划控制", state: "RUNNING" }),
+    comp({ name: "fms", group: 4, group_title: "业务与辅助", state: "RUNNING" }),
+    comp({ name: "netcheck", title: "外网监测", group: 4,
+           group_title: "业务与辅助", optional: true, enabled: false }),
+  ], vehicle: veh(),
+     calibration: { phase: "idle", current: { hook: [185, 240], pallet: [130, 240] } } }));
+  ch = el("#components").innerHTML;
+  var nCalBtn = (ch.match(/data-act="calibrate"/g) || []).length;
+  var iGrp = ch.lastIndexOf("业务与辅助");
+  var iCal = ch.indexOf("脱挂钩标定");
+  var iNext = ch.indexOf("外网监测");
+  check("S16 真配置:恰一张标定卡且注入该组内",
+        nCalBtn === 1 && iGrp >= 0 && iCal > iGrp && iCal < iNext,
+        "btns=" + nCalBtn + " grp=" + iGrp + " cal=" + iCal + " net=" + iNext);
+  // 畸形 current(形状防御):不得抛错、行程回落 "--"
+  await apply(mkst({ components: [comp({ state: "RUNNING" })], vehicle: veh(),
+     calibration: { phase: "idle", current: { hook: null } } }));
+  ch = el("#components").innerHTML;
+  check("S16 畸形 current 不炸页面且回落 --",
+        ch.indexOf("当前行程 --") >= 0 && ch.indexOf("脱挂钩标定") >= 0,
+        "");
+  check("S16 畸形 current 后页面仍在线(非假离线)",
+        el("#overall").textContent.indexOf("无法连接") < 0,
+        el("#overall").textContent);
+
+  // 前置检查未过:经 #components 委托点击 → POST /api/calibrate 返回提醒 → 弹提醒窗
+  calibResponse = { ok: false,
+                    reminder: "一键标定前请停车挂N档，切换到自动驾驶模式",
+                    detail: "当前驾驶模式为手动" };
+  var calibBtn = { disabled: false, getAttribute: function(k){
+    return k === "data-act" ? "calibrate" : "calib"; } };
+  el("#components").fire("click", { target: { closest: function(){ return calibBtn; } } });
+  await sleep(80);
+  const nCal = fetchCalls.filter(c => c.url === "/api/calibrate").length;
+  check("S16 提醒请求已发", nCal >= 1, String(nCal));
+  check("S16 提醒弹窗(前置未过)",
+        el("#calibModal").classList.contains("open") === true
+        && el("#calibMsg").textContent.indexOf(
+              "一键标定前请停车挂N档，切换到自动驾驶模式") >= 0
+        && el("#calibMsg").className.indexOf("warn") >= 0,
+        el("#calibMsg").textContent);
+  el("#calibClose").fire("click");
+  // 日志入口:卡片上的"日志"按钮打开 canbus 组件日志
+  var logBtn2 = { disabled: false, getAttribute: function(k){
+    return k === "data-act" ? "log" : "canbus"; } };
+  el("#components").fire("click", { target: { closest: function(){ return logBtn2; } } });
+  check("S16 日志按钮打开 canbus 日志",
+        el("#logModal").classList.contains("open") === true
+        && el("#logTitle").textContent.indexOf("canbus") >= 0,
+        el("#logTitle").textContent);
+  el("#logClose").fire("click");
+  calibResponse = null;
 
   console.log("-".repeat(60));
   if (FAILS.length) {
