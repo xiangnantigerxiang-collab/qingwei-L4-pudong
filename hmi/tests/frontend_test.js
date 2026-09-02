@@ -91,6 +91,7 @@ function mkst(o) {
     sequence: { active: false, action: null, current_group: null,
                 failed: [], started_at: null, note: null },
     components: [],
+    recording_config: { enabled: false, ok: true, error: null },
     vehicle: { ros_available: false, reason: "无 ROS 环境" },
     system: { cpu_pct: 10, mem_pct: 30, mem_total_gb: 16, cpu_temp_c: 45,
               disk_pct: 40, disk_free_gb: 50, disk_warn: false, load1: 1, sys_uptime_s: 100 },
@@ -214,6 +215,45 @@ eval(script);
   check("S8 磁盘告警横幅", el("#banners").innerHTML.indexOf("磁盘") >= 0);
   check("S8 外部进程角标", el("#components").innerHTML.indexOf("外部") >= 0
         && el("#banners").innerHTML.indexOf("外部进程") >= 0);
+  check("S8 外部进程禁止重复启动/重启",
+        el("#components").innerHTML.indexOf(
+          'data-act="start" data-name="pnc" class="op-start" disabled') >= 0
+        && el("#components").innerHTML.indexOf(
+          'data-act="restart" data-name="pnc" disabled') >= 0);
+  check("S8 外部进程允许单卡停止清理",
+        el("#components").innerHTML.indexOf(
+          'data-act="stop" data-name="pnc" class="op-stop"') >= 0
+        && el("#components").innerHTML.indexOf(
+          'data-act="stop" data-name="pnc" class="op-stop" disabled') < 0);
+
+  await apply(mkst({ components: [comp({
+    name: "pnc", state: "STOPPING", foreign: true,
+  })] }));
+  check("S8 外部进程清理中禁止重复停止",
+        el("#components").innerHTML.indexOf(
+          'data-act="stop" data-name="pnc" class="op-stop" disabled') >= 0);
+
+  await apply(mkst({
+    components: [],
+    recording_config: {
+      enabled: true, ok: false, error: "两个录制分组 <topic> 清单不一致",
+    },
+  }));
+  check("S8 录制 topic 配置错误显示顶部告警",
+        el("#banners").innerHTML.indexOf("录制 topic 配置错误") >= 0
+        && el("#banners").innerHTML.indexOf("&lt;topic&gt;") >= 0
+        && el("#banners").innerHTML.indexOf("<topic>") < 0);
+
+  // S8b 手动组件停止时不影响总状态；启动失败后必须进入总告警
+  await apply(mkst({ components: [comp({
+    name: "perception_bags", title: "感知数据录制",
+    state: "CRASHED", enabled: false,
+  })] }));
+  check("S8b 手动组件显示手动启动标记",
+        el("#components").innerHTML.indexOf("手动启动") >= 0);
+  check("S8b 手动组件故障进入顶部总状态",
+        el("#overall").textContent.indexOf("1 个组件故障") >= 0,
+        el("#overall").textContent);
 
   // S9 交互回调 URL
   const n0 = fetchCalls.length;

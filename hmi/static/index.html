@@ -434,7 +434,9 @@ function overallState(){
   }
   var crashed = 0, degraded = 0, running = 0, other = 0;
   for (i = 0; i < cs.length; i++){
-    if (!cs[i].enabled) continue;
+    /* 手动组件停止时不影响系统链路；一旦手动启动后故障/降级，则必须
+       进入顶部总状态，避免录制失败只在卡片内悄悄显示。 */
+    if (!cs[i].enabled && cs[i].state === "STOPPED") continue;
     if (cs[i].state === "CRASHED") crashed++;
     else if (cs[i].state === "DEGRADED") degraded++;
     else if (cs[i].state === "RUNNING") running++;
@@ -506,6 +508,11 @@ function renderBanners(){
     var cls = sq.failed && sq.failed.length ? "crit" : "info";
     bs.push('<div class="banner ' + cls + '">' + (sq.failed && sq.failed.length ? "✖ " : "ℹ ") +
             esc(sq.note) + "</div>");
+  }
+  var rc = ST.recording_config;
+  if (rc && rc.enabled && rc.ok === false){
+    bs.push('<div class="banner crit">✖ 录制 topic 配置错误：' +
+            esc(rc.error || "未知错误") + '</div>');
   }
   var i, cs = ST.components;
   for (i = 0; i < cs.length; i++){
@@ -590,17 +597,23 @@ function renderComponents(){
     for (j = 0; j < list.length; j++){
       c = list[j];
       var st = c.state;
-      var canStart = !busy && (st === "STOPPED" || st === "CRASHED");
-      var canStop  = !busy && (st === "STARTING" || st === "RUNNING" ||
-                               st === "DEGRADED" || st === "CRASHED");
-      var canRestart = !busy && (st !== "STARTING" && st !== "STOPPING");
+      var canStart = !busy && !c.foreign &&
+                     (st === "STOPPED" || st === "CRASHED");
+      /* foreign 组件在后端表现为 STOPPED，但“停止”正是清理它的唯一
+         单卡恢复路径，因此必须保持可用。 */
+      var canStop  = !busy && st !== "STOPPING" &&
+                     (c.foreign || st === "STARTING" ||
+                      st === "RUNNING" || st === "DEGRADED" ||
+                      st === "CRASHED");
+      var canRestart = !busy && !c.foreign &&
+                       (st !== "STARTING" && st !== "STOPPING");
       html.push(
         '<div class="card st-' + st + '">' +
           '<div class="crow"><span class="dot"></span>' +
             '<span class="ctitle">' + esc(c.title) + "</span>" +
             (c.foreign ? '<span class="badge">外部</span>' : "") +
             (c.stop_failed ? '<span class="badge">停止失败</span>' : "") +
-            (!c.enabled ? '<span class="badge off">未启用</span>' : "") +
+            (!c.enabled ? '<span class="badge off">手动启动</span>' : "") +
           "</div>" +
           '<div class="cstate">' + (STATE_TEXT[st] || st) +
             (c.uptime_s != null ? " · " + fmtUptime(c.uptime_s) : "") + "</div>" +

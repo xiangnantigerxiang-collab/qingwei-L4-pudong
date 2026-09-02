@@ -247,11 +247,12 @@ def t_f_server_kill_foreign():
     f = comp("flapper")
     check("重启后 foreign=True 标记", f["foreign"] is True, str(f["foreign"]))
     check("状态仍为 STOPPED(未收养)", f["state"] == "STOPPED")
-    http("POST", "/api/stop", {"confirm": "STOP"})
-    wait_for("全部停止编排完成",
-             lambda: state()["sequence"]["active"] is False, 30)
+    code, _ = http("POST", "/api/components/flapper/stop")
+    check("外部组件单卡停止受理", code == 200, str(code))
+    wait_for("单卡清理完成",
+             lambda: comp("flapper")["foreign"] is False, 30)
     time.sleep(2)
-    check("全部停止清掉了外部进程(foreign 清理)",
+    check("单卡停止清掉了外部进程(foreign 清理)",
           not pgrep("sleep 900"))
     check("foreign 标记已清除", comp("flapper")["foreign"] is False)
 

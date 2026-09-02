@@ -35,6 +35,7 @@ from pathlib import Path
 from urllib.parse import urlparse, parse_qs, unquote
 
 import process_manager
+import record_rosbag
 from process_manager import ProcessManager
 
 # rospy 可用性探测(独立于 RosBridge 实例化;本机无 ROS 时为 False)
@@ -464,6 +465,40 @@ class CalibrationManager(object):
             return out
 
 
+# ---------------------------------------------------------------- 录制配置监控
+
+class RecordingConfigMonitor(object):
+    """按文件时间戳缓存 rosbag topic 全量校验结果，供 HMI 告警显示。"""
+
+    def __init__(self, enabled, config_path=None):
+        self.enabled = bool(enabled)
+        self.config_path = Path(config_path or record_rosbag.TOPIC_CONFIG)
+        self._lk = threading.Lock()
+        self._stamp = object()
+        self._status = {"enabled": self.enabled, "ok": True, "error": None}
+
+    def snapshot(self):
+        if not self.enabled:
+            return dict(self._status)
+        with self._lk:
+            try:
+                stat = self.config_path.stat()
+                stamp = (stat.st_mtime_ns, stat.st_size)
+            except OSError as exc:
+                stamp = (None, str(exc))
+            if stamp == self._stamp:
+                return dict(self._status)
+
+            try:
+                record_rosbag.read_topic_groups(self.config_path)
+                status = {"enabled": True, "ok": True, "error": None}
+            except Exception as exc:
+                status = {"enabled": True, "ok": False, "error": str(exc)}
+            self._stamp = stamp
+            self._status = status
+            return dict(status)
+
+
 # ---------------------------------------------------------------- HTTP 服务
 
 class HmiApp(object):
@@ -473,6 +508,9 @@ class HmiApp(object):
         self.names = names
         self.started_at = time.time()
         self.sm = SystemMonitor()
+        self.recording_config = RecordingConfigMonitor(
+            {"perception_bags", "pnc_bags"}.issubset(names)
+        )
 
         # ROS 可用则用 RosBridge 做健康判定,否则退化为仅进程存活
         self.bridge = None
@@ -512,6 +550,7 @@ class HmiApp(object):
                        "msg_import_errors": errs},
             "sequence": st["sequence"],
             "components": st["components"],
+            "recording_config": self.recording_config.snapshot(),
             "vehicle": vehicle,
             "calibration": self.calib.status(),
             "system": self.sm.snapshot(),
@@ -544,6 +583,11 @@ class HmiApp(object):
             return 409, {"ok": False, "error": "一键编排进行中,请稍候"}
         ok, st = self.pm.start_component(name)
         if not ok:
+            if st == "FOREIGN":
+                return 409, {
+                    "ok": False,
+                    "error": "检测到外部进程，请先点击停止完成清理",
+                }
             return 409, {"ok": False, "error": "当前状态 %s 不允许启动" % st}
         return 200, {"ok": True, "state": st}
 
@@ -556,7 +600,11 @@ class HmiApp(object):
         with r._lk:
             if r.state == "STOPPED":
                 if r.foreign:
-                    threading.Thread(target=r.reap_foreign, daemon=True).start()
+                    threading.Thread(
+                        target=self.pm.stop_component,
+                        args=(name,),
+                        daemon=True,
+                    ).start()
                     return 200, {"ok": True, "note": "清理外部进程中"}
                 return 200, {"ok": True, "note": "already stopped"}
             if r.state == "STOPPING":
@@ -572,6 +620,11 @@ class HmiApp(object):
         if r is None:
             return 404, {"ok": False, "error": "未知组件"}
         with r._lk:
+            if r.foreign:
+                return 409, {
+                    "ok": False,
+                    "error": "检测到外部进程，请先点击停止完成清理",
+                }
             if r.state in ("STARTING", "STOPPING"):
                 return 409, {"ok": False, "error": "当前状态 %s 不允许重启" % r.state}
         threading.Thread(target=self.pm.restart_component, args=(name,),

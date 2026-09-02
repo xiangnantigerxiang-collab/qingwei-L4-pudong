@@ -120,7 +120,9 @@ class ComponentRunner(object):
     def do_start(self):
         """拉起进程(快速返回,Popen 本身不等待子进程)。仅 STOPPED/CRASHED 受理。"""
         with self._lk:
-            if self.state not in ("STOPPED", "CRASHED"):
+            # HMI 重启后发现的外部进程没有可控进程句柄；必须先由操作员
+            # 执行“停止”清理，禁止叠加启动第二份同名组件。
+            if self.foreign or self.state not in ("STOPPED", "CRASHED"):
                 return False
             self._open_log()
             argv = self._build_argv()
@@ -210,6 +212,8 @@ class ComponentRunner(object):
         with self._lk:
             if not self.foreign or self.state != "STOPPED":
                 return False
+            # 暴露真实的异步清理状态，前端会据此禁用重复点击。
+            self.state = "STOPPING"
         stop_cmd = self.spec.get("stop_cmd")
         if stop_cmd:
             try:
@@ -221,11 +225,20 @@ class ComponentRunner(object):
                 pass
         pat = self.spec.get("stop_pat")
         if pat:
-            subprocess.run(["pkill", "-f", pat],
-                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            try:
+                subprocess.run(
+                    ["pkill", "-f", pat],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+            except Exception:
+                # 清理失败由下面的 pgrep 复查统一反映，状态仍必须恢复为
+                # STOPPED，避免永远卡在 STOPPING。
+                pass
         time.sleep(0.3)
         still = bool(pat) and _pgrep(pat)
         with self._lk:
+            self.state = "STOPPED"
             self.foreign = bool(still)
             self.stop_failed = bool(still)
             if still:
@@ -429,6 +442,9 @@ class ProcessManager(object):
         r = self.runners.get(name)
         if r is None:
             return False, "未知组件"
+        with r._lk:
+            if r.foreign:
+                return False, "FOREIGN"
         ok = r.do_start()
         with r._lk:
             return ok, r.state
@@ -438,7 +454,11 @@ class ProcessManager(object):
         r = self.runners.get(name)
         if r is None:
             return False, "未知组件"
-        ok = r.stop()
+        with r._lk:
+            foreign = r.foreign and r.state == "STOPPED"
+        # 统一单组件停止语义：不论调用者来自 HTTP、测试还是后续内部逻辑，
+        # foreign 组件都必须走外部进程清理，而不是 STOPPED 快速返回。
+        ok = r.reap_foreign() if foreign else r.stop()
         with r._lk:
             return ok, r.state
 
@@ -448,6 +468,8 @@ class ProcessManager(object):
         if r is None:
             return False, "未知组件"
         with r._lk:
+            if r.foreign:
+                return False, "FOREIGN"
             if r.state in ("STARTING", "STOPPING"):
                 return False, r.state
         r.stop()
@@ -482,6 +504,16 @@ class ProcessManager(object):
                     self._seq["current_group"] = g
                 comps = [r for r in self.runners.values()
                          if r.spec["group"] == g and r.spec.get("enabled", True)]
+                foreign = [r for r in comps if r.foreign]
+                if foreign:
+                    names = [r.name for r in foreign]
+                    with self._seq_lk:
+                        self._seq.update(
+                            active=False,
+                            failed=names,
+                            note="启动中止:组%d %s 存在外部进程，请先停止清理"
+                                 % (g, ",".join(names)))
+                    return
                 pending = [r for r in comps
                            if r.state in ("STOPPED", "CRASHED")]
                 for r in pending:

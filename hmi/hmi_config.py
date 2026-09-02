@@ -25,7 +25,7 @@ HMI 组件配置(车载正式配置)
   stop_cmd      停止前的自定义清理命令(shell 执行,用于杀 root 子进程)
   stop_pat      进程特征串(pgrep -f 用):停止后残留检测 + HMI 启动时外部进程识别
   optional      一键启动中失败不阻断后续组
-  enabled       默认 False 的组件不参与一键启动,界面灰显,可单独启动
+  enabled       默认 False 的组件不参与一键启动,界面标“手动启动”,可单独启动
 
 启动分组依据(start_l4.sh 原始顺序 + 依赖修正):
   原脚本把 lidar_perception 放在第 1 位、auto_couple 在第 7 位,前者订阅后者发布的
@@ -147,6 +147,26 @@ CONFIG = {
             ],
             "stop_pat": "start_auto_couple.launch",
         },
+        {
+            "name": "perception_bags",
+            "title": "感知数据录制",
+            "group": 2,
+            "optional": True,
+            # 录制是按需人工操作，不参与一键启动。每次手动启动都会重新读取
+            # record_rostopic_list.md 中“感知数据录制”分组的 0/1 开关。
+            "enabled": False,
+            "cmd": ["python3", "$ROOT/hmi/record_rosbag.py", "perception"],
+            "cwd": "$ROOT",
+            "setup": ["$ROOT/devel/setup.bash"],
+            "health": [],
+            "max_log_mb": 5,
+            # 启动器参数覆盖 exec 前窗口；exec 后只匹配 rosbag record 的
+            # 完整命令结构和本组件输出目录，避免误杀 scp/rsync/rosbag info。
+            "stop_pat": (
+                "record_rosbag[.]py perception( |$)|"
+                "/rosbag record -O [^ ]*/data/bags/perception/"
+            ),
+        },
         # ---------- 组 3:规划控制 ----------
         {
             "name": "lidar_perception",
@@ -172,6 +192,25 @@ CONFIG = {
             ],
             "start_timeout": 60,
             "stop_pat": "launch/control.launch",
+        },
+        {
+            "name": "pnc_bags",
+            "title": "规控数据录制",
+            "group": 3,
+            "optional": True,
+            # 录制是按需人工操作，不参与一键启动。每次手动启动都会重新读取
+            # record_rostopic_list.md 中“规控数据录制”分组的 0/1 开关。
+            "enabled": False,
+            "cmd": ["python3", "$ROOT/hmi/record_rosbag.py", "pnc"],
+            "cwd": "$ROOT",
+            "setup": ["$ROOT/devel/setup.bash"],
+            "health": [],
+            "max_log_mb": 5,
+            # 同上：同时匹配 Python 启动阶段和最终 rosbag record 进程。
+            "stop_pat": (
+                "record_rosbag[.]py pnc( |$)|"
+                "/rosbag record -O [^ ]*/data/bags/pnc/"
+            ),
         },
         # ---------- 组 4:业务与辅助 ----------
         {
@@ -199,6 +238,8 @@ CONFIG = {
             "health": [],   # 纯订阅落盘,无发布话题,仅进程存活监控
             "start_timeout": 30,
             "stop_pat": "data_logger.launch",
+            # 行车记录只允许按需手动启动，不参与一键启动。
+            "enabled": False,
         },
         {
             "name": "monitor",
@@ -227,21 +268,6 @@ CONFIG = {
             "setup": ["$ROOT/devel/setup.bash"],
             "health": [],
             "stop_pat": "netcheck.sh",
-        },
-        {
-            "name": "bags",
-            "title": "数据录制",
-            "group": 4,
-            "optional": True,
-            "enabled": False,
-            # 每次启动都读取 record_rostopic_list.md，按 0/1 选择 topic；
-            # 输出到工程根 data/bags/，目录超过 2 GiB 时先清理旧 rosbag。
-            "cmd": ["python3", "$ROOT/hmi/record_rosbag.py"],
-            "cwd": "$ROOT",
-            "setup": ["$ROOT/devel/setup.bash"],
-            "health": [],
-            "max_log_mb": 5,
-            "stop_pat": "rosbag record",
         },
     ],
 }
