@@ -23,7 +23,8 @@ else()
     set(THIRDPARTY_DIR ${CMAKE_CURRENT_SOURCE_DIR}/3rd-party)
 endif()
 
-# OSQP：路径规划 QP 平滑（qp_spline_corridor / 参考线走廊）在用，必须链接
+# OSQP：已编译的 qp_spline_corridor.cpp 与参考线走廊生成（休眠代码，运行期未被
+#        调用）引用其符号，链接必须保留——与下方 path_plan 段"休眠"口径一致
 # proj4：仅 trans_data.cpp 包含其头文件，无符号调用，不链接
 # qpoases：头文件被 spline_2d_solver.h（经 reference_line 头传递）包含，编译需要；
 #          但已编译代码不实例化其求解器，无符号引用，故不链接库
@@ -120,24 +121,27 @@ target_link_libraries(spline
 )
 
 # ============================================================
-# 任务规划节点：/cloud/task/task_info → task_plan_msg
+# 任务规划节点：/cloud/task/task_info 等 9 订阅 → /task_plan_msg、
+# /cloud/task/task_status 及 3 个 v2n 回执话题（共 5 发布）
+# ROS/业务解耦（2026-08-30，同 canbus_core 模式）：
+# task_plan_core 零 ROS 业务库 + task_plan_node 薄适配
 # ============================================================
-add_library(task_plan_comply
-  src/robot_task_plan/task_plan_comply.cpp
+add_library(task_plan_core
+  src/robot_task_plan/task_plan_core.cpp
+  src/robot_task_plan/frame_transform.cc
 )
-target_link_libraries(task_plan_comply
+target_link_libraries(task_plan_core
   pubalgor
+  yaml-cpp
   ${catkin_LIBRARIES}
 )
 
 add_executable(task_plan_node
   src/robot_task_plan/task_plan_node.cpp
-  src/robot_task_plan/frame_transform.cc
 )
 target_link_libraries(task_plan_node
   ${catkin_LIBRARIES}
-  task_plan_comply
-  yaml-cpp
+  task_plan_core
 )
 
 # ============================================================
@@ -146,6 +150,8 @@ target_link_libraries(task_plan_node
 # ============================================================
 add_library(path_plan_comply
   # 主链
+  # path_plan_comply.cpp 已原位包含五个 path_plan_*.inc 职责分片；
+  # .inc 不是独立翻译单元，不要在此重复列出。
   src/robot_path_plan/path_plan_comply.cpp
   src/robot_path_plan/adaptiveHook.cpp
   src/robot_path_plan/collisioncheck/collision_detection.cpp
@@ -280,7 +286,7 @@ set(ROBOT_MESSAGE_DEPS
   ${catkin_EXPORTED_TARGETS}
 )
 foreach(_target
-    task_plan_comply
+    task_plan_core
     path_plan_comply
     control_comply
     can_comm_comply

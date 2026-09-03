@@ -1,231 +1,237 @@
-// ===========================================================================
-// canbus_node - ROS adapter for CanbusCore.
-//
-// Only ROS specific glue lives in this file: topic subscribe/publish,
-// parameter server access, timers and clocks. Every piece of protocol or
-// safety logic is in canbus_core.cpp, which knows nothing about ROS.
-//
-// Wiring (unchanged against the previous implementation; all names are
-// absolute so a namespace in the launch file can never silently remap
-// them - relative names like "can_comm_msg" used to resolve to the same
-// globals only because the node ran without a namespace):
-//   subscribe /can_recv        (socketcan_bridge -> vehicle feedback frames)
-//   subscribe /can_comm_msg    (pnc control command, 20 Hz)
-//   subscribe /path_plan_status(planning heartbeat)
-//   subscribe /task_plan_msg   (current task type)
-//   publish   /can_msg         (parsed vehicle state, after each frame)
-//   publish   /can_send        (outgoing frames -> socketcan_bridge)
-//   param     in:  /planning/alive, /planning/sensorstate,
-//                 /robot/planning/netcheck, /alarmcmd, /canbus/light,
-//                 /canbus/hookstate, ~config_file (private)
-//   param     out: /planning/alive, /canbus/hookstate, /canbus/time
-//
-// Timers: 5 Hz safety check + 5 Hz control sender, main loop 50 Hz (clock).
-// All callbacks run in the single threaded spinner, no locks needed.
-// ===========================================================================
-#include <ctime>
+#include "canbus_comply.h"
+#include <ros/package.h>
 
-#include <ros/ros.h>
-#include <can_msgs/Frame.h>
+ros::Publisher can_msg_pub;
+ros::Publisher can_send_pub;
 
-#include "canbus/can_comm_msg.h"
-#include "canbus/can_msg.h"
-#include "robot/path_plan_status.h"
-#include "robot/task_plan_msg.h"
+CanbusComply canbusComply;
 
-#include "canbus_core.h"
+int hook_position_min = 182;
+int hook_position_max = 254;
+int pallet_position_min = 213;
+int pallet_position_max = 254;
 
-static CanbusCore g_core;
-static ros::Publisher g_state_pub;   // "can_msg": parsed vehicle state
-static ros::Publisher g_frame_pub;   // "/can_send": frames to the CAN bus
-
-// ---- core state -> ROS message, plain 1:1 field copy ----
-static void StateToMsg(const VehicleState &s, canbus::can_msg *m) {
-    m->throttlePercent = s.throttlePercent;
-    m->brakePercent = s.brakePercent;
-    m->wheelAngle = s.wheelAngle;
-    m->vehicleSpeed = s.vehicleSpeed;
-    m->curGear = s.curGear;
-    m->hookState = s.hookState;
-    m->linkPallet = s.linkPallet;
-    m->controlPanelState = s.controlPanelState;
-    m->eabPanelState = s.eabPanelState;
-    m->emergencyStop = s.emergencyStop;
-    m->batteryPower = s.batteryPower;
-    m->hookButton = s.hookButton;
-    m->linkButton = s.linkButton;
-    m->faultCode = s.faultCode;
-    m->epsCMD = s.epsCMD;
-    m->wheelAngleCMD = s.wheelAngleCMD;
-    m->epsMode = s.epsMode;
-    m->epsCurrent = s.epsCurrent;
-    m->epsCentring = s.epsCentring;
-    m->epsERR1 = s.epsErr1;
-    m->epsERR2 = s.epsErr2;
-    m->rawcommand = s.rawcommand;
-    m->rawfeedback = s.rawfeedback;
-    /* can_msg.msg 无 desireSpeed/desireAcc 字段(它们属于 can_comm_msg
-     * 控制指令消息)——曾误加两行赋值致车端编译失败,08-28 车端实测发现 */
-}
-
-static void PublishState() {
-    canbus::can_msg m;
-    StateToMsg(g_core.mState, &m);
-    g_state_pub.publish(m);
-}
-
-// ---- core event -> ROS call, in exactly the order the core emits them ----
-static void CoreEventToRos(const CoreEvent &ev) {
-    switch (ev.type) {
-    case CORE_FRAME: {
-        can_msgs::Frame f;
-        f.id = ev.frame.id;
-        f.is_rtr = 0;
-        f.is_extended = 0;
-        f.is_error = 0;
-        f.dlc = 8;
-        for (int i = 0; i < 8; i++)
-            f.data[i] = ev.frame.data[i];
-        g_frame_pub.publish(f);
-        break;
+//load 4 position limit keys from config.cfg; a pair falls back to the
+//built-in defaults when missing or degenerate (0<=min<max<=255, window>=20)
+static int LoadPositionConfig(const char *path)
+{
+    FILE *fp = fopen(path, "r");
+    if(fp == NULL) {
+        printf("config.cfg not found at %s, using built-in defaults\n", path);
+        return -1;
     }
-    case CORE_PARAM:
-        ros::param::set(ev.paramKey, ev.paramValue);
-        break;
-    case CORE_PUBLISH_STATE:
-        PublishState();
-        break;
-    case CORE_LOG_ERROR:
-        ROS_ERROR("%s", ev.text.c_str());
-        break;
-    case CORE_LOG_INFO:
-        ROS_INFO("%s", ev.text.c_str());
-        break;
-    default:
-        break;
+
+    const char *keys[4] = {"hook_position_min", "hook_position_max",
+                           "pallet_position_min", "pallet_position_max"};
+    int vals[4] = {hook_position_min, hook_position_max,
+                   pallet_position_min, pallet_position_max};
+    int seen[4] = {0, 0, 0, 0};
+
+    char line[256];
+    while(fgets(line, sizeof(line), fp)) {
+        char *p = line;
+        while(*p == ' ' || *p == '\t') p++;
+        for(int i = 0; i < 4; i++) {
+            int len = strlen(keys[i]);
+            if(strncmp(p, keys[i], len) != 0) continue;
+            char *eq = p + len;
+            while(*eq == ' ' || *eq == '\t') eq++;
+            if(*eq != '=') continue;
+            vals[i] = atoi(eq + 1);
+            seen[i] = 1;
+        }
     }
+    fclose(fp);
+
+    int rejects = 0;
+    if(seen[0] && seen[1] && vals[0] >= 0 && vals[1] > vals[0] &&
+       vals[1] <= 255 && vals[1] - vals[0] >= 20) {
+        hook_position_min = vals[0];
+        hook_position_max = vals[1];
+    } else {
+        printf("config.cfg: hook pair invalid or missing, using defaults %d/%d\n",
+               hook_position_min, hook_position_max);
+        rejects++;
+    }
+    if(seen[2] && seen[3] && vals[2] >= 0 && vals[3] > vals[2] &&
+       vals[3] <= 255 && vals[3] - vals[2] >= 20) {
+        pallet_position_min = vals[2];
+        pallet_position_max = vals[3];
+    } else {
+        printf("config.cfg: pallet pair invalid or missing, using defaults %d/%d\n",
+               pallet_position_min, pallet_position_max);
+        rejects++;
+    }
+    return rejects;
 }
 
-// ---- subscriptions --------------------------------------------------------
-static void CanFrameCallback(const can_msgs::Frame &msg) {
-    uint8_t d[8];
-    for (int i = 0; i < 8; i++)
-        d[i] = msg.data[i];
-
-    g_core.OnCanFrame(msg.id, d, CoreEventToRos);
-    // publish the parsed state right after each feedback frame
-    PublishState();
-    g_core.MarkCanRx();
+void CanbusCallBack(const can_msgs::Frame &msg)
+{
+    canbusComply.RecvCanData(msg);
 }
 
-static void PlanStatusCallback(const robot::path_plan_status &msg) {
-    (void)msg;
-    g_core.OnPlanningHeartbeat();
+void T1Callback(const ros::TimerEvent &real)
+{
+    int sensorstate = 0;
+    ros::param::get("/planning/sensorstate", sensorstate);
+
+    int network_down = 0;
+    ros::param::get("/robot/planning/netcheck", network_down);
+
+    int planning_alive = 0;
+    ros::param::get("/planning/alive", planning_alive);
+
+    canbusComply.EmergencyStop = 0;
+    if(sensorstate != 0) canbusComply.EmergencyStop = 1;  //nonzero = sensor fault
+    if(network_down != 0) canbusComply.EmergencyStop = 1; //nonzero = network down
+    if(!planning_alive) canbusComply.EmergencyStop = 1;
+
+    double dtm = canbusComply.sysTime.now - canbusComply.sysTime.msgCanComm;
+    if(dtm > 1.0) canbusComply.EmergencyStop = 1;
+
+    uint8_t can[8];
+    can[0] = 0x0E;
+    can[1] = 0x00;
+    can[2] = 0x05;
+    can[3] = 0x00;
+    can[4] = 0x00;
+    can[5] = 0x00;
+    can[6] = 0x00;
+    can[7] = 0x00;
+
+    if ((sensorstate & 0x02) == 2) {
+        //can[0] = 0x06; // lidar
+        //canbusComply.SendVehicleControlCmd(0x201, can);
+    }
+
+    if ((sensorstate & 0x04) == 4) {
+        //can[0] = 0x08; // camera
+        //canbusComply.SendVehicleControlCmd(0x201, can);
+    }
+
+    if ((sensorstate & 0x08) == 8) {
+        //can[0] = 0x07; // software dead
+        //can[0] = 0x04; // gnss
+	//can[0] = 0x01; // ready
+        //canbusComply.SendVehicleControlCmd(0x201, can);
+    }
+
+    int fencealarm = 0;
+    ros::param::get("alarmcmd", fencealarm);
+    if (fencealarm == 1) {
+        //can[0] = 0x0D; // fence alarm
+        //canbusComply.SendVehicleControlCmd(0x201, can);
+        //ros::param::set("alarmcmd", 0);
+    }
+
+    //hook status check
+    static int hook_max_count = 0;
+    static int hook_min_count = 0;
+    static int pallet_max_count = 0;
+    static int pallet_min_count = 0;
+    static int hookmid = 0;
+    static int hookmid_count = 0;
+
+    int hookpos = canbusComply.mCanMsg.hookPos;
+    int palletpos = canbusComply.mCanMsg.palletPos;
+    int hookmax = hook_position_max;
+    int hookmin = hook_position_min;
+    int palletmax = pallet_position_max;
+    int palletmin = pallet_position_min;
+    
+    canbusComply.mCanMsg.hookStatus = 0;
+    canbusComply.mCanMsg.palletStatus = 0;
+
+    if(abs(hookpos-hookmin) < 5) hook_min_count += 1;
+    else hook_min_count = 0;
+
+    if(hook_min_count > 10) {
+        canbusComply.mCanMsg.hookStatus = 4;//up end
+        if(hook_min_count > 100) hook_min_count = 100;
+    }
+
+    if(abs(hookpos-hookmax) < 5) hook_max_count += 1;
+    else hook_max_count = 0;
+
+    if(hook_max_count > 10) {
+        canbusComply.mCanMsg.hookStatus = 3;//down end
+        if(hook_max_count > 100) hook_max_count = 100;
+    }
+
+    if(abs(palletpos-palletmin) < 5) pallet_min_count += 1;
+    else pallet_min_count = 0;
+
+    if(pallet_min_count > 10) {
+        canbusComply.mCanMsg.palletStatus = 4;//up end
+        if(pallet_min_count > 100) pallet_min_count = 100;
+    }
+
+    if(abs(palletpos-palletmax) < 5) pallet_max_count += 1;
+    else pallet_max_count = 0;
+
+    if(pallet_max_count > 10) {
+        canbusComply.mCanMsg.palletStatus = 3;//down end
+        if(pallet_max_count > 100) pallet_max_count = 100;
+    }
+
+    if(hookpos >= hookmin + 5 && hookpos <= hookmax - 5) {
+        if(abs(hookpos-hookmid) > 3) {
+            hookmid = hookpos;
+            hookmid_count = 0;
+        }else hookmid_count += 1;
+
+	if(hookmid_count > 10) {
+            canbusComply.mCanMsg.hookStatus = 1;//block
+            if(hookmid_count > 100) hookmid_count = 100;
+        }
+    }else hookmid_count = 0;
 }
 
-static void ControlCmdCallback(const canbus::can_comm_msg &msg) {
-    ControlCommand c;
-    c.gear = msg.desireGear;
-    c.throttle = msg.throttlePercent;
-    c.brake = msg.brakePercent;
-    c.wheelAngle = msg.wheelAngle;
-    c.hookCmd = msg.hookCmd;
-    g_core.OnControlCommand(c);
+void T2Callback(const ros::TimerEvent &real)
+{
+    canbusComply.VehicleComm();
+    //canbusComply.checkCamera();
+    can_msg_pub.publish(canbusComply.mCanMsg);
 }
 
-static void TaskMsgCallback(const robot::task_plan_msg &msg) {
-    g_core.OnTaskType(msg.taskType);
+void CanCommCallBack(const canbus::can_comm_msg &msg)
+{
+    canbusComply.can_comm_cmd = msg;
+    canbusComply.sysTime.msgCanComm = canbusComply.sysTime.now;
 }
 
-// ---- timers, 5 Hz each -----------------------------------------------------
-static void SafetyCheckTimerCallback(const ros::TimerEvent &ev) {
-    (void)ev;
-    SafetyInputs in;
-    ros::param::get("/planning/sensorstate", in.sensorState);
-    ros::param::get("/robot/planning/netcheck", in.networkDown);
-    ros::param::get("/planning/alive", in.planningAlive);
-    ros::param::get("/alarmcmd", in.fenceAlarm);
-    ros::param::get("/canbus/light", in.lightCmd);
-    g_core.RunSafetyCheck(in, CoreEventToRos);
-}
-
-// Local clock hour, needed for the automatic head lamp.
-static int LocalHourNow() {
-    ros::Time t = ros::Time::now();
-    std::time_t sec = t.sec;
-    std::tm *local = std::localtime(&sec);
-    return local->tm_hour;
-}
-
-static void ControlSendTimerCallback(const ros::TimerEvent &ev) {
-    (void)ev;
-    ControlInputs in;
-    in.hourOfDay = LocalHourNow();
-    // "/canbus/hookstate" and "planning/alive" may have been written by the
-    // safety check earlier in this same tick - reads happen after it ran,
-    // matching the previous single-process behaviour
-    ros::param::get("/planning/alive", in.planningAlive);
-    ros::param::get("/canbus/hookstate", in.hookState);
-    ros::param::get("/planning/sensorstate", in.sensorState);
-    ros::param::get("/alarmcmd", in.fenceAlarm);
-    ros::param::get("/canbus/light", in.lightCmd);
-    g_core.RunControlCycle(in, CoreEventToRos);
-    g_core.RunCameraPoll(CoreEventToRos);
-}
-
-int main(int argc, char **argv) {
+int main(int argc, char **argv)
+{
     ros::init(argc, argv, "can_node");
     ros::NodeHandle nh;
 
-    // Load the hook/pallet position limits once at startup. Path can be
-    // overridden with the private param ~config_file (launch: <param
-    // name="config_file" .../> inside the <node> block). Any problem only
-    // warns: the core then keeps the built-in defaults (equal to the
-    // previously hard coded thresholds), the node must always come up.
-    {
-        std::string cfg_path =
-            "/home/nvidia/qingwei-L4-No2/src/canbus/config.cfg";
-        ros::NodeHandle pnh("~");
-        pnh.param<std::string>("config_file", cfg_path, cfg_path);
-        int warns = g_core.LoadPositionConfig(cfg_path.c_str());
-        if (warns < 0)
-            ROS_WARN("config.cfg not loaded (%s), using built-in defaults",
-                     cfg_path.c_str());
-        else if (warns > 0)
-            ROS_WARN("config.cfg loaded with %d warning line(s), "
-                     "see console output", warns);
-        else
-            ROS_INFO("config.cfg loaded: hook [%d..%d], pallet [%d..%d]",
-                     g_core.mHookPosMin, g_core.mHookPosMax,
-                     g_core.mPalletPosMin, g_core.mPalletPosMax);
-    }
+    //load position limits from config.cfg, then publish to rosparam for pnc
+    std::string cfgFile = ros::package::getPath("canbus") + "/config.cfg";
+    LoadPositionConfig(cfgFile.c_str());
 
-    ros::Subscriber comm_sub = nh.subscribe(
-        "/can_comm_msg", 1, ControlCmdCallback,
+    ros::param::set("/canbus/hookposition/min", hook_position_min);
+    ros::param::set("/canbus/hookposition/max", hook_position_max);
+    ros::param::set("/canbus/palletposition/min", pallet_position_min);
+    ros::param::set("/canbus/palletposition/max", pallet_position_max);
+
+    ros::Subscriber can_comm_sub = nh.subscribe(
+        "/can_comm_msg", 1, CanCommCallBack,
         ros::TransportHints().tcpNoDelay());
-    ros::Subscriber can_sub = nh.subscribe(
-        "/can_recv", 100, CanFrameCallback,
+    ros::Subscriber can_msg_sub = nh.subscribe(
+        "/can_recv", 100, CanbusCallBack,
         ros::TransportHints().tcpNoDelay());
-    ros::Subscriber plan_sub = nh.subscribe(
-        "/path_plan_status", 1, PlanStatusCallback,
-        ros::TransportHints().tcpNoDelay());
-    ros::Subscriber task_sub = nh.subscribe(
-        "/task_plan_msg", 1, TaskMsgCallback);
 
-    g_state_pub = nh.advertise<canbus::can_msg>("/can_msg", 1);
-    g_frame_pub = nh.advertise<can_msgs::Frame>("/can_send", 1);
+    can_msg_pub = nh.advertise<canbus::can_msg>("/can_msg", 1);
+    can_send_pub = nh.advertise<can_msgs::Frame>("/can_send", 1);
 
-    ros::Rate loop_rate(50);
-    ros::Timer safety_timer =
-        nh.createTimer(ros::Duration(0.2), SafetyCheckTimerCallback);
-    ros::Timer control_timer =
-        nh.createTimer(ros::Duration(0.2), ControlSendTimerCallback);
+    ros::Timer T1 = nh.createTimer(ros::Duration(0.1), T1Callback);
+    ros::Timer T2 = nh.createTimer(ros::Duration(0.05), T2Callback);
 
-    g_core.mInitSec = ros::Time::now().toSec();
-    g_core.mNowSec = g_core.mInitSec;
+    ros::Rate loop_rate(100);
 
     while (ros::ok()) {
-        g_core.mNowSec = ros::Time::now().toSec();
+        canbusComply.sysTime.now = ros::Time::now().toSec();
+
         loop_rate.sleep();
         ros::spinOnce();
     }

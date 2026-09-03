@@ -16,7 +16,7 @@
   <build_depend>visualization_msgs</build_depend>
   <build_depend>tf</build_depend>
   <build_depend>jsk_recognition_msgs</build_depend>
-  <!-- yaml-cpp：task_plan/path_plan 两目标直接包含 yaml-cpp/yaml.h 并链接 -lyaml-cpp（control 已于 08-30 剥离） -->
+  <!-- yaml-cpp：task_plan_core 库与 path_plan_node 两处链接（包含点：task_plan_core.h、path_plan_comply.cpp；control 已于 08-30 剥离） -->
   <build_depend>yaml-cpp</build_depend>
 
   <build_export_depend>message_runtime</build_export_depend>

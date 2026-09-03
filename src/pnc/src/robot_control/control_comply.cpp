@@ -1,6 +1,6 @@
-// 控制编排器 ControlComply 实现：VehicleControl 主流程（横纵向调度）、
-// 围栏检测 FenceAlarm、Stanley/R挡几何入口、油门刹车输出；
-// 文件末尾为并入的 ACC/AEB 纵向控制段（保留该段分隔注释）。
+// 控制编排器 ControlComply 实现：路径预处理、电子围栏、VehicleControl
+// 主流程（横纵向调度）、Stanley/R 挡几何入口和控制消息输出。
+// ACC/AEB 纵向控制实现位于 longitudinal_acc_control.inc。
 
 #include "control_comply.h"
 
@@ -13,6 +13,10 @@ ControlComply::ControlComply() {
 }
 
 ControlComply::~ControlComply() {}
+
+// ---------------------------------------------------------------------------
+// ROS 消息输入
+// ---------------------------------------------------------------------------
 
 void ControlComply::SetPathStatusData(robot::path_plan_status path_status_t) {
   mPathStatus = path_status_t;
@@ -136,6 +140,10 @@ void ControlComply::SetTlStatusData(robot::TLStatus tl_status) {
   mTlStatus = tl_status;
 }
 
+// ---------------------------------------------------------------------------
+// 路径与电子围栏
+// ---------------------------------------------------------------------------
+
 void ControlComply::LoadPathFile(std::string tPath) {
   std::vector<XYZ_COOR_S> vector_list;
   std::vector<XYZ_COOR_S> incsv;
@@ -250,6 +258,13 @@ void ControlComply::FenceAlarm() {
     FenceWarning = 0;
   }
 }
+
+// ---------------------------------------------------------------------------
+// 20 Hz 控制主流程
+//
+// 执行顺序：停车门控 -> 位姿/纵向基础量 -> 横向控制 -> 速度约束 ->
+// 传感器与围栏安全覆盖 -> 输出限幅。顺序会影响最终控制量，请勿随意调整。
+// ---------------------------------------------------------------------------
 
 void ControlComply::VehicleControl() {
   if (fabs(mSpeed) < 0.1 && mPathsafety) {
@@ -436,6 +451,10 @@ void ControlComply::VehicleControl() {
   }
 }
 
+// ---------------------------------------------------------------------------
+// 控制消息输出
+// ---------------------------------------------------------------------------
+
 void ControlComply::PublishMessage(ros::Publisher& tPub) {
   if (mControlData.throttlePercent > 0 && mControlData.brakePercent > 0) {
     robot::control_msg throttle_msg = mControlData;
@@ -489,6 +508,10 @@ float ControlComply::CurveLimitSpeed(std::vector<XYZ_COOR_S> pathlist) {
   printf("final speed: %f\n", final_speed);
   return final_speed;
 }
+
+// ---------------------------------------------------------------------------
+// 路径几何与车辆相对位姿
+// ---------------------------------------------------------------------------
 
 void ControlComply::CalcuPathCurve(vector<XYZ_COOR_S>& path_list) {
   int size = path_list.size();
@@ -627,6 +650,10 @@ void ControlComply::VehicleVerticalControl(float tDesireSpeed, float tCurSpeed,
   }
 }
 
+// ---------------------------------------------------------------------------
+// 横向控制入口
+// ---------------------------------------------------------------------------
+
 float ControlComply::VehicleLateralControl() {
   XYZ_COOR_S xyz_temp;
   xyz_temp.x_axis = mNavData.xAxis;
@@ -674,156 +701,5 @@ std::vector<Pose2d> ControlComply::toPath2d(
   return new_path;
 }
 
-// ---------------------------------------------------------------------------
-// ACC/AEB 纵向控制（原 acc_control.cpp 并入，均为 ControlComply 成员函数）
-// 仅在 /robot/control/accswitch 开启时由 LongitudinalControlOutput 调用
-// ---------------------------------------------------------------------------
-
-double ControlComply::LongitudinalFeedforwardControl(robot::acc& pub) {
-  // --objects filter--
-  robot::perception objects;
-
-  for (auto i : LidarObject.objs) {
-    bool l = 0;
-    bool w = 0;
-    bool d = 0;
-
-    double path_dist = 100.0;
-
-    for (auto j : mPathList) {
-      double pdx = i.x - j.x_axis;
-      double pdy = i.y - j.y_axis;
-      double pdist = hypot(pdx, pdy);
-
-      if (pdist < path_dist) path_dist = pdist;
-    }
-
-    if (path_dist < 3.0) d = 1;
-    if (i.dx > 0.0 && i.dx < 5.0) l = 1;
-    if (i.dy > 1.0 && i.dy < 5.0) w = 1;
-
-    if (l == 1 && w == 1 && d == 1) objects.objs.push_back(i);
-  }
-
-  // --search nearest object ahead--
-  robot::object object;
-  bool object_detect = false;
-  double distance = 100.0;
-
-  pub.object = objects.objs.size();
-
-  if (objects.objs.size() > 0) {
-    object_detect = true;
-
-    for (auto i : objects.objs) {
-      double path_dist = 100.0;
-
-      for (auto j : mPathList) {
-        double pdx = i.x - j.x_axis;
-        double pdy = i.y - j.y_axis;
-        double pdist = hypot(pdx, pdy);
-
-        if (pdist < path_dist) path_dist = pdist;
-      }
-
-      if (path_dist < distance) object = i;
-    }
-
-    double dx = object.x - mNavData.xAxis;
-    double dy = object.y - mNavData.yAxis;
-
-    distance = hypot(dx, dy);
-
-    pub.active = 1;
-  } else {
-    object_detect = false;
-    pub.active = 0;
-  }
-
-  // --ACC calculate--
-  static double Aaeb = 0.0;
-  double safe_inter_vehicle_distance = 15.0;
-  double time_gap = 0.5;
-  double D0 = safe_inter_vehicle_distance;
-  double Tg = time_gap;
-  double Vf = mNavData.gpsSpeed;
-  double Ddes = Tg * Vf + D0;
-  double Ades = 0.0;
-  double Aout = 0.0;;
-  double A = 0.5;
-  double B = 1.0;
-  double C = 0.5;
-
-  if (object_detect) {
-    double D = distance;
-    double derta_v = Vf - hypot(object.vx, object.vy);
-    double derta_d = D - Ddes;
-
-    Ades = A * derta_v + B * derta_d;
-
-    if (Ades > 1.0) Ades = 1.0;
-    if (Ades < -1.0) Ades = -1.0;
-
-    double time = ros::Time::now().toSec();
-    double time_err = time - LidarObject.header.stamp.toSec();
-  } else {
-    Ades = 100.0;
-    Aaeb = 100.0;
-  }
-
-  // --AEB calculate--
-  if (object_detect) {
-    if (distance < 10.0 && mNavData.gpsSpeed < 4.0) {
-      Aaeb -= 0.1;
-    } else {
-      Aaeb = Ades;
-    }
-
-    if (Aaeb < -5.0) Aaeb = -5.0;
-  }
-
-  double tarspd = mControlData.desireSpeed;
-
-  tarspd = tarspd > 1.0 ? 1.0 : tarspd;
-
-  // --target speed from trajectory--
-  Aout = C * (mControlData.desireSpeed - mNavData.gpsSpeed);
-
-  Aout = Aout > Aaeb ? Aaeb : Aout;
-
-  pub.ds = distance;
-  pub.dv = Vf - hypot(object.vx, object.vy);
-  pub.tarspd = tarspd;
-  pub.curspd = mNavData.gpsSpeed;
-  pub.objspd = hypot(object.vx, object.vy);
-  pub.Ades = Ades;
-  pub.Av = A * (Vf - hypot(object.vx, object.vy));
-  pub.Bd = B * (distance - Ddes);
-  pub.Aaeb = Aaeb;
-  pub.Aout = Aout;
-
-  return Aout;
-}
-
-double ControlComply::LongitudinalFeedbackControl() {
-  double aim_acc = 0.0;
-
-  return aim_acc;
-}
-
-double ControlComply::LongitudinalControlOutput(robot::acc& pub) {
-  double a_feedforward_control = LongitudinalFeedforwardControl(pub);
-  double a_feedback_control = LongitudinalFeedbackControl();
-
-  if (a_feedforward_control > 1.0) a_feedforward_control = 1.0;
-  if (a_feedback_control > 0.5) a_feedback_control = 0.5;
-
-  double output = a_feedforward_control + a_feedback_control;
-
-  if (mControlData.desireSpeed < 0.8 && mNavData.gpsSpeed < 1.0)
-    output = -1.0;
-
-  if (output > 1.0) output = 1.0;
-
-  return output;
-}
+// 保持 ACC/AEB 与主编排处于原翻译单元，避免既有未初始化状态受链接布局影响。
+#include "longitudinal_acc_control.inc"

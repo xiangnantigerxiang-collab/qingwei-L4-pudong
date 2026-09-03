@@ -41,6 +41,7 @@ class ControlComply {
   ControlComply();
   ~ControlComply();
 
+  // ROS 消息输入。这里只更新 ControlComply 持有的输入快照。
   void SetCanData(robot::can_msg can_msg_t);
   void SetNavigationData(robot::navigation_msg navigation_t);
   void SetPathPlanData(robot::path_plan_msg path_plan_t);
@@ -48,9 +49,11 @@ class ControlComply {
   void SetPathStatusData(robot::path_plan_status path_status_t);
   void setTaskPlanData(robot::task_plan_msg task_info);
 
+  // 20 Hz 周期入口与控制消息发布。
   void VehicleControl();
   void PublishMessage(ros::Publisher& tPub);
 
+  // 电子围栏在 control_node 主循环中独立于 VehicleControl 执行。
   void LoadPathFile(std::string tPath);
   void FenceAlarm();
   XYZ_COOR_S local2global2(double ox, double oy, double oheading,
@@ -62,33 +65,32 @@ class ControlComply {
   int SoundPlayCommand = 0;
 
  private:
+  // 路径预处理和限速。
   bool IsGreenLight(uint8_t light_state);
-
-  // speed limit
   float CurveLimitSpeed(std::vector<XYZ_COOR_S> pathlist);
-
-  // pose
   void CalcuPathCurve(vector<XYZ_COOR_S>& path_list);
   void CalcuPathHead(vector<XYZ_COOR_S>& path_list);
+
+  // 车辆相对路径的位姿量。
   void BiaAngleCalculate(vector<XYZ_COOR_S> path_list, CONTROL_PARAM_IN para_in,
                          robot::control_msg& para_out);
   void VehiclePoseCalculation();
-  // speed
+
+  // 纵向控制。ACC/AEB 实现在 longitudinal_acc_control.inc。
   void VehicleVerticalControl(float tDesireSpeed, float tCurSpeed,
                               float tAcc, uint8_t& tThrottle, uint8_t& tBrake);
-  // lateral control
-  float VehicleLateralControl();
-
   double LongitudinalFeedforwardControl(robot::acc& pub);
   double LongitudinalFeedbackControl();
   double LongitudinalControlOutput(robot::acc& pub);
 
-  // stanley横向控制
+  // 横向控制：R 挡几何法，其他挡位为 Stanley + 纯追踪前馈。
+  float VehicleLateralControl();
   float VehicleStanleyControl();
   double azimuthToYaw(const double& azimuth);
   std::vector<Pose2d> toPath2d(const std::vector<XYZ_COOR_S>& old_path);
 
  private:
+  // 路径状态。
   std::vector<XYZ_COOR_S> mPathList;
   std::vector<XYZ_COOR_S> mFenceList;
   uint8_t mGear;
@@ -98,22 +100,23 @@ class ControlComply {
   int mPathid;
   bool mPathsafety;
 
-  // class
+  // 控制算法对象。
   PubAlgor pubalgor;
   GeometricConstrol geoCon_c;
   SpeedControl spCtr_c;
 
-  // message-receive
+  // 接收消息快照。
   robot::navigation_msg mNavData;
   robot::TLStatus mTlStatus;
   robot::path_plan_status mPathStatus;
   robot::task_plan_msg mTaskInfo;
 
-  // message-send
+  // 发布消息和安全覆盖状态。
   robot::control_msg mControlData;
   int AccSwitch = 0;
   int FenceWarning = 0;
 
+  // D 挡 Stanley 控制所需状态。
   LatController lat_controller;
   Pose2d ego_pose2d;
   float mVehicleSpeed = 0.0;

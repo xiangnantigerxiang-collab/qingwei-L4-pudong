@@ -49,23 +49,9 @@ void CanCommComply::CanCommProcess()
     CanCommMsg.wheelAngle = ControlMsg.wheelAngle * ratio;
     CanCommMsg.brakePercent = ControlMsg.brakePercent;
     CanCommMsg.throttlePercent = ControlMsg.throttlePercent;
-    /////////////////////////test/////////////////////////////////
-    // float throttle_cmd = 0.0;
-    // ros::param::get("throttle_cmd", throttle_cmd);
-    // printf("throttle_cmd: %f\n", throttle_cmd);
-    // CanCommMsg.throttlePercent = throttle_cmd;
-    // if(throttle_cmd > 0)
-    // {
-    //     CanCommMsg.throttlePercent = throttle_cmd;
-    // }
-    ///////////////////////////////////////////////////////////////
+
     if(ControlMsg.throttlePercent - CanCommMsg.throttlePercent > 1.0) {
         CanCommMsg.throttlePercent += 1;
     }else CanCommMsg.throttlePercent = ControlMsg.throttlePercent;
-
-    // if(CanCommMsg.desireSpeed == 0) {
-    //    if(CanCommMsg.vehicleSpeed < 0.1) CanCommMsg.brakePercent = 0;
-    //    else CanCommMsg.brakePercent = 70;
-    // }
 }
 

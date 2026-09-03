@@ -1,241 +1,314 @@
-#include "task_plan_comply.h"
+// ===========================================================================
+// task_plan_node - TaskPlanCore 的 ROS 适配层。
+//
+// 本文件只放 ROS 粘合: 话题订阅/发布、参数服务器访问、定时器与时钟。
+// 全部任务业务逻辑在 task_plan_core.cpp, 后者不依赖 ROS。
+//
+// 接线(与旧实现一致, 话题全部绝对名):
+//   subscribe /path_plan_status       (下游块完成反馈)
+//   subscribe /can_msg                (车辆 CAN 状态)
+//   subscribe /navigation_msg         (定位)
+//   subscribe /cloud/task/task_info   (云端任务派发)
+//   subscribe /cloud/task/remote_signal(等待区信号)
+//   subscribe /cloud/msg/running_msg  (远程指车)
+//   subscribe /cloud/msg/command_msg  (云端指令 停/暂停/继续)
+//   subscribe /cloud/msg/warning_msg / notify_msg(空回调, 仅占位)
+//   publish   /task_plan_msg          (当前任务块 -> path_plan)
+//   publish   /cloud/task/task_status (任务状态 -> 云端)
+//   publish   /v2nHeartBeat /v2nCommandFeedback /v2nRunningFeedback
+//   param in : task_file, config_file, max_vehicle_speed(热读),
+//              /planning/sensorstate, /canbus/hookstate
+//   param out: /cloud/suggestspeed
+//
+// 定时器 10Hz 心跳; 主循环 20Hz(发布门控与旧实现相同)。
+// 全部回调运行在单线程 spinner, 无需加锁。
+// ===========================================================================
+#include <string>
 
-TaskPlanComply taskPlanComply;
+#include <boost/date_time/posix_time/posix_time.hpp>
+#include <ros/ros.h>
 
-bool rcv_p_p_flag = false;
-bool rcv_can_data = false;
+#include "robot/TaskInfo.h"
+#include "robot/TaskStatus.h"
+#include "robot/can_msg.h"
+#include "robot/path_plan_status.h"
+#include "robot/task_plan_msg.h"
+#include "robot/RemoteSignal.h"
+#include "robot/navigation_msg.h"
+#include "robot/v2nHeartBeat.h"
+#include "robot/v2nCommandFeedback.h"
+#include "robot/v2nRunningFeedback.h"
+#include "robot/RunningMsg.h"
+#include "robot/WarningMsg.h"
+#include "robot/NotifyMsg.h"
 
-ros::Publisher task_plan_pub;
-ros::Publisher task_status_pub;
-ros::Publisher v2nHeartBeat_pub;
-ros::Publisher v2nCommandFeedback_pub;
-ros::Publisher v2nRunningFeedback_pub;
+#include "task_plan_core.h"
 
-robot::path_plan_status status_feedback;
-robot::v2nCommandFeedback CF;
+static TaskPlanCore g_core;
 
-void PathPlanStatusCallBack(const robot::path_plan_status::ConstPtr &msg)
-{
-    rcv_p_p_flag = true;
-    taskPlanComply.SetPathPlanStatus(*msg);
-    status_feedback = *msg;
+static bool g_rcv_p_p_flag = false;
+static bool g_rcv_can_data = false;
+
+static ros::Publisher g_task_plan_pub;
+static ros::Publisher g_task_status_pub;
+static ros::Publisher g_v2n_heartbeat_pub;
+static ros::Publisher g_v2n_command_fb_pub;
+static ros::Publisher g_v2n_running_fb_pub;
+
+// ---- core 镜像 <-> ROS 消息, 逐字段 1:1 拷贝 ----
+static void TaskInfoToCore(const robot::TaskInfo &m, TaskInfoIn *out) {
+    out->timestamp_msec = m.timestamp_msec;
+    out->vehicle_id = m.vehicle_id;
+    out->task_from = m.task_from;
+    out->task_id = m.task_id;
+    out->task_type = m.task_type;
+    out->task_op = m.task_op;
+    out->target_info.area_type = m.target_info.area_type;
+    out->target_info.dest_x = m.target_info.dest_x;
+    out->target_info.dest_y = m.target_info.dest_y;
+    out->target_info.heading = m.target_info.heading;
 }
 
-void CanMsgCallBack(const robot::can_msg::ConstPtr &msg)
-{
-    rcv_can_data = true;
-    taskPlanComply.SetCanData(*msg);
+static void TaskInfoToMsg(const TaskInfoIn &in, robot::TaskInfo *m) {
+    m->timestamp_msec = in.timestamp_msec;
+    m->vehicle_id = in.vehicle_id;
+    m->task_from = in.task_from;
+    m->task_id = in.task_id;
+    m->task_type = in.task_type;
+    m->task_op = in.task_op;
+    m->target_info.area_type = in.target_info.area_type;
+    m->target_info.dest_x = in.target_info.dest_x;
+    m->target_info.dest_y = in.target_info.dest_y;
+    m->target_info.heading = in.target_info.heading;
 }
 
-void NavigationMsgCallBack(const robot::navigation_msg::ConstPtr &msg)
-{
-    taskPlanComply.SetNavigationData(*msg);
+static void TaskPlanMsgToMsg(const TaskPlanMsgOut &in,
+                             robot::task_plan_msg *m) {
+    m->workMode = in.workMode;
+    m->taskType = in.taskType;
+    m->pathList = in.pathList;
+    m->pathX = in.pathX;
+    m->pathY = in.pathY;
+    m->pathAngle = in.pathAngle;
+    m->desireSpeed = in.desireSpeed;
+    m->stopX = in.stopX;
+    m->stopY = in.stopY;
+    m->stopAngle = in.stopAngle;
+    m->desireGear = in.desireGear;
+    m->hookCmd = in.hookCmd;
+    m->task_id = in.task_id;
 }
 
-void TaskInfoMsgCallBack(const robot::TaskInfo::ConstPtr &msg)
-{
-    printf("=========received task info from cloud, task_id:%d============\n", msg->task_id);
-    taskPlanComply.SetTaskInfo(*msg);
-    // ROS_INFO("TaskInfoMsgCallBack ..........................,task id : %d", (int)msg->task_id);
+static void TaskStatusToMsg(const TaskStatusOut &in, robot::TaskStatus *m) {
+    m->timestamp_msec = in.timestamp_msec;
+    m->vehicle_id = in.vehicle_id;
+    TaskInfoToMsg(in.task_info, &m->task_info);
+    m->procedure = in.procedure;
+    m->fail_code = in.fail_code;
+    m->fail_reason = in.fail_reason;
 }
 
-void RemoteSignalMsgCallBack(const robot::RemoteSignal::ConstPtr &msg)
-{
-    taskPlanComply.SetRemoteSignal(*msg);
-}
-
-void RunningMsgCallBack(const robot::RunningMsg::ConstPtr &msg)
-{
-    auto info = taskPlanComply.mTaskInfoMsg;
-
-    info.task_id = 1000;
-
-    double lon = msg->values.toPoint.lon * 3.141592654 / 180.0;
-    double lat = msg->values.toPoint.lat * 3.141592654 / 180.0;
-
-    UTMCoor xy;
-    LatlonToUtmXY(lon, lat, &xy);
-
-    lon = xy.x - 238162.61964;
-    lat = xy.y - 3539857.08307;
-
-    taskPlanComply.RunningtXAxis = lon;
-    taskPlanComply.RunningtYAxis = lat;
-    taskPlanComply.RunningtAngle = msg->values.toPoint.heading;
-    taskPlanComply.RunningFlag = 1;
-    taskPlanComply.SetTaskInfo(info);
-
-    taskPlanComply.cloudFeedbackStatus = "RUNNING";
-
-    printf("Task Receive cloud Running Msg x = %lf y = %lf\n", lon, lat);
-}
-
-void CommandMsgCallBack(const robot::v2nCommandFeedback::ConstPtr &msg)
-{
-    taskPlanComply.CommandId = "0";
-    taskPlanComply.cloudFeedbackStatus = "COMMAND:0";
-
-    double speed = 100.0;
-
-    CF.ready = 1;
-    CF.commandState = msg->commandState; //0停车 1暂停2继续
-    CF.commandID = msg->commandID;
-    CF.limit = msg->limit;
-    CF.speedCommand = msg->speedCommand;
-
-    v2nCommandFeedback_pub.publish(CF);
-
-    // speed = msg->speedCommand;
-    int commandState = msg->commandState;
-    if (commandState == 0) //停车
-    {
-        speed = 0.0;
-        taskPlanComply.clearTaskPool();
-    }else if(commandState == 1) //暂停
-    {
-        speed = 0.0;
-    }else if(commandState == 2) //继续
-    {
-        //do noting;
+static void HeartBeatToMsg(const HeartBeatOut &in, robot::v2nHeartBeat *m) {
+    m->ts = in.ts;
+    m->deviceId = in.deviceId;
+    m->type = in.type;
+    m->values.status = in.status;
+    m->values.text = in.text;
+    m->values.lat = in.lat;
+    m->values.lon = in.lon;
+    m->values.heading = in.heading;
+    m->values.turning = in.turning;
+    m->values.speed = in.speed;
+    m->values.power = in.power;
+    m->values.remainingKeyPoints.clear();
+    for (int i = 0; i < (int)in.remainingKeyPoints.size(); i++) {
+        robot::v2nKeyPoint kp;
+        kp.lat = in.remainingKeyPoints[i].lat;
+        kp.lon = in.remainingKeyPoints[i].lon;
+        kp.heading = in.remainingKeyPoints[i].heading;
+        m->values.remainingKeyPoints.push_back(kp);
     }
-        
-
-    ros::param::set("/cloud/suggestspeed", speed);
+    m->values.drivingState = in.drivingState;
+    m->values.sensorsState = in.sensorsState;
+    m->values.lidarState = in.lidarState;
+    m->values.cameraState = in.cameraState;
+    m->values.gnssState = in.gnssState;
+    m->values.vehicleState = in.vehicleState;
+    m->values.errorContext = "";
+    m->values.hookState = in.hookState;
+    m->values.soc = in.soc;
+    m->values.chargingState = in.chargingState;
 }
 
-void WarningMsgCallBack(const robot::WarningMsg::ConstPtr &msg)
-{
+static void CommandFbToMsg(const CommandFbOut &in,
+                           robot::v2nCommandFeedback *m) {
+    m->ts = in.ts;
+    m->deviceId = in.deviceId;
+    m->type = in.type;
+    m->values.ts = in.vTs;
+    m->values.status = in.vStatus;
+    m->values.text = in.vText;
+    m->ready = in.ready;
+    m->commandState = in.commandState;
+    m->commandID = in.commandID;
+    m->limit = in.limit;
+    m->speedCommand = in.speedCommand;
+}
+
+static void RunningFbToMsg(const RunningFbOut &in,
+                           robot::v2nRunningFeedback *m) {
+    m->ts = in.ts;
+    m->deviceId = in.deviceId;
+    m->type = in.type;
+    m->values.ts = in.vTs;
+    m->values.status = in.vStatus;
+    m->values.text = in.vText;
+}
+
+// ---- core 事件 -> ROS 调用, 严格按 core 给出的顺序逐条执行 ----
+static void CoreEventToRos(const TaskPlanEvent &ev) {
+    switch (ev.type) {
+    case TP_PUBLISH_TASK_PLAN: {
+        robot::task_plan_msg m;
+        TaskPlanMsgToMsg(g_core.GetTaskPlanMsg(), &m);
+        g_task_plan_pub.publish(m);
+        break;
+    }
+    case TP_PUBLISH_TASK_STATUS: {
+        robot::TaskStatus m;
+        TaskStatusToMsg(g_core.GetTaskStatus(), &m);
+        g_task_status_pub.publish(m);
+        break;
+    }
+    case TP_PUBLISH_HEARTBEAT: {
+        robot::v2nHeartBeat m;
+        HeartBeatToMsg(g_core.GetHeartBeat(), &m);
+        g_v2n_heartbeat_pub.publish(m);
+        break;
+    }
+    case TP_PUBLISH_RUNNING_FB: {
+        robot::v2nRunningFeedback m;
+        RunningFbToMsg(g_core.GetRunningFb(), &m);
+        g_v2n_running_fb_pub.publish(m);
+        break;
+    }
+    case TP_PUBLISH_COMMAND_FB: {
+        robot::v2nCommandFeedback m;
+        CommandFbToMsg(g_core.GetCommandFb(), &m);
+        g_v2n_command_fb_pub.publish(m);
+        break;
+    }
+    case TP_PARAM_INT:
+        // 心跳传感器兜底用整型字面量(旧实现即 int 重载)
+        ros::param::set(ev.paramKey, ev.paramInt);
+        break;
+    case TP_PARAM_DOUBLE:
+        ros::param::set(ev.paramKey, ev.paramDouble);
+        break;
+    case TP_LOG_INFO:
+        ROS_INFO("%s", ev.text.c_str());
+        break;
+    default:
+        break;
+    }
+}
+
+// ---- 订阅回调: 只做消息字段搬运 ----
+static void PathPlanStatusCallBack(
+    const robot::path_plan_status::ConstPtr &msg) {
+    g_rcv_p_p_flag = true;
+    PlanStatusIn s;
+    s.taskExecuStatus = msg->taskExecuStatus;
+    s.curSpeed = msg->curSpeed;
+    s.turning = msg->turning;
+    g_core.SetPathPlanStatus(s);
+}
+
+static void CanMsgCallBack(const robot::can_msg::ConstPtr &msg) {
+    g_rcv_can_data = true;
+    CanStateIn c;
+    c.controlPanelState = msg->controlPanelState;
+    c.vehicleSpeed = msg->vehicleSpeed;
+    c.hookPos = msg->hookPos;
+    c.hookStatus = msg->hookStatus;
+    c.batteryPower = msg->batteryPower;
+    c.faultCode = msg->faultCode;
+    g_core.SetCanData(c);
+}
+
+static void NavigationMsgCallBack(const robot::navigation_msg::ConstPtr &msg) {
+    NavStateIn n;
+    n.lat = msg->lat;
+    n.lon = msg->lon;
+    n.heading = msg->heading;
+    n.longitudinal_accelerate = msg->longitudinal_accelerate;
+    g_core.SetNavigationData(n);
+}
+
+static void TaskInfoMsgCallBack(const robot::TaskInfo::ConstPtr &msg) {
+    printf("=========received task info from cloud, task_id:%d============\n", (int)msg->task_id);
+    std::string task_file = "";
+    ros::param::get("task_file", task_file);
+    TaskInfoIn info;
+    TaskInfoToCore(*msg, &info);
+    g_core.SetTaskInfo(info, task_file);
+}
+
+static void RemoteSignalMsgCallBack(const robot::RemoteSignal::ConstPtr &msg) {
+    RemoteSignalIn r;
+    r.isfull = msg->isfull;
+    g_core.SetRemoteSignal(r);
+}
+
+static void RunningMsgCallBack(const robot::RunningMsg::ConstPtr &msg) {
+    RunningTargetIn t;
+    t.lon = msg->values.toPoint.lon;
+    t.lat = msg->values.toPoint.lat;
+    t.heading = msg->values.toPoint.heading;
+    std::string task_file = "";
+    ros::param::get("task_file", task_file);
+    g_core.OnRunningMsg(t, task_file);
+}
+
+static void CommandMsgCallBack(const robot::v2nCommandFeedback::ConstPtr &msg) {
+    CommandIn c;
+    c.commandState = msg->commandState;
+    c.commandID = msg->commandID;
+    c.limit = msg->limit;
+    c.speedCommand = msg->speedCommand;
+    g_core.OnCommandMsg(c, CoreEventToRos);
+}
+
+static void WarningMsgCallBack(const robot::WarningMsg::ConstPtr &msg) {
+    (void)msg;
     return;
 }
 
-void NotifyMsgCallBack(const robot::NotifyMsg::ConstPtr &msg)
-{
+static void NotifyMsgCallBack(const robot::NotifyMsg::ConstPtr &msg) {
+    (void)msg;
     return;
 }
 
-void T1Callback(const ros::TimerEvent &real)
-{
+// ---- 10Hz 心跳定时器: 墙钟 + 参数快照 -> core ----
+static void T1Callback(const ros::TimerEvent &real) {
+    (void)real;
     ros::WallTime wall_time = ros::WallTime::now();
-    int year = wall_time.toBoost().date().year();
-    int month = wall_time.toBoost().date().month();
-    int day = wall_time.toBoost().date().day();
-    int hour = wall_time.toBoost().time_of_day().hours();
-    int minute = wall_time.toBoost().time_of_day().minutes();
-    int second = wall_time.toBoost().time_of_day().seconds();
 
-    hour += 8; // set timezone to beijing
-
-    static int count = 0;
-    static int second_last = 0;
-
-    if (second != second_last)
-    {
-        count = 0;
-        second_last = second;
-    }
-    else
-        count += 1;
-
-    std::string ts = std::to_string(year);
-
-    if (month < 10)
-        ts += "0";
-    ts += std::to_string(month);
-
-    if (day < 10)
-        ts += "0";
-    ts += std::to_string(day);
-
-    if (hour < 10)
-        ts += "0";
-    ts += std::to_string(hour);
-
-    if (minute < 10)
-        ts += "0";
-    ts += std::to_string(minute);
-
-    if (second < 10)
-        ts += "0";
-    ts += std::to_string(second);
-
-    ts = ts + "00" + std::to_string(count);
-
-    std::string deviceId = "A03";
-    std::string type = "heartBeat";
-    std::string speedChange = "keep";
-
-    double acc = taskPlanComply.mNavData.longitudinal_accelerate;
-    if (acc > 0.02)
-        speedChange = "accelerate";
-    if (acc < -0.02)
-        speedChange = "deaccelerate";
-    robot::v2nHeartBeat HB;
-    robot::v2nKeyPoint KP;
-    HB.ts = ts;
-    HB.deviceId = "A03";
-    HB.type = "heartBeat";
-    HB.values.status = taskPlanComply.cloudFeedbackStatus;
-    HB.values.text = "";
-    HB.values.lat = taskPlanComply.mNavData.lat;
-    HB.values.lon = taskPlanComply.mNavData.lon;
-    HB.values.heading = taskPlanComply.mNavData.heading - 90;
-    HB.values.turning = status_feedback.turning;
-    HB.values.speed = (status_feedback.curSpeed * 3.6);
-    HB.values.power = taskPlanComply.mCanData.batteryPower;
-    KP.lat = taskPlanComply.mNavData.lat;
-    KP.lon = taskPlanComply.mNavData.lon;
-    KP.heading = taskPlanComply.mNavData.heading;
-    HB.values.remainingKeyPoints.push_back(KP);
-    HB.values.drivingState = 0;
-    if (HB.values.speed > 0.1)
-        HB.values.drivingState = 3;
-    if (acc > 0.02)
-        HB.values.drivingState = 2;
-    if (acc < -0.02)
-        HB.values.drivingState = 1;
-
-    int sensorstate = 0;
-    ros::param::get("/planning/sensorstate", sensorstate);
-    HB.values.sensorsState = sensorstate & 0x01;
-    HB.values.lidarState = (sensorstate & 0x02) >> 1;
-    HB.values.cameraState = (sensorstate & 0x04) >> 2;
-    HB.values.gnssState = (sensorstate & 0x08) >> 3;
-    int hookstate = 0;
-    ros::param::get("/canbus/hookstate", hookstate);
-    HB.values.vehicleState = 0;
-    if (taskPlanComply.mCanData.faultCode.size() > 0)
-    {
-        HB.values.vehicleState = taskPlanComply.mCanData.faultCode[0];
-    }
-
-    HB.values.hookState = hookstate;
-    HB.values.soc = taskPlanComply.mCanData.batteryPower;
-    HB.values.chargingState = 0;
-    v2nHeartBeat_pub.publish(HB);
-
-    if (sensorstate > 0)
-        ros::param::set("/cloud/suggestspeed", 0);
-    // running feedback
-    robot::v2nRunningFeedback RF;
-    RF.ts = ts;
-    RF.deviceId = "拖A0002";
-    RF.type = "runningFeedback";
-    RF.values.ts = ts;
-    RF.values.status = "SUCCEED";
-    RF.values.text = "";
-    v2nRunningFeedback_pub.publish(RF);
-
-    // command feedback
-    CF.ts = ts;
-    CF.deviceId = "拖A0002";
-    CF.type = "commandFeedback";
-    CF.values.ts = ts;
-    CF.values.status = "SUCCEED";
-    CF.values.text = "";
+    HeartBeatInputs in;
+    in.year = wall_time.toBoost().date().year();
+    in.month = wall_time.toBoost().date().month();
+    in.day = wall_time.toBoost().date().day();
+    in.hour = wall_time.toBoost().time_of_day().hours();
+    in.minute = wall_time.toBoost().time_of_day().minutes();
+    in.second = wall_time.toBoost().time_of_day().seconds();
+    in.sensorstate = 0;
+    in.hookstate = 0;
+    ros::param::get("/planning/sensorstate", in.sensorstate);
+    ros::param::get("/canbus/hookstate", in.hookstate);
+    g_core.RunHeartBeat(in, CoreEventToRos);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     ros::init(argc, argv, "task_plan_node");
     ros::NodeHandle nh;
 
@@ -258,41 +331,55 @@ int main(int argc, char **argv)
     ros::Subscriber notify_msg_sub = nh.subscribe("/cloud/msg/notify_msg", 10,
                                                   NotifyMsgCallBack, ros::TransportHints().tcpNoDelay());
 
-    task_plan_pub = nh.advertise<robot::task_plan_msg>(
+    g_task_plan_pub = nh.advertise<robot::task_plan_msg>(
         "/task_plan_msg", 10);
-    task_status_pub = nh.advertise<robot::TaskStatus>(
+    g_task_status_pub = nh.advertise<robot::TaskStatus>(
         "/cloud/task/task_status", 10);
-    v2nHeartBeat_pub = nh.advertise<robot::v2nHeartBeat>(
+    g_v2n_heartbeat_pub = nh.advertise<robot::v2nHeartBeat>(
         "/v2nHeartBeat", 10);
-    v2nCommandFeedback_pub = nh.advertise<robot::v2nCommandFeedback>(
+    g_v2n_command_fb_pub = nh.advertise<robot::v2nCommandFeedback>(
         "/v2nCommandFeedback", 10);
-    v2nRunningFeedback_pub = nh.advertise<robot::v2nRunningFeedback>(
+    g_v2n_running_fb_pub = nh.advertise<robot::v2nRunningFeedback>(
         "/v2nRunningFeedback", 10);
 
     ros::Timer T1 = nh.createTimer(ros::Duration(0.1), T1Callback);
 
     ros::Rate loop_rate(20);
-    taskPlanComply.InitParameter();
+
+    std::string config_file = "";
+    ros::param::get("config_file", config_file);
+    g_core.InitParameter(config_file.c_str());
 
     ros::param::set("/cloud/suggestspeed", 100.0);
 
-    while (ros::ok())
-    {
+    while (ros::ok()) {
         ros::spinOnce();
-        if (rcv_p_p_flag && rcv_can_data)
-        {
-            taskPlanComply.TaskPlanProcess();
+
+        // 挂钩/托盘位置限值: canbus 启动时发布, 此处每圈热读; 读失败时
+        // position_limits 保持 NSDMI 初值(=config.cfg 默认值), 不覆盖镜像
+        PositionLimitsIn position_limits;
+        ros::param::get("/canbus/hookposition/min",
+                        position_limits.hookPosMin);
+        ros::param::get("/canbus/hookposition/max",
+                        position_limits.hookPosMax);
+        ros::param::get("/canbus/palletposition/min",
+                        position_limits.palletPosMin);
+        ros::param::get("/canbus/palletposition/max",
+                        position_limits.palletPosMax);
+        g_core.SetPositionLimits(position_limits);
+
+        if (g_rcv_p_p_flag && g_rcv_can_data) {
+            g_core.TaskPlanProcess(CoreEventToRos);
         }
 
-        // static int execute_task_num = -1;
-        // printf("execute_task_num = %d, curTaskNum:%d\n", execute_task_num,taskPlanComply.mCurTaskNum);
-        if (taskPlanComply.recived_cloud_task ||
-            (taskPlanComply.mPathPlanStatus.taskExecuStatus == 2 &&
-             taskPlanComply.mExecuteTaskNum != taskPlanComply.mCurTaskNum))
-        {
-            taskPlanComply.PublishTaskPlanMsg(task_plan_pub, task_status_pub);
-            taskPlanComply.recived_cloud_task = false;
-            taskPlanComply.mExecuteTaskNum = taskPlanComply.mCurTaskNum;
+        if (g_core.recived_cloud_task ||
+            (g_core.mPathPlanStatus.taskExecuStatus == 2 &&
+             g_core.mExecuteTaskNum != g_core.mCurTaskNum)) {
+            float max_vehicle_speed = 0;
+            ros::param::get("max_vehicle_speed", max_vehicle_speed);
+            g_core.PublishTaskPlanMsg(max_vehicle_speed, CoreEventToRos);
+            g_core.recived_cloud_task = false;
+            g_core.mExecuteTaskNum = g_core.mCurTaskNum;
         }
         loop_rate.sleep();
     }

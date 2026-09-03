@@ -15,6 +15,7 @@ bool Camera7 = true;
 
 PathPlanComply pathPlanComply;
 
+// ROS 回调只更新 PathPlanComply 的输入快照；规划和发布统一在 10 Hz 主循环执行。
 void TaskPlanCallBack(const robot::task_plan_msg::ConstPtr &msg)
 {
     pathPlanComply.SetTaskPlanData(*msg);
@@ -133,6 +134,8 @@ void AirPortMsgCallback(const robot::AirCraftParkingPortConstPtr &msg)
 
 void T1Callback(const ros::TimerEvent &real)
 {
+    // 传感器状态按位累加：雷达=2、相机=4、GNSS=8；存在任一故障时再加 1，
+    // 因此最低位可作为“有故障”的总标志。这里沿用既有参数协议。
     int sensorstate = 0;
 
     double tnow = pathPlanComply.sysTime.now;
@@ -238,12 +241,19 @@ int main(int argc, char **argv)
         nh.getParam("/robot/lanechangecmd", pathPlanComply.LaneChangeRequset);
         nh.getParam("/robot/control/accswitch", pathPlanComply.AccSwitch);
         nh.getParam("/robot/planning/pallettype", pathPlanComply.PalletType);
+        // 挂钩/托盘位置判定线: canbus 启动时发布, 读失败保持当前值
+        nh.getParam("/canbus/hookposition/min", pathPlanComply.HookPosMin);
+        nh.getParam("/canbus/hookposition/max", pathPlanComply.HookPosMax);
+        nh.getParam("/canbus/palletposition/min", pathPlanComply.PalletPosMin);
+        nh.getParam("/canbus/palletposition/max", pathPlanComply.PalletPosMax);
 
         // if (pathPlanComply.workMode == MANUALCONTROLMODE) // 人工驾驶
         // {
         //     pathPlanComply.InitSafetyCheck = 0;
         //     // ROS_INFO("Planning : Manual Mode ... ");
         // }
+        // 调用顺序属于现役数据流：先更新任务进度和速度上限，再生成参考路径，
+        // 最后叠加人工/急停/断网/等待区等安全条件并发布最终路径与状态。
         pathPlanComply.PathPlanProcess(); // 这里从task读取任务数据包括:挡位，轨迹，速度
         pathPlanComply.PublishReferPath(refer_path_pub);
         pathPlanComply.PublishPlanPath(plan_path_pub, sound_light_sub);
@@ -256,4 +266,3 @@ int main(int argc, char **argv)
 
     return 0;
 }
-

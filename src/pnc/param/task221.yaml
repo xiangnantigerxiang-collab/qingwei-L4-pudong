@@ -1,0 +1,58 @@
+#   Tractor-task list
+task_sum: 4
+
+#do action -- gear N and hook
+task0_task_type: 1 # 0-nothing 1-Track path  2-adaptiveloadpath 3-adaptiveunload  4-adaptivehook 5-adaptiveback 6-action
+task0_path_list: path_pudong051501 #1.lpx 2.lpx 3.lpx
+task0_stop_x: -2.25892
+task0_stop_y: -1.27629
+task0_stop_angle: 84.75
+task0_desire_speed: 2.0 #3km/h
+task0_gear: 4 #2-N  3-R  4-D
+task0_subaction: 0 # 0-no_operation 5-hook 6-decouple  7-wait
+
+#do action -- gear N and hook
+task1_task_type: 1 # 0-nothing 1-Track path  2-adaptiveloadpath 3-adaptiveunload  4-adaptivehook 5-adaptiveback 6-action
+task1_path_list: path_pudong051501 #1.lpx 2.lpx 3.lpx
+task1_stop_x: -21.4152
+task1_stop_y: -18.6907
+task1_stop_angle: 340.983
+task1_desire_speed: 2.0 #3km/h
+task1_gear: 4 #2-N  3-R  4-D
+task1_subaction: 0 # 0-no_operation 5-hook 6-decouple  7-wait
+
+#do action -- gear N and hook
+task2_task_type: 6 # 0-nothing 1-Track path  2-adaptiveloadpath 3-adaptiveunload  4-adaptivehook 5-adaptiveback 6-action
+task2_path_list: pathwuxi003 #1.lpx 2.lpx 3.lpx
+task2_stop_x: -1
+task2_stop_y: -1
+task2_stop_angle: -1
+task2_desire_speed: 0 #3km/h
+task2_gear: 2 #2-N  3-R  4-D
+task2_subaction: 6 # 0-no_operation 5-hook 6-decouple  7-wait   11-UNLOAD_LOWER
+
+#do action -- gear N and hook
+task3_task_type: 1 # 0-nothing 1-Track path  2-adaptiveloadpath 3-adaptiveunload  4-adaptivehook 5-adaptiveback 6-action
+task3_path_list: path_pudong051502 #1.lpx 2.lpx 3.lpx
+task3_stop_x: -23.059
+task3_stop_y: -13.238
+task3_stop_angle: 342.609
+task3_desire_speed: 2 #3km/h
+task3_gear: 4 #2-N  3-R  4-D
+task3_subaction: 0 # 0-no_operation 5-hook 6-decouple  7-wait
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

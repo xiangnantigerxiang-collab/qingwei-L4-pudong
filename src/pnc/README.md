@@ -23,6 +23,16 @@ robot_<模块>/
 - **comply 类不持有 ROS 通信成员**（无 Subscriber/Publisher/NodeHandle）；发布时由调用方把
   `ros::Publisher` 作参数传入（如 `PublishMessage(ros::Publisher& tPub)`）
 - **CMake 里 comply 编成库、node 是可执行**，二者分开（`add_library(xxx_comply)` + `add_executable(xxx_node)`）
+- **`robot_path_plan/` 的 comply 实现按职责拆成 `.inc`**：入口仍只有
+  `path_plan_comply.cpp`，它按固定顺序原位包含任务、感知、参考路径、最终输出和实验算法
+  五个分片。`.inc` 不得单独加入 CMake，否则会改变同一翻译单元语义并产生重复定义。
+- **【2026-08-30 起第二种许可骨架】`robot_task_plan/` 已改为 canbus 同款 core/事件流结构**：
+  `<模块>_core.{h,cpp}`（零 ROS 业务库：输入镜像结构体 + `Set*`（输入镜像写入，可含轻逻辑，
+  如 SetCanData 的自动模式重武装、SetTaskInfo 的任务装载）/`On*`（同步发事件）
+  入口 + `TaskPlanSink` 有序事件流回传 发布/rosparam 写/ROS_INFO）+ `<模块>_node.cpp`
+  （薄适配：话题接线、参数读取、事件→ROS 调用逐字段转换）。业务全在 core，node 不留逻辑。
+  其余节点目录为传统结构（path_plan/control/can_comm 为 comply 三层；
+  navigation/perception_convert 本就是单文件节点）；新增节点二选一，同一目录内不混用两代骨架。
 - 心跳/定时用 `nh.createTimer(ros::Duration(0.1), T1Callback)`，回调里直接操作全局 `*_pub` 发布
 
 ## 二、命名规范（实测主导约定）
@@ -34,24 +44,29 @@ robot_<模块>/
 | 成员变量 | `m` 前缀 + PascalCase（【历史例外】公有状态成员部分无前缀，不改） | `mPathList`、`mNavData`、`mControlData` |
 | 消息型参数 | `t` 前缀 PascalCase 或 snake_case+`_t` 后缀（两种并存） | `tDesireSpeed`、`can_msg_t` |
 | 局部变量 | snake_case；中间量加 `_temp` 后缀 | `xyz_temp`、`rtn_value`、`sensorstate` |
-| 回调函数 | `<消息名>CallBack`（**大写 B**，全项目 13 处中 12 处如此；【历史例外】T1Callback） | `CanMsgCallBack` |
+| 回调函数 | `<消息名>CallBack`（**大写 B** 为主导；【历史例外】T1Callback/GNSSCallback/AirPortMsgCallback/PalletCoorCallback/pathStatusCallback/TlStatusCoorCallback 等约 6 处小写 b，不改） | `CanMsgCallBack` |
 | 发布器/订阅器 | snake_case + `_pub`/`_sub` 后缀 | `control_pub`、`task_plan_sub` |
 | 接收标志 | `rcv_*` 前缀 | `rcv_can_data` |
 | 文件名 | 全小写下划线；节点入口固定 `<模块>_node.cpp` | `longitudinal_speed_control.cpp` |
-| 头文件守卫 | `#ifndef <目录>_<文件>_H_`（robot_control 已统一 `ROBOT_CONTROL_*_H_`） | `ROBOT_CONTROL_CONTROL_COMPLY_H_` |
-| C 风格结构体 | `typedef struct 小写tag {...} 全大写_S;`，成员 t 前缀 | `TASKINFO_S`、`XYZ_COOR_S`、`CONTROL_PARAM_IN` |
+| 头文件守卫 | `#ifndef <文件>_H` 无目录前缀为主；robot_control/ 已统一 `ROBOT_CONTROL_*_H_` 带前缀（防同名头碰撞） | `ROBOT_CONTROL_CONTROL_COMPLY_H_`、`TASK_PLAN_CORE_H` |
+| C 风格结构体 | `typedef struct 小写tag {...} 全大写_S;`，成员 t 前缀（task_plan_core 08-30 起为 `struct TASKINFO_S {...};` 直写） | `TASKINFO_S`、`XYZ_COOR_S`、`CONTROL_PARAM_IN` |
 | 枚举常量 | 全大写连写 | `GEAR_N`、`TASKFINISHED`、`ADAPTIVEHOOK` |
 
 ## 三、代码格式（两代并存，跟随所在文件）
 
-- **robot_control/ 已 Google 化**（2 空格缩进、80 列、左大括号同行、`} else {` 同行、
-  访问修饰符 1 空格缩进、指针引用贴类型 `FILE* fp`；目录内有 `.clang-format`，
+- **robot_control/ 与 robot_task_plan/ 已 Google 化**（2 空格缩进、80 列、左大括号同行、
+  `} else {` 同行、访问修饰符 1 空格缩进、指针引用贴类型 `FILE* fp`；
+  task_plan 于 08-30 随 core/node 解耦重写；robot_control/ 目录内有 `.clang-format`，
   注意 `SortIncludes: false` —— **include 顺序有隐式依赖，禁止排序/重排**）
-- **其余目录（task_plan/path_plan/can_comm/navigation/perception_convert）为历史格式**：
+- **其余目录（path_plan/can_comm/navigation/perception_convert）为历史格式**：
   4 空格缩进、Allman 大括号独立成行
 - **铁律：新增/修改代码跟随所在文件的既有格式**，不要在旧格式文件里引入新格式，反之亦然
 - C++11；克制使用现代特性（手写索引 `for (int i...)` 远多于 range-for，243:44；
   需要索引/相邻点配对/步进采样时必须用索引循环）
+- 【2026-08-30 晚更新】`robot_task_plan/task_plan_core` 与 canbus 包的 `canbus_core`
+  已升级为**惯用 C++**（`std::function` 事件出口、`std::string` 事件字段、NSDMI、
+  `struct X_S {}` 直写），两模块成员统一 m 前缀 PascalCase（canbus 原 Google 尾下划线
+  已全改名）；这两个文件内新代码按此风格，其余节点目录仍守上一条
 
 ## 四、ROS 使用惯例
 

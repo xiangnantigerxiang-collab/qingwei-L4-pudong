@@ -1,16 +1,19 @@
 cmake_minimum_required(VERSION 2.8.3)
 project(canbus)
 
-# rospy/serial：零使用（08-30 C++ 风格轮 grep 实证），已从依赖移除
 find_package(catkin REQUIRED COMPONENTS
   message_generation
   roscpp
+  roslib
+  rospy
   sensor_msgs
   geometry_msgs
   std_msgs
   socketcan_bridge
   socketcan_interface
   can_msgs
+  geometry_msgs
+  serial
 )
 
 add_message_files(
@@ -56,16 +59,16 @@ link_directories(
   ${catkin_LIB_DIRS}
 )
 
-# （原 TARGET_NAME/SUFFIX_STR 死变量已删：SUFFIX_STR 从未定义、TARGET_NAME 零引用）
+set (TARGET_NAME ${CMAKE_PROJECT_NAME}${SUFFIX_STR})
 
 include_directories (
   ${CMAKE_CURRENT_SOURCE_DIR}/include
   ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 
-add_executable(aeb_can_node
+add_executable(aeb_can_node 
   src/canbus_node.cpp
-  src/canbus_core.cpp
+  src/canbus_comply.cpp
 )
 add_dependencies(aeb_can_node 
   ${${PROJECT_NAME}_EXPORTED_TARGETS} 

@@ -99,6 +99,17 @@ typedef enum taskType
     ADAPTIVEPARK = 7,
 }TASKTYPE_E;
 
+// can_msg.hookStatus/palletStatus 执行器状态码,canbus 侧状态机输出
+// (canbus_core.h ActuatorStateCode,数值为两侧契约,经 /can_msg 传输)
+typedef enum hookStatusValue
+{
+    ACTUATOR_NULL = 0,
+    ACTUATOR_BLOCK = 1,
+    ACTUATOR_MIDDLE = 2,
+    ACTUATOR_DOWN_END = 3,
+    ACTUATOR_UP_END = 4,
+}HOOKSTATUS_E;
+
 typedef enum taskStatus
 {
     NOTASK = 0,
