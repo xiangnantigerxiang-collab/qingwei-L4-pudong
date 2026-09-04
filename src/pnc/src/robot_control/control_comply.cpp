@@ -388,11 +388,8 @@ void ControlComply::VehicleControl() {
     {
       // 缓停逻辑
       int current_state = 0;
-      int hookstate = 0;
-      ros::param::get("/canbus/hookstate", hookstate);
       ros::param::get("/planning/sensorstate", current_state);
-      if ((current_state & 0x02) == 2 || (current_state & 0x04) == 4 ||
-          hookstate == 1) {
+      if ((current_state & 0x02) == 2 || (current_state & 0x04) == 4) {
         printf("huanman tingche\n");
         // 减速停车
         double dcc = 8.0;

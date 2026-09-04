@@ -13,6 +13,7 @@ find_package(catkin REQUIRED COMPONENTS
   std_msgs
 message_generation
 serial
+  robot
 )
 
 ## System dependencies are found with CMake's conventions
@@ -118,13 +119,21 @@ catkin_package(
 
 ## Specify additional locations of header files
 ## Your package locations should be listed before other locations
-find_package(Eigen3 REQUIRED)
-
 include_directories(
 # include
   ${catkin_INCLUDE_DIRS}
-  ${EIGEN3_INCLUDE_DIRS}
 )
+
+## src/frame_transform.h includes <Eigen/Core>. 本包此前从未自带 Eigen
+## 路径,靠 catkin_make 单一上下文里其他包 include_directories 的泄漏
+## 侥幸编过;换构建环境即断。优先用本工作区内置副本(与 pnc 编译所用
+## 同一份,src/pnc/include,3.3.7),没有再退回系统 Eigen3。
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/../../pnc/include/Eigen/Core)
+  include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../../pnc/include)
+else()
+  find_package(Eigen3 REQUIRED)
+  include_directories(${EIGEN3_INCLUDE_DIR})
+endif()
 
 ## Declare a C++ library
 # add_library(${PROJECT_NAME}
@@ -210,7 +219,7 @@ include_directories(
 	add_executable(ins src/ASENSING_INS_node.cpp
                                             src/frame_transform.cc                                                                          )
 	target_link_libraries(ins ${catkin_LIBRARIES})
-	add_dependencies(ins ${PROJECT_NAME}_generate_messages_cpp)
+	add_dependencies(ins ${PROJECT_NAME}_generate_messages_cpp ${catkin_EXPORTED_TARGETS})
 
 
 

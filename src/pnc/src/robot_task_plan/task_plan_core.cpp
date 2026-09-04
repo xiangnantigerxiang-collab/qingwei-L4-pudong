@@ -508,7 +508,16 @@ void TaskPlanCore::RunHeartBeat(const HeartBeatInputs &in, TaskPlanSink sink) {
     HB.lidarState = (sensorstate & 0x02) >> 1;
     HB.cameraState = (sensorstate & 0x04) >> 2;
     HB.gnssState = (sensorstate & 0x08) >> 3;
-    int hookstate = in.hookstate;
+    // can_msg.hookStatus 映射云端契约(v2nHeartBeatValue: 4-已挂钩/3-未挂钩/
+    // 2-挂钩异常/1-脱钩告警): 4(up end=挂牢)/3(down end=脱开)直传,
+    // 1(block=堵转)报 2, 其余 0(原 /canbus/hookstate param 已随状态机下线)
+    int hookstate = 0;
+    if (mCanData.hookStatus == ACTUATOR_UP_END ||
+        mCanData.hookStatus == ACTUATOR_DOWN_END) {
+        hookstate = mCanData.hookStatus;
+    } else if (mCanData.hookStatus == ACTUATOR_BLOCK) {
+        hookstate = 2;  // 堵转按"挂钩异常"上报
+    }
     HB.vehicleState = 0;
     if (mCanData.faultCode.size() > 0) {
         HB.vehicleState = mCanData.faultCode[0];

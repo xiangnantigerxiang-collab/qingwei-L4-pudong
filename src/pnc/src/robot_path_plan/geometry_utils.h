@@ -16,7 +16,7 @@ using GeoBox = bg::model::box<GeoPoint>;
 
 namespace geometry_utils
 {
-    GeoPolygon createOBB(double cx, double cy, double length, double width, double heading)
+    inline GeoPolygon createOBB(double cx, double cy, double length, double width, double heading)
     {
         GeoPolygon poly;
         double half_l = length / 2.0;
@@ -45,13 +45,13 @@ namespace geometry_utils
         return poly;
     }
 
-    GeoBox createAABB(const GeoPolygon &obb)
+    inline GeoBox createAABB(const GeoPolygon &obb)
     {
         GeoBox aabb;
         bg::envelope(obb, aabb);
         return aabb;
     }
-    double distanceOBB(const GeoPolygon &poly1, const GeoPolygon &poly2)
+    inline double distanceOBB(const GeoPolygon &poly1, const GeoPolygon &poly2)
     {
         // 1. 检查是否相交
         if (bg::intersects(poly1, poly2))
@@ -104,7 +104,7 @@ namespace geometry_utils
         return min_dist;
     }
 
-    double distanceAABB(const GeoBox &box1, const GeoBox &box2)
+    inline double distanceAABB(const GeoBox &box1, const GeoBox &box2)
     {
         double min_dist = bg::distance(box1, box2);
         return min_dist;

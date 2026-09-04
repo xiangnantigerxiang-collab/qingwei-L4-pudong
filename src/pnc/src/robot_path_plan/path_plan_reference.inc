@@ -71,17 +71,6 @@ void PathPlanComply::PathPlanProcess()
         mTaskPlanData.taskType = NOTASK;
         // mPathPlanStatus.taskExecuStatus = NOTASK;
     }
-
-    /////////////////////////////////////////////
-    // 运行过程中挂钩异常，直接结束任务
-    int hookstate = 0;
-    ros::param::get("/canbus/hookstate", hookstate);
-    // if (hookstate == 1 && mPathPlanStatus.curSpeed < 0.3)
-    // {
-    //     printf("hookstate == 1 and curspeed < 0.3 task finifshed\n");
-    //     mDesireSpeed = 0.0;
-    //     mPathPlanStatus.taskExecuStatus = TASKFINISHED;
-    // }
 }
 
 void PathPlanComply::PublishPathPlanStatus(ros::Publisher &tPub)

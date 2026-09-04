@@ -17,7 +17,7 @@
 //   publish   /cloud/task/task_status (任务状态 -> 云端)
 //   publish   /v2nHeartBeat /v2nCommandFeedback /v2nRunningFeedback
 //   param in : task_file, config_file, max_vehicle_speed(热读),
-//              /planning/sensorstate, /canbus/hookstate
+//              /planning/sensorstate
 //   param out: /cloud/suggestspeed
 //
 // 定时器 10Hz 心跳; 主循环 20Hz(发布门控与旧实现相同)。
@@ -302,9 +302,7 @@ static void T1Callback(const ros::TimerEvent &real) {
     in.minute = wall_time.toBoost().time_of_day().minutes();
     in.second = wall_time.toBoost().time_of_day().seconds();
     in.sensorstate = 0;
-    in.hookstate = 0;
     ros::param::get("/planning/sensorstate", in.sensorstate);
-    ros::param::get("/canbus/hookstate", in.hookstate);
     g_core.RunHeartBeat(in, CoreEventToRos);
 }
 

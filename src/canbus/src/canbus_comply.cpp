@@ -88,10 +88,14 @@ void CanbusComply::VehicleComm()
     can284[7] = 0x00;
 
     if(can_comm_cmd.hookCmd == HOOKOPERATION) {
-        if(mCanMsg.hookStatus != 1) can284[2] = 0x05; //1 = block
+        int status = mCanMsg.hookStatus;
+        if(status != 1 && status != 4) can284[2] = 0x05; //1 = block
     }
 
-    if(can_comm_cmd.hookCmd == DECOUPLING) can284[2] = 0x0A;
+    if(can_comm_cmd.hookCmd == DECOUPLING) {
+        int status = mCanMsg.hookStatus;
+        if(status != 3) can284[2] = 0x0A;
+    }
 
     int LightCmd = 0;
     ros::param::get("/canbus/light", LightCmd);

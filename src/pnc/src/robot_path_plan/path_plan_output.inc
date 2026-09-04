@@ -76,7 +76,7 @@ void PathPlanComply::PublishPlanPath(ros::Publisher &tPub1, ros::Publisher &tPub
     if (acc > 0.5)
     // if (true)
     {
-        if (mVehicleData.linkPallet && mVehicleData.hookPos < HookPosMin) // 挂托盘，平滑过渡
+        if (mVehicleData.linkPallet && mVehicleData.hookStatus != ACTUATOR_UP_END) // 挂托盘，平滑过渡
         {
             mPlanPath.desireSpeed = 0.1 * mPlanPath.desireSpeed + 0.9 * mVehicleData.vehicleSpeed;
         }

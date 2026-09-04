@@ -122,7 +122,8 @@ struct CommandIn {
     float speedCommand = 0;
 };
 
-// 10Hz 心跳拍的外部输入: 墙钟(年..秒, 未加时区) + 两个 rosparam 快照
+// 10Hz 心跳拍的外部输入: 墙钟(年..秒, 未加时区) + sensorstate rosparam 快照
+// (挂脱钩状态改由 can_msg.hookStatus 供给, 见 RunHeartBeat 的契约映射)
 struct HeartBeatInputs {
     int year = 0;
     int month = 0;
@@ -131,7 +132,6 @@ struct HeartBeatInputs {
     int minute = 0;
     int second = 0;
     int sensorstate = 0;  // "/planning/sensorstate" 位掩码, 读失败为 0
-    int hookstate = 0;    // "/canbus/hookstate", 读失败为 0
 };
 
 // ---- 输出镜像(发布消息的逐字段拷贝源) ----
