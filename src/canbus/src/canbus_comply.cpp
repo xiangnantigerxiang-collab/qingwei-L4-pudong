@@ -97,6 +97,9 @@ void CanbusComply::VehicleComm()
         if(status != 3) can284[2] = 0x0A;
     }
 
+    if(mCanMsg.hookStatus == 4 && mCanMsg.palletStatus != 3) can284[2] = 0x01;
+    if(mCanMsg.hookStatus == 3 && mCanMsg.palletStatus != 4) can284[2] = 0x02;
+
     int LightCmd = 0;
     ros::param::get("/canbus/light", LightCmd);
 
@@ -108,9 +111,12 @@ void CanbusComply::VehicleComm()
     std::tm *local_time = std::localtime(&now_time);
 
     if(local_time->tm_hour >= 18 || local_time->tm_hour <= 6) can284[1] += 4;
-    ros::param::set("/canbus/time", local_time->tm_hour);
 
     SendVehicleControlCmd(0x284, can284);
+
+    //set camera handle
+    if(mCanMsg.hookStatus == 4) forwardCamera();
+    else backwardCamera();
 }
 
 void CanbusComply::forwardCamera()
@@ -122,7 +128,7 @@ void CanbusComply::forwardCamera()
     SendVehicleControlCmd(0x606, can606);
 }
 
-void CanbusComply::backwardCambera()
+void CanbusComply::backwardCamera()
 {
     uint8_t can608[8] = {0x2b, 0x40, 0x40, 0x00, 0x19, 0xfc, 0x00, 0x00};
     uint8_t can606[8] = {0x2b, 0x40, 0x40, 0x00, 0x19, 0xfc, 0x00, 0x00};
@@ -198,6 +204,96 @@ void CanbusComply::RecvCanData(const can_msgs::Frame &msg)
 
         mCanMsg.rawfeedback.clear();
         for (auto i : msg.data) mCanMsg.rawfeedback.push_back(i);
+    } break;
+
+    case 0x08FB670E: {  // EHB 帧1(PGN 0xFB67,EHB_STORAGE 蓄能系统),J1939 Intel 位序(位1=最低位)
+        mEHBMsg.EHB_STO_StorageSystemStatus             = msg.data[0] & 0x03;          //1.1-1.2 蓄能系统工作状态
+        mEHBMsg.EHB_STO_StorageSystemFault              = (msg.data[0] >> 2) & 0x03;   //1.3-1.4 蓄能系统故障状态
+        mEHBMsg.EHB_STO_StorageSystemLowPressureWarn    = (msg.data[0] >> 4) & 0x03;   //1.5-1.6 蓄能系统低压警示
+        mEHBMsg.EHB_STO_BrakeFluidPosition              = (msg.data[0] >> 6) & 0x03;   //1.7-1.8 制动液位信号状态
+        mEHBMsg.EHB_STO_PressureSensor1RawValue         = msg.data[1];                 //2.1-2.8 液压传感器1原始压力值
+        mEHBMsg.EHB_STO_PressureSensor2RawValue         = msg.data[2];                 //3.1-3.8 液压传感器2原始压力值
+        mEHBMsg.EHB_STO_PressureSensor3RawValue         = msg.data[3];                 //4.1-4.8 液压传感器3原始压力值
+        mEHBMsg.EHB_STO_HighPressureAccumulatorA        = msg.data[4];                 //5.1-5.8 高压蓄能器压力A
+        mEHBMsg.EHB_STO_HighPressureAccumulatorB        = msg.data[5];                 //6.1-6.8 高压蓄能器压力B
+        mEHBMsg.EHB_STO_FailureNum                      = msg.data[6] & 0x0F;          //7.1-7.4 蓄能系统当前故障数量
+        mEHBMsg.EHB_STO_FAU_PowerSupplyVoltageHigh      = (msg.data[6] >> 4) & 0x01;   //7.5 电源电压过高
+        mEHBMsg.EHB_STO_FAU_PowerSupplyVoltageLow       = (msg.data[6] >> 5) & 0x01;   //7.6 电源电压过低
+        mEHBMsg.EHB_STO_FAU_SensorSupplyError           = (msg.data[6] >> 6) & 0x01;   //7.7 液压传感器电源异常
+        mEHBMsg.EHB_STO_FAU_Sensor1Error                = (msg.data[6] >> 7) & 0x01;   //7.8 1号液压传感器信号异常
+        mEHBMsg.EHB_STO_FAU_Sensor2Error                = msg.data[7] & 0x01;          //8.1 2号液压传感器信号异常
+        mEHBMsg.EHB_STO_FAU_Sensor3Error                = (msg.data[7] >> 1) & 0x01;   //8.2 3号液压传感器信号异常
+        mEHBMsg.EHB_STO_FAU_SensorJudgmentFailure       = (msg.data[7] >> 2) & 0x01;   //8.3 液压传感器信号无法解析
+        mEHBMsg.EHB_STO_FAU_MotorOpenLoad               = (msg.data[7] >> 3) & 0x01;   //8.4 蓄能电机断路
+        mEHBMsg.EHB_STO_FAU_MotorCannotStop             = (msg.data[7] >> 4) & 0x01;   //8.5 蓄能电机无法关闭
+        mEHBMsg.EHB_STO_FAU_MotorWorkTimeout            = (msg.data[7] >> 5) & 0x01;   //8.6 蓄能电机加压超时
+    } break;
+
+    case 0x08FB680E: {  // EHB 帧2(PGN 0xFB68,EHB_AUTOBRAKE 主动制动),2.3-2.4 未分配
+        mEHBMsg.EHB_ATB_ActualBrakePressure        = msg.data[0];                //1.1-1.8 主动制动系统实际压力
+        mEHBMsg.EHB_ATB_AutoBrakeSystemStatus      = msg.data[1] & 0x03;         //2.1-2.2 主动制动系统当前状态
+        mEHBMsg.EHB_ATB_FailureNum                 = (msg.data[1] >> 4) & 0x0F;  //2.5-2.8 主动制动系统当前故障数量
+        mEHBMsg.EHB_ATB_FAU_PowerSupplyVoltageHigh = msg.data[2] & 0x01;         //3.1 电源电压过高
+        mEHBMsg.EHB_ATB_FAU_PowerSupplyVoltageLow  = (msg.data[2] >> 1) & 0x01;  //3.2 电源电压过低
+        mEHBMsg.EHB_ATB_FAU_CanBusOff              = (msg.data[2] >> 2) & 0x01;  //3.3 CAN BUS OFF
+        mEHBMsg.EHB_ATB_FAU_SensorSupplyError      = (msg.data[2] >> 3) & 0x01;  //3.4 传感器电源故障
+        mEHBMsg.EHB_ATB_FAU_MotorDriverError       = (msg.data[2] >> 4) & 0x01;  //3.5 电机驱动故障
+        mEHBMsg.EHB_ATB_FAU_BrakePressSensorError  = (msg.data[2] >> 5) & 0x01;  //3.6 制动液压信号异常
+        mEHBMsg.EHB_ATB_FAU_LosOfEHBSTOCom         = (msg.data[2] >> 6) & 0x01;  //3.7 EHB蓄能器通讯丢失
+        mEHBMsg.EHB_ATB_FAU_MotorCommuteFail       = (msg.data[2] >> 7) & 0x01;  //3.8 电机校准失败
+        mEHBMsg.EHB_ATB_FAU_MotorOpenLoad          = msg.data[3] & 0x01;         //4.1 电机开路
+        mEHBMsg.EHB_ATB_FAU_MotorShort             = (msg.data[3] >> 1) & 0x01;  //4.2 电机短路
+        mEHBMsg.EHB_ATB_FAU_MotorStall             = (msg.data[3] >> 2) & 0x01;  //4.3 电机堵转
+        mEHBMsg.EHB_ATB_FAU_ValveBodyError         = (msg.data[3] >> 3) & 0x01;  //4.4 阀体故障
+        mEHBMsg.EHB_ATB_FAU_LosOfBrakeReqSignal    = (msg.data[3] >> 4) & 0x01;  //4.5 制动请求信号丢失
+        mEHBMsg.EHB_ATB_FAU_BrakeReqRcError        = (msg.data[3] >> 5) & 0x01;  //4.6 制动请求rollcounter错误
+        mEHBMsg.EHB_ATB_FAU_BrakeReqCsError        = (msg.data[3] >> 6) & 0x01;  //4.7 制动请求checksum错误
+    } break;
+
+    case 0x08FB690E: {  // EHB 帧3(PGN 0xFB69,EHB_EPB 电子驻车)
+        mEHBMsg.EHB_EPB_SystemStatus                = msg.data[0] & 0x03;         //1.1-1.2 驻车系统工作状态
+        mEHBMsg.EHB_EPB_ParkingStatus               = (msg.data[0] >> 2) & 0x07;  //1.3-1.5 驻车系统驻车状态
+        mEHBMsg.EHB_EPB_ParkingPressure             = msg.data[1];                //2.1-2.8 驻车系统液压
+        mEHBMsg.EHB_EPB_FailureNum                  = msg.data[2] & 0x0F;         //3.1-3.4 驻车系统当前故障数
+        mEHBMsg.EHB_EPB_FAU_PowerSupplyVoltageHigh  = msg.data[3] & 0x01;         //4.1 电源电压过高
+        mEHBMsg.EHB_EPB_FAU_PowerSupplyVoltageLow   = (msg.data[3] >> 1) & 0x01;  //4.2 电源电压过低
+        mEHBMsg.EHB_EPB_FAU_NoValueError            = (msg.data[3] >> 2) & 0x01;  //4.3 常开电磁阀异常
+        mEHBMsg.EHB_EPB_FAU_NcValueError            = (msg.data[3] >> 3) & 0x01;  //4.4 常闭电磁阀异常
+        mEHBMsg.EHB_EPB_FAU_SensorSupplyError       = (msg.data[3] >> 4) & 0x01;  //4.5 传感器电源异常
+        mEHBMsg.EHB_EPB_FAU_ParkingPresSensorError  = (msg.data[3] >> 5) & 0x01;  //4.6 驻车系统液压信号异常
+        mEHBMsg.EHB_EPB_FAU_ParkingPressureLow      = (msg.data[3] >> 6) & 0x01;  //4.7 驻车液压过低
+        mEHBMsg.EHB_EPB_FAU_LosOfParkingReqSignal   = (msg.data[3] >> 7) & 0x01;  //4.8 驻车请求信号丢失
+        mEHBMsg.EHB_EPB_FAU_ParkingReqRcError       = msg.data[4] & 0x01;         //5.1 驻车请求rollcounter错误
+        mEHBMsg.EHB_EPB_FAU_ParkingReqCsError       = (msg.data[4] >> 1) & 0x01;  //5.2 驻车请求checksum错误
+    } break;
+
+    case 0x08FB1458: {  // EHB 接收方向帧4(VCU SA=0x58→EHB,Vehicle_Brake_Request 制动请求 20ms),canbus 旁听解析
+        mEHBMsg.VHL_ATB_BrakePressRequest     = msg.data[0];                //1.1-1.8 请求制动力大小(raw×0.04 MPa)
+        mEHBMsg.VHL_ATB_BrakePressRequestFlag = msg.data[1] & 0x03;         //2.1-2.2 制动请求标志
+        mEHBMsg.VHL_ATB_RollingCounter        = (msg.data[6] >> 4) & 0x0F;  //7.5-7.8 滚动计数器(声明8bit/位跨4bit冲突I02,按位置4bit)
+        mEHBMsg.VHL_ATB_CheckSum              = msg.data[7];                //8.1-8.8 校验和(求和宽度未定义I06,不校验)
+    } break;
+
+    case 0x08FB1558: {  // EHB 接收方向帧5(VCU SA=0x58→EHB,Vehicle_Parking_Request 驻车请求 100ms),canbus 旁听解析
+        mEHBMsg.VHL_EPB_ParkingRequest  = msg.data[0] & 0x03;         //1.1-1.2 驻车请求
+        mEHBMsg.VHL_EPB_RollingCounter  = (msg.data[6] >> 4) & 0x0F;  //7.5-7.8 滚动计数器(I02,按位置4bit)
+        mEHBMsg.VHL_EPB_CheckSum        = msg.data[7];                //8.1-8.8 校验和(I06,不校验)
+    } break;
+
+    case 0x0CFD0358: {  // EHB 接收补充项(VCU SA=0x58→EHB):车辆车速(原表中文信号名)
+        mEHBMsg.VHL_VehicleSpeed = (uint16_t)(msg.data[4] | (msg.data[5] << 8));  //5.1-6.8 ×0.1 km/h,0xFFFF 忽略
+    } break;
+
+    case 0x0CFD0058: {  // EHB 接收补充项:高压上电状态(原表「点火钥匙状态(改为:高压上电状态)」)
+        mEHBMsg.VHL_HvPowerState = msg.data[2];                     //3.1-3.8 0x00断电/0x01上电/0xFF忽略
+    } break;
+
+    case 0x0CFD0158: {  // EHB 接收补充项:制动踏板状态
+        mEHBMsg.VHL_BrakePedalStatus = msg.data[3];                 //4.1-4.8 0-100%,0xFF 忽略
+    } break;
+
+    case 0x08FD0258: {  // EHB 接收补充项:车辆当前档位(ASCII R,N,D,P;两字节摆放未定义 I09,存原始16bit)
+        mEHBMsg.VHL_VehicleGear = (uint16_t)(msg.data[4] | (msg.data[5] << 8));  //5.1-6.8 小端拼接
     } break;
 
     case 0x588: {

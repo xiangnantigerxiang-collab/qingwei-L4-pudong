@@ -553,12 +553,13 @@ def main():
     global SRV_PID
     sys.path.insert(0, HERE)
     import mock_ros
-    master = mock_ros.FakeMaster(port=11311)
+    master = mock_ros.FakeMaster(port=21111)
     master.start()
     write_control(rates={})
     env = dict(os.environ)
     env["MOCK_CONTROL"] = CONTROL
-    env["ROS_MASTER_URI"] = "http://127.0.0.1:11311"
+    env["ROS_MASTER_URI"] = "http://127.0.0.1:21111"
+    env["DASHBOARD_PORT"] = "18082"       # 避让本机可能在跑的 8082
     srv = subprocess.Popen(
         [sys.executable, os.path.join(HERE, "run_server_mock.py"),
          "--port", str(PORT), "--config",

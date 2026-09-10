@@ -23,6 +23,7 @@
 #include "struct_type.h"
 #include "canbus/can_comm_msg.h"
 #include "canbus/can_msg.h"
+#include "canbus/ehb_msg.h"
 #include "canbus/control_msg.h"
 #include "canbus/sound_light_msg.h"
 #include "canbus/task_plan_msg.h"
@@ -63,7 +64,7 @@ public:
     void VehicleComm();
 
     void forwardCamera();
-    void backwardCambera();
+    void backwardCamera();
     void checkCamera();
 
     int handle;
@@ -98,6 +99,7 @@ public:
 
     canbus::can_comm_msg can_comm_cmd;
     canbus::can_msg mCanMsg;
+    canbus::ehb_msg mEHBMsg;
 
 public:
     void SendVehicleControlCmd(uint32_t id,unsigned char *data);

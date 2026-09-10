@@ -20,6 +20,7 @@ add_message_files(
   FILES
   can_comm_msg.msg
   can_msg.msg
+  ehb_msg.msg
   control_msg.msg
   navigation_msg.msg
   path_plan_msg.msg

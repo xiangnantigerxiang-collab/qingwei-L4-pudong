@@ -1,0 +1,7 @@
+<launch>
+  <!-- 参数默认值已内置在代码中;需要覆盖时取消注释改值
+  <param name="/health_monitor/stale_s" value="5.0"/>
+  <param name="/health_monitor/sample_period_s" value="10.0"/>
+  -->
+  <node pkg="health_monitor" type="health_monitor_node" name="health_monitor_node" output="screen"/>
+</launch>

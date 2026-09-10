@@ -19,8 +19,8 @@ if(${ENABLE_TRANSFORM})
   add_definitions("-DENABLE_TRANSFORM")
 endif(${ENABLE_TRANSFORM})
 
-set(rs_driver_INCLUDE_DIRS "/root/workspace/qingwei-L4-No2-pudong/src/driver/rslidar_sdk/src/rs_driver/src;/usr/local/Project/include")
-set(RS_DRIVER_INCLUDE_DIRS "/root/workspace/qingwei-L4-No2-pudong/src/driver/rslidar_sdk/src/rs_driver/src;/usr/local/Project/include")
+set(rs_driver_INCLUDE_DIRS "/home/nvidia/qingwei-L4-No2/src/driver/rslidar_sdk/src/rs_driver/src;/usr/local/Project/include")
+set(RS_DRIVER_INCLUDE_DIRS "/home/nvidia/qingwei-L4-No2/src/driver/rslidar_sdk/src/rs_driver/src;/usr/local/Project/include")
 
 set(rs_driver_LIBRARIES "pthread;pcap")
 set(RS_DRIVER_LIBRARIES "pthread;pcap")

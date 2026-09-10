@@ -2,6 +2,7 @@
 #include <ros/package.h>
 
 ros::Publisher can_msg_pub;
+ros::Publisher ehb_msg_pub;
 ros::Publisher can_send_pub;
 
 CanbusComply canbusComply;
@@ -185,6 +186,8 @@ void T1Callback(const ros::TimerEvent &real)
             if(hookmid_count > 100) hookmid_count = 100;
         }
     }else hookmid_count = 0;
+
+    ehb_msg_pub.publish(canbusComply.mEHBMsg);
 }
 
 void T2Callback(const ros::TimerEvent &real)
@@ -222,6 +225,7 @@ int main(int argc, char **argv)
         ros::TransportHints().tcpNoDelay());
 
     can_msg_pub = nh.advertise<canbus::can_msg>("/can_msg", 1);
+    ehb_msg_pub = nh.advertise<canbus::ehb_msg>("/ehb_msg", 1);
     can_send_pub = nh.advertise<can_msgs::Frame>("/can_send", 1);
 
     ros::Timer T1 = nh.createTimer(ros::Duration(0.1), T1Callback);

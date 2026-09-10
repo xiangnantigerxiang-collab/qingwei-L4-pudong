@@ -107,13 +107,13 @@ def py_decode(blob):
 
 def main():
     rng = random.Random(424242)
-    master = mock_ros.FakeMaster(port=11311)
+    master = mock_ros.FakeMaster(port=21113)
     master.start()
     with open(CONTROL, "w") as f:
         json.dump({"master_alive": True, "rates": {}, "fields": {}}, f)
     env = dict(os.environ)
     env["MOCK_CONTROL"] = CONTROL
-    env["ROS_MASTER_URI"] = "http://127.0.0.1:11311"
+    env["ROS_MASTER_URI"] = "http://127.0.0.1:21113"
     srv = subprocess.Popen(
         [sys.executable, os.path.join(HERE, "run_server_mock.py"),
          "--port", str(PORT), "--config",

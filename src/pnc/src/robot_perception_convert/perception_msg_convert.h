@@ -28,17 +28,13 @@ struct Vec2d {
 
 class PerceptionBoundary {
 public:
-    std::vector<Vec2d> boundary_points_;
-    
-    bool LoadBoundary(const std::string& file_path);
-    bool IsPointInBoundary(double x, double y) const;
-    bool IsPointInBoundary(const Vec2d& point) const;
+    // 排除区域多边形集合：配置目录下每个 .csv 文件对应一个多边形，文件内每行一个 "x,y" 顶点
+    std::vector<std::vector<Vec2d>> polygons_;
 
-private:
-    int Next(int at, int n) const { return at >= n - 1 ? 0 : at + 1; }
-    double CrossProd(const Vec2d& p, const Vec2d& a, const Vec2d& b) const {
-        return (a.x - p.x) * (b.y - p.y) - (a.y - p.y) * (b.x - p.x);
-    }
+    // dir_path 为配置目录，加载其中所有 .csv 文件为排除多边形
+    bool LoadBoundary(const std::string& dir_path);
+    // 点落在任一多边形内返回 true（调用处据此剔除障碍物）
+    bool IsPointInExclusion(double x, double y) const;
 };
 
 #endif //PERCEPTION_MSG_CONVERT

@@ -1,6 +1,7 @@
 #include "perception_msg_convert.h"
 #include <tf/LinearMath/Transform.h>
 #include <tf/LinearMath/Matrix3x3.h>
+#include <dirent.h>
 
 robot::perception mPerception;
 robot::navigation_msg mGPS;
@@ -13,68 +14,66 @@ ros::Publisher string_pub;
 
 PerceptionBoundary g_perception_boundary;
 
-// 感知边界实现
-bool PerceptionBoundary::LoadBoundary(const std::string& file_path) {
-    std::ifstream file(file_path);
-    if (!file.is_open()) {
-        ROS_ERROR("Failed to open perception boundary file: %s", file_path.c_str());
+// 感知排除区域实现：加载配置目录下所有 .csv 文件，每个文件作为一个排除多边形
+bool PerceptionBoundary::LoadBoundary(const std::string& dir_path) {
+    polygons_.clear();
+    DIR* dir = opendir(dir_path.c_str());
+    if (!dir) {
+        ROS_ERROR("Failed to open perception boundary dir: %s", dir_path.c_str());
         return false;
     }
-    
-    boundary_points_.clear();
-    std::string line;
-    while (std::getline(file, line)) {
-        // 跳过空行
-        if (line.empty()) continue;
-        
-        // 解析 x,y 坐标
-        size_t comma_pos = line.find(',');
-        if (comma_pos != std::string::npos) {
-            try {
-                double x = std::stod(line.substr(0, comma_pos));
-                double y = std::stod(line.substr(comma_pos + 1));
-                boundary_points_.push_back(Vec2d(x, y));
-            } catch (const std::exception& e) {
-                ROS_WARN("Failed to parse boundary line: %s", line.c_str());
+
+    std::vector<std::string> files;
+    struct dirent* ent;
+    while ((ent = readdir(dir)) != nullptr) {
+        std::string name = ent->d_name;
+        // 只取 .csv 文件
+        if (name.size() > 4 && name.compare(name.size() - 4, 4, ".csv") == 0)
+            files.push_back(dir_path + "/" + name);
+    }
+    closedir(dir);
+    std::sort(files.begin(), files.end());  // 文件名排序，保证加载顺序稳定
+
+    for (const auto& file_path : files) {
+        std::ifstream file(file_path);
+        std::vector<Vec2d> poly;  // 当前文件对应的多边形
+        std::string line;
+        while (std::getline(file, line)) {
+            if (line.empty())  // 跳过空行
+                continue;
+            size_t comma_pos = line.find(',');
+            if (comma_pos != std::string::npos) {
+                try {
+                    poly.push_back(Vec2d(std::stod(line.substr(0, comma_pos)),
+                                         std::stod(line.substr(comma_pos + 1))));
+                } catch (...) {}
             }
         }
+        if (poly.size() >= 3)
+            polygons_.push_back(poly);  // 顶点不足 3 的文件忽略
     }
-    file.close();
-    
-    if (boundary_points_.empty()) {
-        ROS_ERROR("No boundary points loaded");
-        return false;
-    }
-    
-    ROS_INFO("Loaded %zu perception boundary points", boundary_points_.size());
-    return true;
+
+    ROS_INFO("Loaded %zu exclusion polygons from %s", polygons_.size(), dir_path.c_str());
+    return !polygons_.empty();
 }
 
-bool PerceptionBoundary::IsPointInBoundary(double x, double y) const {
-    return IsPointInBoundary(Vec2d(x, y));
-}
-
-bool PerceptionBoundary::IsPointInBoundary(const Vec2d& point) const {
-    if (boundary_points_.size() < 3) {
-        return true;  // 没有边界定义时，所有点都有效
-    }
-    
-    const int n = boundary_points_.size();
-    int j = n - 1;
-    bool c = false;
-    
-    for (int i = 0; i < n; j = i++) {
-        const Vec2d& pi = boundary_points_[i];
-        const Vec2d& pj = boundary_points_[j];
-        
-        // 点在边的y范围内
-        if (((pi.y > point.y) != (pj.y > point.y)) &&
-            (point.x < (pj.x - pi.x) * (point.y - pi.y) / (pj.y - pi.y) + pi.x)) {
-            c = !c;
+bool PerceptionBoundary::IsPointInExclusion(double x, double y) const {
+    for (const auto& poly : polygons_) {  // 依次判断每个多边形
+        if (poly.size() < 3)
+            continue;
+        int n = (int)poly.size(), j = n - 1;
+        bool inside = false;
+        for (int i = 0; i < n; j = i++) {  // 射线法判断点在多边形内
+            const Vec2d& a = poly[i];
+            const Vec2d& b = poly[j];
+            if (((a.y > y) != (b.y > y)) &&
+                (x < (b.x - a.x) * (y - a.y) / (b.y - a.y) + a.x))
+                inside = !inside;
         }
+        if (inside)
+            return true;  // 命中任一多边形即判定剔除
     }
-    
-    return c;
+    return false;
 }
 
 std::string StringToHex(const std::string &data)
@@ -136,10 +135,10 @@ void BoxMsgCallBack(const visualization_msgs::MarkerArray &msg)
         obj.y = y + x_ * sin(theta) + y_ * cos(theta);
         obj.dx = i.scale.x;
         obj.dy = i.scale.y;
-        // 感知边界过滤：在局部坐标系下判断障碍物是否在边界内
-        if (!g_perception_boundary.IsPointInBoundary(obj.x, obj.y)) {
-            printf("Filtered out obstacle at local (%.2f, %.2f)\n", obj.x, obj.y);
-            continue;  // 跳过边界外的障碍物
+        // 感知排除区域过滤：在局部坐标系下判断障碍物是否落在任一多边形内
+        if (g_perception_boundary.IsPointInExclusion(obj.x, obj.y)) {
+            printf("Filtered out obstacle inside exclusion zone at local (%.2f, %.2f)\n", obj.x, obj.y);
+            continue;  // 剔除落在多边形内的障碍物
         }
         obj.heading = fmod(heading_to_base / M_PI * 180.0 + mGPS.heading + 90, 360.0);
         if (obj.heading < 0)
@@ -158,9 +157,9 @@ int main(int argc, char **argv)
     ros::init(argc, argv, "perception_msg_convert");
     ros::NodeHandle nh;
 
-    // 加载感知边界配置（写死路径）
-    std::string boundary_file = "/home/nvidia/qingwei-L4-No2/src/pnc/config/perception_boundary.csv";
-    if (!g_perception_boundary.LoadBoundary(boundary_file)) {
+    // 加载感知排除区域配置（写死目录，目录下每个 .csv 文件为一个排除多边形）
+    std::string boundary_dir = "/home/nvidia/qingwei-L4-No2/src/pnc/config";
+    if (!g_perception_boundary.LoadBoundary(boundary_dir)) {
         ROS_WARN("Failed to load perception boundary, no filtering will be applied");
     }
 

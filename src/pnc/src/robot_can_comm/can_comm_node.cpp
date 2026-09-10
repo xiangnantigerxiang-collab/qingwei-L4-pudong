@@ -37,6 +37,7 @@ int main(int argc,char **argv){
         ros::spinOnce();
         canCommComply.CanCommProcess();
         can_comm_pub.publish(canCommComply.CanCommMsg);
+        loop_rate.sleep();
     }
 
     return 0;

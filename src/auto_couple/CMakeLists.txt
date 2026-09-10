@@ -12,6 +12,7 @@ find_package(catkin REQUIRED COMPONENTS
   message_generation
   laser_geometry
   pcl_conversions
+  ivlocmsg
   rospy
   tf
 )
@@ -32,7 +33,7 @@ generate_messages(
 
 catkin_package(
   INCLUDE_DIRS include
-  CATKIN_DEPENDS roscpp sensor_msgs pcl_ros std_msgs jsk_recognition_msgs message_runtime
+  CATKIN_DEPENDS roscpp sensor_msgs pcl_ros std_msgs jsk_recognition_msgs message_runtime ivlocmsg
 )
 
 include_directories(
@@ -43,7 +44,7 @@ include_directories(
 link_directories(${PCL_LIBRARY_DIRS})
 
 add_executable(${PROJECT_NAME}_node src/auto_couple_node.cpp src/auto_couple_core.cpp) 
-add_dependencies(${PROJECT_NAME}_node ${PROJECT_NAME}_generate_messages_cpp)
+add_dependencies(${PROJECT_NAME}_node ${PROJECT_NAME}_generate_messages_cpp ${catkin_EXPORTED_TARGETS})
 
 target_link_libraries(${PROJECT_NAME}_node
   ${PCL_LIBRARIES}

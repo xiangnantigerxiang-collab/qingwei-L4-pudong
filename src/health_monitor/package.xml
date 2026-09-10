@@ -1,0 +1,13 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>health_monitor</name>
+  <version>0.1.0</version>
+  <description>话题健康监测:自动发现全图话题,量测频率/新鲜度/流量,1Hz 发布 /diagnostics</description>
+  <maintainer email="nvidia@todo.todo">nvidia</maintainer>
+  <license>BSD</license>
+
+  <buildtool_depend>catkin</buildtool_depend>
+  <depend>roscpp</depend>
+  <depend>topic_tools</depend>
+  <depend>diagnostic_msgs</depend>
+</package>

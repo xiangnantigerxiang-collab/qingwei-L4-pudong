@@ -24,6 +24,7 @@ import json
 import os
 import signal
 import sys
+import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse
@@ -226,6 +227,39 @@ def main():
 
     app = MonitorApp(cfg)
 
+    # dashboard 仪表板:独立只读端口(默认 8082),与主服务同进程同一
+    # rospy 节点,复用订阅;任何启动失败只告警不影响主服务。
+    # 端口语义:环境变量未设/空串 -> 配置值(空串不遮蔽配置);
+    # 两者皆未设 -> 8082;值 0 -> 关闭;非法/越界 -> stderr 告警并关闭
+    raw_port = os.environ.get("DASHBOARD_PORT")
+    if raw_port is None or raw_port == "":
+        raw_port = cfg.get("DASHBOARD_PORT", 8082)
+    try:
+        dash_port = int(raw_port or 0)
+        if not 0 <= dash_port <= 65535:
+            raise ValueError("端口越界 %r" % (raw_port,))
+    except (TypeError, ValueError) as exc:
+        print("[MONITOR] DASHBOARD_PORT 非法(%s),dashboard 关闭(主服务继续)"
+              % exc, file=sys.stderr)
+        dash_port = 0
+    dash_httpd = None
+    if dash_port:
+        try:
+            import dashboard
+            dash_app = dashboard.DashboardApp(app.viz)
+            dash_httpd = ThreadingHTTPServer(
+                (args.host, dash_port),
+                dashboard.make_dashboard_handler(dash_app))
+            dash_httpd.daemon_threads = True
+            threading.Thread(target=dash_httpd.serve_forever,
+                             name="mon-dash", daemon=True).start()
+            print("[MONITOR] dashboard 已启动: http://%s:%d" % (
+                args.host if args.host != "0.0.0.0" else "本机IP", dash_port))
+        except Exception as exc:   # 含端口占用/Overflow/.msg 解析异常:永不拖死主服务
+            print("[MONITOR] dashboard 启动失败(主服务继续): %s" % exc,
+                  file=sys.stderr)
+            dash_httpd = None
+
     try:
         httpd = ThreadingHTTPServer((args.host, args.port),
                                     make_handler(app))
@@ -251,6 +285,9 @@ def main():
         httpd.serve_forever()
     finally:
         httpd.server_close()
+        if dash_httpd is not None:
+            dash_httpd.shutdown()
+            dash_httpd.server_close()
         app.shutdown()
     return 0
 

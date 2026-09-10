@@ -391,7 +391,9 @@ def t17_calib():
               and c["pallet_range"] == [127, 249], str(c))
     check("current 为 config.cfg 实际值",
           state()["calibration"]["current"] ==
-          {"hook": [185, 240], "pallet": [130, 240]},
+          # 常量须与 src/canbus/config.cfg 四键同步(现为 182/254/213/254,
+          # 旧值 185/240/130/240 系 09-01 标定迭代期残值)
+          {"hook": [182, 254], "pallet": [213, 254]},
           str(state()["calibration"]["current"]))
 
     # 失败路径:重新触发,写 aborted 行 + 清参数 → failed 带原因

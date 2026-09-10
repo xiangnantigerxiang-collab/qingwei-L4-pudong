@@ -251,12 +251,12 @@ def spawn_server(env):
 
 def main():
     rng = random.Random(20260828)
-    master = mock_ros.FakeMaster(port=11311)
+    master = mock_ros.FakeMaster(port=21112)
     master.start()
     write_control({"master_alive": True, "rates": {}, "fields": {}})
     env = dict(os.environ)
     env["MOCK_CONTROL"] = CONTROL
-    env["ROS_MASTER_URI"] = "http://127.0.0.1:11311"
+    env["ROS_MASTER_URI"] = "http://127.0.0.1:21112"
     srv = spawn_server(env)
 
     up = False

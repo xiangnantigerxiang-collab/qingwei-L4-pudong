@@ -22,9 +22,18 @@ uint8[] faultCode
 
 
 #new eps msg zhangyu 20220226
+uint8 epsCMD
+float32 wheelAngleCMD
 uint8 epsMode
 float32 epsCurrent
 uint8 epsCentring
 uint8 epsERR1
 uint8 epsERR2
+uint8 hookPos
+uint8 palletPos
+uint8 hookStatus
+uint8 palletStatus
+
+uint8[] rawcommand
+uint8[] rawfeedback
 

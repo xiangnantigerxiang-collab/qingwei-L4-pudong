@@ -1,6 +1,0 @@
-<launch>
-  <!-- <rosparam command="load" file="$(find log_writer)/config/params.yaml" /> -->
-  <!-- <param name="log_path" value="$(dirname)/../logData"/> -->
-  <param name="log_path" value="$(env HOME)/qingwei-L4-No2/logData"/>
-  <node name="data_logger_node" pkg="data_logger" type="data_logger_node" output="screen" />
-</launch>

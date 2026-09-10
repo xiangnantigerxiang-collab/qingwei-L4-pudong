@@ -22,6 +22,11 @@ CONFIG = {
     # HTTP 服务
     "PORT": 8081,
 
+    # dashboard 仪表板独立端口(同进程第二服务,展示 /can_msg 与
+    # /ehb_msg 全部字段,中文名称取自 ehb_msg.msg 注释);
+    # 环境变量 DASHBOARD_PORT 优先;置 0 关闭
+    "DASHBOARD_PORT": 8082,
+
     # 地图文件。rosparam /robot/mapfile 存在时优先(rospy 可用才读)。
     "MAP_PATH": "$MON/map",
 

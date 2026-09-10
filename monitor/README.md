@@ -1,165 +1,82 @@
-# qingwei L4 monitor — 自动驾驶可视化(Web)
+# qingwei L4 monitor（8081 + dashboard 8082）— Web 3D 可视化
 
-替代 `src/simview`(C++ simviewer + rviz)的浏览器端 3D 可视化。对标 `hmi/`
-的架构:纯 Python stdlib + rospy(可选),**零 pip 依赖**,部署 = 拷贝目录。
+替代 simview(rviz)。纯 Python stdlib+rospy，零 pip，部署=拷目录。Three.js r147 vendored（最后保有非 module examples/js 的版本，MIT，离线）。
+功能：车位/朝向/速度、障碍、规划/路由线、停车点、托盘、地图三线、2 路 2D 补盲、4 路 3D 感知点云（rviz 未有过）；Orbit 视角+俯视 2D/3D 环视/跟随三预设；图层开关默认态照抄 robot.rviz。
 
-- 车辆位置/朝向/速度、感知障碍物、规划/路由路径、停车点、托盘位置、
-  地图三线、2 路 2D 补盲激光、**4 路 3D 感知点云**(rviz 从未显示过的增强)
-- 3D 视角(OrbitControls 鼠标旋转/缩放/平移)、俯视 2D / 3D 环视 / 跟随车辆
-  三个相机预设、每层独立开关(默认态照抄 robot.rviz)
-- Three.js r147 vendored(`static/three.min.js` + `OrbitControls.js`,
-  MIT,离线无 CDN;选 r147 因其是最后保有非 module examples/js 的版本)
-
-## 部署(车载)
+## 部署
 
 ```bash
 scp -r monitor/ nvidia@<orin-ip>:/home/nvidia/qingwei-L4-No2/
-# 车端:
-bash ~/qingwei-L4-No2/monitor/monitor.sh     # 默认 0.0.0.0:8081
+bash monitor/monitor.sh                # 0.0.0.0:8081 + dashboard 8082 同进程起；MONITOR_PORT/DASHBOARD_PORT 改端口；与 hmi(8080) 并存
 ```
 
-浏览器打开 `http://<orin-ip>:8081`。与 hmi(8080) 并存互不影响;
-改端口 `MONITOR_PORT=8082 bash monitor/monitor.sh`。
+## dashboard 仪表板（8082，2026-09-07 起，当日瓦片化瘦身+布局紧凑化）
 
-## 功能与 simview 对照
+- `/`（static/dashboard.html，2Hz 轮询）+ `/api/dashboard`；与主服务**同进程**同一 rospy 节点，复用 RosVisualizer 订阅与 stash（ros_visualizer `/ehb_msg` 订阅与 `latest()/master_ok()/ros_available()` 取数接口）；绑定失败仅告警不影响 8081；`DASHBOARD_PORT=0` 关闭
+- **布局**：两卡靠左不拉伸（can ~160px 瓦片单列微缩、ehb ~575px 瓦片 4 列小号），右侧大片留白预留给未来新增信息面板（窄屏 flex-wrap 自动换行）；卡片带 `can/ehb` 变体类，JS 改 className 时须保留
+- **凹凸拟物瓦片**（凸起卡片+凹陷值槽双向柔影），payload 即瘦身后形态：
+  - 隐藏字段：can=rawcommand/rawfeedback（原始帧 hex）/epsERR1/2（悬空恒 0）/faultCode（写路径 09-03 已下线）；ehb=RollingCounter/CheckSum 四个 → **can 22 瓦片、ehb 27 瓦片**（原 27/63 行）
+  - **故障位折叠**：35 个 `*_FAU_*` bool 聚合为分节首行汇总条三态——绿"全部正常"/红"N 项 · 点名"/灰"无数据"（**msg 缺或任一位属性不可读即"无数据"，不得假"全部正常"**；单字段格式化异常降级字符串，不炸端点）
+  - 注释只留换算/单位：ehb=`_conv_note`（×0.1 MPa/×0.04 MPa/×0.1 km/h/0-100%），can=单位（m/s/%/°/A；含 `=` 的枚举括注丢弃）；**枚举译码仍用 .msg 原注释——先译码后裁剪，顺序不可倒**
+  - 译码：ehb uint8 三种注释键形态（二进制等宽 `00:`/十六进制 `0x0:`/十进制 `0:`，区间 `0x4~0x6:` 跳过）；can 用 `CAN_ENUMS` 显式表（挡位/急停/按钮/状态机，**改 can_msg 字段语义需同步**）；`VHL_VehicleGear` 按 `_decode_gear` 出 R/N/D/P（uint16 双字节恰一个字母才译，摆放歧义不译）
+  - 分节标题精简（"帧1 蓄能系统"/"帧4 制动请求"，去 0x ID/位号/括注）
+- **中文名称对齐策略**：/ehb_msg 启动时运行时解析 `../src/canbus/msg/ehb_msg.msg` 注释（构造性对齐——改 .msg 重启 monitor 即跟上；读取 utf-8 优先 GBK 兜底）；/can_msg 的 msg 无中文注释，用 `dashboard.py` 内 `CAN_LABELS` 的 monitor 侧命名（语义出处 src/canbus/README.md，**can_msg 改字段需同步该表**）
+- 数据龄徽章：ROS/master/两话题三态（绿=5s 内新鲜、黄=停滞、灰=无数据）；**停滞（age>5s，发布者死亡）瓦片半透明+卡片标题标"数据停滞"**，冻结旧值不再伪装成健康
+- **失败隔离**：dashboard 任何启动失败只 stderr 告警，主 8081 服务不受影响——端口占用/越界、"DASHBOARD_PORT 非法值" 告警并关闭（空串=未设，回退配置值不遮蔽；值 0=显式关闭）；`.msg` 缺失/坏编码 stderr 告警 + API 带 `msg_load_errors` + 页面显示"无字段定义"。前端侧总断连（API 挂/JSON 损坏）四点全红+龄清空+卡片停滞，不残留最后一拍全绿
 
-| simview/rviz 功能 | monitor 对应 | 语义差异 |
-|---|---|---|
-| 车辆黄框+红点+4行文字 | 相同(2.3/-0.8×±0.73m) | yaw=(90°-heading) 一致 |
-| 障碍物青色 CUBE | 半透明+抬到 h/2 | dx/dy 互换一致;半透明为有意改进 |
-| 规划绿线/路由黄线 | 相同 | 路径 x/y 不等长整帧丢弃,一致 |
-| 停车点红箭头 | 相同 | stopAngle 有值时用于朝向(C++ 忽略恒指东,增强) |
-| 托盘红点 | 相同 | 不含 C++ 里从未参与渲染的 hook_xg-2.8 死偏移 |
-| 地图白中心线+紫双边 | 相同(±1m,>0.1m 抽稀) | **多地图**:map/ 下全部 .csv 按文件名排序依次全部绘制;rosparam /robot/mapfile 指向单文件时只画该张 |
-| 2D 补盲 LaserScan×2 | 按通道着色(左蓝右绿) | intensity 已解码暂未参与着色(rviz 为 intensity 灰度);**需配安装外参**(下节) |
-| 3D 感知点云 | 新增(4 路,车体坐标) | rviz 未显示过 |
-| 图层开关 | checkbox 面板 | 默认态照抄 robot.rviz(map/planning/grid 关) |
-| TopDownOrtho 相机 | "俯视 2D"预设 | 跟随模式为增强 |
+## 与 simview 语义对照（差异即约定）
 
-不订阅的话题:`/planning/obstacles`(死话题,advertise 但从不发布)、
-`/palletpos` 以外的 C++ 注释掉的绘制(车轮/托盘矩形)。
+- yaw=(90°−heading) 一致；障碍 dx/dy 互换一致（半透明+抬 h/2 为有意改进）；路径 x/y 不等长整帧丢弃一致；停车点 stopAngle 用于朝向（C++ 恒指东，增强）；托盘不含 C++ 死偏移 hook_xg−2.8
+- 地图：map/ 下全部 .csv 按名排序全画；rosparam /robot/mapfile 指单文件时只画该张
+- 2D 补盲按通道左蓝右绿（intensity 未参与着色）；不订阅 /planning/obstacles（死话题）
 
-## 2D 补盲激光外参标定(上实车做一次)
+## 2D 补盲外参（上实车一次）
 
-lakibeam 两路的 frame_id 都叫 `laser`,工程内无任何静态 tf——rviz 里这两路
-从未正确落位。monitor 在服务端对每路做外参变换,配置在
-`monitor_config.py` 的 `SCAN_EXTRINSICS`:
+lakibeam 两路 frame_id 同为 `laser` 且工程内无 tf → 服务端外参变换，配置在 `monitor_config.py` 的 `SCAN_EXTRINSICS`（x/y 米 + yaw_deg）。标定：已知距离障碍对照页面弧位调至吻合。
 
-```python
-"/back_left_scan":  {"x": 0.0, "y": 0.0, "yaw_deg": 0.0},
-```
+## CPU/带宽（monitor_config.py 的 CLOUD 段）
 
-`x/y` 为传感器在车体系的位置(米),`yaw_deg` 为安装朝向偏转。标定方法:
-车前/车后放已知距离的障碍物,对照页面点云弧的位置调外参直到吻合。
+4 路 PointCloud2 typed 订阅空转 12-40MB/s 是 CPU 大头，故：活动门控（30s 无浏览器拉取自动退订）/每路 1s 解析（parse_interval）/解包前 stride 预抽稀（默认 2）/0.2m 体素每路上限 8000 点。总 ≈380KB/帧@1Hz。占用偏高→调大 stride/parse_interval 或调粗 voxel；实测 `top`+hmi 面板 CPU。
 
-## CPU / 带宽调参(`monitor_config.py` 的 CLOUD 段)
+## 设计否决（勿重提）
 
-4 路 PointCloud2 typed 订阅空转约 12-40MB/s 反序列化,是 CPU 大头,故:
-- **活动门控**:cloud.bin 超 30s 无浏览器拉取自动退订,有请求再重订
-- **节拍解析**:每路每 1s 解析一次(`parse_interval`)
-- **跨步预抽稀**:解包前每 N 点取 1(`stride`,默认 2)
-- **体素抽稀**:0.2m 格(`voxel`),每路上限 8000 点
+SSE/WebSocket 推送（base64+33% 或非 stdlib）；gzip（噪声态压缩率仅 20-30%，不划算）；路径版本号门控（10Hz receding horizon 每帧必变，反引入陈旧视图）。
 
-总带宽约 4×8000×12B ≈ 380KB/帧@1Hz。若 Orin 占用偏高:调大 stride/
-parse_interval,或调粗 voxel。实测方法:`top` 看 monitor 进程,
-hmi 面板本身也有 CPU 显示。
-
-## 设计否决记录
-
-- **SSE/WebSocket 推送**:二进制过 SSE 需 base64(+33%),WebSocket 非
-  stdlib,破坏与 hmi 的同构原则;1~2Hz fetch 对诊断视角足够
-- **gzip**:点云噪声态数据压缩率仅 ~20-30%,Orin 上 400KB gzip 耗几十 ms
-  CPU,得不偿失;带宽不够直接调粗 voxel
-- **路径版本号门控**:/plan_path_msg 10Hz receding horizon 每帧必变,
-  门控省不了流量反引入陈旧视图 bug;快照直带全量(cm 精度,~5-10KB)
-
-## 排障:页面能开但状态点灰色/无数据(08-28 实车案例)
-
-两个状态点(master/ros)只有收到快照数据才会变色——**都保持灰色 =
-快照从未成功返回,或 3D 初始化失败拖死了轮询**(旧版 buildScene 抛异常
-会使 init 中断、轮询不启动)。排查顺序:
+## 排障（状态点灰/无数据）
 
 ```bash
-# 1. 车端服务侧(区分服务端/浏览器侧):
-curl -s -m 5 http://127.0.0.1:8081/api/snapshot | head -c 300; echo
-#   有 JSON(ros_available/master_ok/...) -> 服务端正常, 看 2/3
-#   卡住/空/异常                        -> 服务端问题, 看 4
-
-# 2. 浏览器 F12 控制台红字 + 页面左上红色错误框(新版会自报):
-#   "3D 初始化失败,已切换 2D 俯视渲染: ..." -> 浏览器 WebGL 不可用,
-#      新版已降级为完整 2D 可视化,3D 需换浏览器/开硬件加速
-#   "JS 错误: ..."                       -> 直接给出错误与行号
-#   顶部红色横幅"服务连接断开"            -> /api/snapshot 不通, 看 4
-
-# 3. roscore 未启动是正常降级(非故障): master 点红色 + 黄色横幅
-#    "ROS master 失联", ROS 点绿色; 起车端栈后自动恢复
-
-# 4. 部署新鲜度(旧副本缺修复):
-grep -c "getBigUint64" monitor/static/index.html   # 应为 0
-grep -c "3D 初始化失败" monitor/static/index.html       # 应为 1
+curl -s -m5 http://127.0.0.1:8081/api/snapshot | head -c300   # 有 JSON=服务端正常→看浏览器侧；卡/空=服务端问题
+grep -c getBigUint64 static/index.html                        # 应为 0
+grep -c "3D 初始化失败" static/index.html                     # 应为 1（旧副本缺修复）
 ```
 
-## Firefox 车端 WebGL 修复(08-28 实车确认案例)
+- 浏览器 F12+左上错误框自报：3D 失败→自动降级完整 2D（WebGL 修复法见 hmi/README「Firefox WebGL 排查」）；JS 错误带行号；红色横幅=/api/snapshot 不通
+- roscore 未起=正常降级非故障（master 红+黄横幅，起栈自愈）
+- 2D 渲染按数据变化重画限 10FPS（Jetson 防 CPU）
 
-车端 Firefox 报"3D 初始化失败"时,新版会**自动切换 2D 俯视渲染**
-(地图三线/路径/障碍/车辆/停车点/托盘/点云全有,滚轮缩放)——即使
-WebGL 修不好也可用。2D 按数据变化重画并限制到最高 10 FPS,避免四路点云
-在 Jetson 上按浏览器刷新率重复绘制造成高 CPU。要恢复 3D,按序尝试:
+## 坐标系（前端 MonitorMath，单测锁定）
 
-1. 地址栏进 `about:config`:
-   - `webgl.disabled` = false
-   - `webgl.force-enabled` = true(驱动黑名单时强制启用)
-2. **Jetson/X11 关键一步**:Firefox 83+ 在 X11 上需 EGL 后端跑 WebGL,
-   旧的 GLX 路径在 Tegra 上常创建失败:
-   ```bash
-   MOZ_X11_EGL=1 firefox
-   # 或写进启动环境: export MOZ_X11_EGL=1
-   ```
-3. snap 版 Firefox 沙箱可能挡 GPU 访问 → 换 deb 版 firefox-esr 或
-   chromium 之一
-4. 验证:地址栏 `about:support` → 图形 → WebGL1/2 Renderer 应显示
-   适配器名而非 Unavailable
+ROS(x东,y北,z上)→THREE(x右,y上,z南)：`three=(x_ros, z_ros, −y_ros)`；`rotation.y=yaw_ros` **不取负**（取负是最常见翻车点）；车辆/障碍 `yaw=normalize(90°−heading)·π/180` 与 simviewer 一致。
 
-## 坐标系(前端 MonitorMath,已单测锁定)
+## 二进制协议（scan.bin / cloud.bin）
 
-ROS 显示系(x东,y北,z上) → THREE(x右,y上,z南):
-- 位置:`three = (x_ros, z_ros, -y_ros)`
-- 朝向:`rotation.y = yaw_ros`(**不取负**;推导:R_y(φ)·e_x=(cosφ,0,-sinφ)
-  与映射后的方向向量一致,φ=θ 直接相等——取负是最常见翻车点)
-- 车辆/障碍 `yaw = normalize(90° - heading)·π/180`,与 simviewer C++ 一致
+小端。头 20B：`QWMC`(4)+version u16+通道数 u16+总点数 u32+时刻ms u64；通道子头 8B：id u8+flags u8+保留 u16+点数 u32；点 12B：x_mm i32+y_mm i32+z_mm i16+intensity u8+pad u8。车体坐标（前端挂车辆组随位姿动）。Py/JS 双解码被同一 fixture 字节锁锁死（test_full t05 / frontend F4）。
 
-## 二进制协议(scan.bin / cloud.bin)
-
-小端。头 20B:`QWMC`(4) + version u16 + 通道数 u16 + 总点数 u32 + 时刻ms u64;
-每通道子头 8B:通道id u8 + flags u8 + 保留 u16 + 点数 u32;
-每点 12B:x_mm i32 + y_mm i32 + z_mm i16 + intensity u8 + pad u8。
-车体坐标(前端挂车辆组随位姿动)。Python/JS 两侧各有解码实现且被
-同一 fixture 字节锁测试锁死(tests/test_full.py t05 与
-tests/frontend_test.js F4)。
-
-## 本机(无 ROS)调试与测试
+## 测试（开发机；车载不部署 tests/）
 
 ```bash
-cd monitor
-python3 tests/test_full.py        # 伪 ROS 全栈 72 项
-python3 tests/edge_test.py       # 边界值 28 项
-node tests/frontend_test.js       # 前端无头 62 项(DOM+THREE/2D Canvas 桩)
-python3 tests/chaos_test.py      # 混沌/浸泡 11 项(约 2 分钟)
-python3 tests/fuzz_proto.py      # 协议双解码对账 fuzz(50 轮随机数据)
-bash monitor.sh                   # 起服务,页面显示"无 ROS 环境"横幅
+python3 tests/test_full.py      # 72 项伪 ROS 全栈
+python3 tests/test_dashboard.py # 110 项仪表板（解析对齐/枚举译码及顺序锁/瘦身契约三态/单字段降级/GBK/端口语义/占用守卫/全栈）
+node tests/frontend_dash_test.js # 51 项仪表板前端无头（瓦片渲染/故障三态+闪烁/降级 sections=null/ros off 态/总断连全灭）
+python3 tests/edge_test.py      # 28 项边界值
+node tests/frontend_test.js     # 62 项前端无头（DOM+THREE/2D Canvas 桩）
+python3 tests/chaos_test.py     # 11 项混沌/浸泡（约 2 分钟）
+python3 tests/fuzz_proto.py     # 协议双解码对账 fuzz（50 轮）
+bash monitor.sh                 # 起服务（8081+8082），无 ROS 环境横幅
 ```
 
-`tests/` 仅开发机用,**车载不部署**。
+注：测试的伪 master 端口已改 21111~21113（本机 11311 被 root 的真实 rosmaster 占用，见 workflow 09-07）。
 
-## 文件结构
+## 文件
 
-| 文件 | 职责 |
-|---|---|
-| `monitor.sh` | 启动包装(source devel → python3) |
-| `monitor_config.py` | 话题/外参/降采样/图层默认态配置 |
-| `monitor_server.py` | HTTP 入口(静态+4 个 API) |
-| `ros_visualizer.py` | rospy 桥:快照组装/地图解析/scan/cloud 二进制 |
-| `map/view.csv` | 地图(拷自 simview,消除对 simview 包的依赖) |
-| `static/index.html` | 前端单页(MonitorMath 纯函数+场景+循环) |
-| `static/three.min.js`、`OrbitControls.js` | Three.js r147 vendored(MIT) |
-| `tests/` | 伪 ROS 全栈 / 前端无头测试 |
+monitor.sh｜monitor_config.py（话题/外参/降采样/图层默认态/DASHBOARD_PORT）｜monitor_server.py（HTTP+4 API+dashboard 拉起）｜ros_visualizer.py（rospy 桥/快照/地图/二进制）｜dashboard.py（8082 仪表板：.msg 解析/中文名称/枚举译码/API）｜map/view.csv（拷自 simview）｜static/index.html（前端单页）｜static/dashboard.html（仪表板单页）｜three.min.js+OrbitControls.js｜tests/

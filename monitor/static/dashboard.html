@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>qingwei L4 仪表板 dashboard</title>
+<style>
+:root{
+  --bg:#101418; --panel:#1a2027; --well:#151b22; --line:#2a323c;
+  --txt:#d7dde3; --dim:#8a94a0; --acc:#4fc3f7; --ok:#66bb6a;
+  --warn:#ffa726; --bad:#ef5350; --stale:#5a636e;
+  --sh-d:rgba(0,0,0,.5); --sh-l:rgba(255,255,255,.04);
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--txt);
+  font:13px/1.5 "Segoe UI",system-ui,sans-serif}
+#top{position:sticky;top:0;z-index:5;display:flex;align-items:center;
+  gap:14px;padding:10px 16px;background:var(--panel);
+  border-bottom:1px solid var(--line)}
+#top h1{font-size:15px;margin:0;font-weight:600}
+#top h1 small{color:var(--dim);font-weight:400;margin-left:8px}
+#status{margin-left:auto;display:flex;gap:14px;align-items:center;
+  flex-wrap:wrap;font-size:12px;color:var(--dim)}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--stale);
+  display:inline-block;margin-right:5px;vertical-align:-1px}
+.dot.ok{background:var(--ok)} .dot.bad{background:var(--bad)}
+.dot.warn{background:var(--warn)}
+.card.stale .tiles{opacity:.45}
+.card.stale h2::after{content:" ⏸ 数据停滞";color:var(--warn);
+  font-size:11px;font-weight:400}
+#err{display:none;background:var(--bad);color:#fff;padding:6px 16px;
+  font-size:12px}
+#wrap{display:flex;flex-wrap:wrap;gap:14px;padding:14px 16px;
+  align-items:flex-start}
+/* 靠左紧凑排布:can 收至原宽 1/3、ehb 至 1/2,右侧留白给未来新增面板 */
+.card.can{width:160px;padding:10px 10px 11px}
+.card.ehb{width:575px}
+.card{background:var(--panel);border:1px solid var(--line);
+  border-radius:12px;padding:12px 14px;min-width:0;
+  box-shadow:0 4px 14px var(--sh-d)}
+.card h2{font-size:13px;margin:0 0 10px;color:var(--acc);font-weight:600}
+.card.can h2{font-size:12px}
+h3.sec{font-size:12px;margin:14px 0 6px;color:var(--dim);font-weight:600;
+  border-bottom:1px dashed var(--line);padding-bottom:3px}
+h3.sec:first-of-type{margin-top:4px}
+.card.can h3.sec{font-size:11px;margin:10px 0 5px}
+
+/* ---- 凹凸瓦片:凸起卡片 + 凹陷数值槽(深色拟物双向柔影) ---- */
+.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(148px,1fr));
+  gap:10px}
+.card.can .tiles{grid-template-columns:1fr;gap:7px}
+.card.ehb .tiles{grid-template-columns:repeat(auto-fill,minmax(104px,1fr));
+  gap:8px}
+.tile{background:var(--panel);border-radius:12px;padding:8px 9px 7px;
+  box-shadow:5px 5px 11px var(--sh-d),-4px -4px 9px var(--sh-l);   /* 凸 */
+  min-width:0}
+.card.can .tile{padding:5px 7px 4px;border-radius:10px}
+.card.ehb .tile{padding:6px 8px 5px;border-radius:11px}
+.tl{font-size:11px;color:var(--dim);line-height:1.35;min-height:15px;
+  overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;
+  -webkit-box-orient:vertical}
+.card.can .tl{font-size:10px;min-height:13px}
+.card.ehb .tl{font-size:10px}
+.tv{margin-top:5px;padding:5px 7px;border-radius:8px;background:var(--well);
+  font:600 15px/1.4 Consolas,monospace;color:#ffe082;text-align:center;
+  word-break:break-all;
+  box-shadow:inset 3px 3px 6px rgba(0,0,0,.55),
+             inset -2px -2px 5px var(--sh-l)}                        /* 凹 */
+.card.can .tv{font-size:12px;padding:3px 5px;margin-top:4px;border-radius:7px}
+.card.ehb .tv{font-size:13px;padding:4px 6px}
+.tv .tx{font:600 12px/1.4 "Segoe UI",system-ui,sans-serif;color:var(--ok);
+  margin-left:4px}
+.card.can .tv .tx{font-size:10px}
+.card.ehb .tv .tx{font-size:11px}
+.tn{margin-top:4px;font-size:10px;color:var(--dim);text-align:right;
+  font-family:Consolas,monospace;min-height:13px}
+.card.can .tn{font-size:9px;margin-top:3px;min-height:11px}
+.card.ehb .tn{font-size:9px;margin-top:3px;min-height:11px}
+
+/* 故障汇总条:整行贯通,三态(正常/异常/无数据) */
+.tile.fsum{grid-column:1/-1;display:flex;align-items:center;gap:10px;
+  padding:7px 11px}
+.card.ehb .tile.fsum .fv{font-size:12px}
+.tile.fsum .tl{min-height:0;-webkit-line-clamp:1}
+.tile.fsum .fv{font-size:13px;font-weight:600}
+.tile.fsum.ok .fv{color:var(--ok)}
+.tile.fsum.off .fv{color:var(--stale);font-weight:400}
+.tile.fsum.bad{background:#2a1b1e;
+  box-shadow:5px 5px 11px rgba(0,0,0,.6),-4px -4px 9px var(--sh-l),
+  0 0 0 1px var(--bad)}
+.tile.fsum.bad .tl{color:var(--bad)}
+.tile.fsum.bad .fv{color:var(--bad)}
+
+.flash{animation:fl .6s}
+/* 两帧均保留基础柔影,只让蓝环衰减——动画 box-shadow 会整段覆盖静态凸影 */
+@keyframes fl{
+  0%{box-shadow:0 0 0 2px var(--acc),5px 5px 11px var(--sh-d),
+     -4px -4px 9px var(--sh-l)}
+  100%{box-shadow:5px 5px 11px var(--sh-d),-4px -4px 9px var(--sh-l)}}
+.nodata{color:var(--stale);font-size:12px;padding:6px 0 4px}
+</style>
+</head>
+<body>
+<div id="top">
+  <h1>仪表板<small>dashboard</small></h1>
+  <div id="status">
+    <span><i class="dot" id="d-ros"></i>ROS</span>
+    <span><i class="dot" id="d-master"></i>master</span>
+    <span><i class="dot" id="d-can"></i>/can_msg <b id="a-can"></b>s</span>
+    <span><i class="dot" id="d-ehb"></i>/ehb_msg <b id="a-ehb"></b>s</span>
+  </div>
+</div>
+<div id="err"></div>
+<div id="wrap">
+  <div class="card can" id="card-can">
+    <h2>整车反馈 can_msg</h2>
+    <div id="body-can" class="nodata">等待数据…</div>
+  </div>
+  <div class="card ehb" id="card-ehb">
+    <h2>电子液压制动 EHB</h2>
+    <div id="body-ehb" class="nodata">等待数据…</div>
+  </div>
+  <!-- #wrap 为 flex 不拉伸:两卡右侧自然留白,预留给未来新增的信息面板 -->
+</div>
+<script>
+"use strict";
+var POLL_MS = 500;
+var FRESH_S = 5.0;          // 数据新鲜度阈值(秒),超时视为停滞(与 index.html stale 口径一致)
+var lastVals = {};          // name -> 上次值(变化闪烁)
+
+function $(id){return document.getElementById(id)}
+
+function setDot(id, state){
+  $(id).className = "dot" +
+      (state === "ok" ? " ok" : state === "stale" ? " warn" :
+       state === "bad" ? " bad" : "");
+}
+
+function liveState(rec){
+  if(!rec || rec.age === null || rec.age === undefined) return "off";
+  return rec.age <= FRESH_S ? "ok" : "stale";
+}
+
+function fmtAge(a){
+  if(a === null || a === undefined) return "—";
+  return (a > 9999 ? "∞" : a);
+}
+
+function esc(s){
+  return String(s).replace(/[&<>"]/g, function(c){
+    return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c];
+  });
+}
+
+function valHtml(row){
+  var v = row.value;
+  var s = (v === null || v === undefined) ? "—" : esc(v);
+  if(row.text) s += '<span class="tx">' + esc(row.text) + "</span>";
+  return s;
+}
+
+// 数值瓦片:label / 凹陷值槽 / 单位·换算小字(pfx=话题前缀,防跨卡同名字段互扰)
+function tileHtml(f, state, pfx){
+  var key = pfx + f.name;
+  var cls = "tile";
+  if(state === "ok" && f.value !== null && f.value !== undefined
+      && lastVals[key] !== undefined
+      && lastVals[key] !== f.value) cls += " flash";
+  if(f.value !== null && f.value !== undefined) lastVals[key] = f.value;
+  var note = f.note ? '<div class="tn">' + esc(f.note) + "</div>"
+                    : '<div class="tn"></div>';
+  return '<div class="' + cls + '"><div class="tl">' + esc(f.label)
+      + '</div><div class="tv">' + valHtml(f) + "</div>" + note + "</div>";
+}
+
+// 故障汇总条(__faults_* 行):无数据/全部正常/N 项点名 三态
+function fsumHtml(f, state, pfx){
+  var key = pfx + f.name;
+  var v = f.value;
+  var cls = "tile fsum", body;
+  if(v === null || v === undefined){ cls += " off"; body = "无数据"; }
+  else if(v === 0){ cls += " ok"; body = "全部正常"; }
+  else{ cls += " bad"; body = esc(v) + " 项 · " + esc(f.text || ""); }
+  if(state === "ok" && v !== null && v !== undefined
+      && lastVals[key] !== undefined
+      && lastVals[key] !== v) cls += " flash";
+  if(v !== null && v !== undefined) lastVals[key] = v;
+  return '<div class="' + cls + '"><span class="tl">' + esc(f.label)
+      + '</span><span class="fv">' + body + "</span></div>";
+}
+
+function renderSections(el, rec, state, pfx){
+  el.className = "";            // 初始占位类 nodata 不再需要(内部提示自带类)
+  var html = "";
+  var secs = rec.sections || [];
+  if(!secs.length){
+    html = '<div class="nodata">无字段定义(.msg 解析失败?)</div>';
+  }else{
+    if(state === "off")
+      html += '<div class="nodata">话题无数据(发布者未起?)</div>';
+    for(var i = 0; i < secs.length; i++){
+      var sec = secs[i];
+      if(sec.title) html += "<h3 class=\"sec\">" + esc(sec.title) + "</h3>";
+      html += "<div class=\"tiles\">";
+      for(var j = 0; j < sec.fields.length; j++){
+        var f = sec.fields[j];
+        html += (String(f.name).indexOf("__faults") === 0)
+            ? fsumHtml(f, state, pfx) : tileHtml(f, state, pfx);
+      }
+      html += "</div>";
+    }
+  }
+  el.innerHTML = html;
+}
+
+// 总断连(API 挂/JSON 损坏):四点全红+龄清空+卡片停滞——
+// 不能让最后一拍的全绿指示残留(部分故障会黄,总故障必须比它更醒目)
+function markDead(){
+  setDot("d-ros", "bad"); setDot("d-master", "bad");
+  setDot("d-can", "bad"); setDot("d-ehb", "bad");
+  $("a-can").textContent = "—"; $("a-ehb").textContent = "—";
+  $("card-can").className = "card can stale";
+  $("card-ehb").className = "card ehb stale";
+}
+
+function render(d){
+  if(!d || !d.ok){ markDead();
+    $("err").style.display = "block";
+    $("err").textContent = "API 返回异常"; return; }
+  $("err").style.display = "none";
+
+  setDot("d-ros", d.ros_available === true ? "ok" : "off");
+  setDot("d-master", d.master_ok === true ? "ok" : "off");
+
+  var can = d.topics && d.topics["/can_msg"];
+  var ehb = d.topics && d.topics["/ehb_msg"];
+  var cs = liveState(can);
+  var es = liveState(ehb);
+  setDot("d-can", cs);
+  setDot("d-ehb", es);
+  $("a-can").textContent = fmtAge(can && can.age);
+  $("a-ehb").textContent = fmtAge(ehb && ehb.age);
+
+  $("card-can").className = "card can" + (cs === "stale" ? " stale" : "");
+  $("card-ehb").className = "card ehb" + (es === "stale" ? " stale" : "");
+
+  if(can) renderSections($("body-can"), can, cs, "c:");
+  if(ehb) renderSections($("body-ehb"), ehb, es, "e:");
+}
+
+var inflight = false;          // 防重入:慢响应乱序回覆盖新快照(旧数据回跳)
+var inflightAt = 0;            // 挂起超过 15s 视为死请求,放行新轮询防死锁
+function poll(){
+  if(inflight && Date.now() - inflightAt < 15000) return;
+  inflight = true;
+  inflightAt = Date.now();
+  fetch("/api/dashboard", {cache: "no-store"})
+    .then(function(r){ return r.json(); })
+    .then(function(d){ inflight = false; render(d); })
+    .catch(function(){
+      inflight = false;
+      markDead();
+      $("err").style.display = "block";
+      $("err").textContent = "/api/dashboard 请求失败(服务未起?)";
+    });
+}
+
+poll();
+setInterval(poll, POLL_MS);
+</script>
+</body>
+</html>

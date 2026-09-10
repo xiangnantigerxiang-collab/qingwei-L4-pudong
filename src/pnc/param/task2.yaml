@@ -4,7 +4,7 @@ task_sum: 2
 
 #do action -- gear N and hook
 task0_task_type: 1 # 0-nothing 1-Track path  2-adaptiveloadpath 3-adaptiveunload  4-adaptivehook 5-adaptiveback 6-action
-task0_path_list: pudong_air/path2 #1.lpx 2.lpx 3.lpx
+task0_path_list: pudong_air/312_316_02 #1.lpx 2.lpx 3.lpx
 task0_stop_x: -14.340
 task0_stop_y: 1.621
 task0_stop_angle: 341.027

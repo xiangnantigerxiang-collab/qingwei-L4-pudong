@@ -14,6 +14,7 @@ find_package(catkin REQUIRED COMPONENTS
   pcl_conversions
   rospy
   tf
+  auto_couple
 )
 find_package(PCL 1.7 REQUIRED)
 add_message_files(
@@ -43,4 +44,7 @@ ${catkin_INCLUDE_DIRS}
 )
 
 add_executable(${PROJECT_NAME}_scan_node src/lidar_perception.cc main.cc)
+# auto_couple/center_position.h is a generated message header: order
+# the build after its generation (and after all other message pkgs)
+add_dependencies(${PROJECT_NAME}_scan_node ${catkin_EXPORTED_TARGETS})
 target_link_libraries(${PROJECT_NAME}_scan_node ${catkin_LIBRARIES} ${PCL_LIBRARIES})

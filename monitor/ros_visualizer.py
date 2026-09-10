@@ -72,6 +72,8 @@ TYPED_SUBS = [
     ("/cloud/task/task_status", "robot.msg", "TaskStatus", "_on_task_status"),
     ("/control_msg",        "robot.msg",  "control_msg",   "_on_control"),
     ("/can_msg",            "canbus.msg", "can_msg",       "_on_can_msg"),
+    # dashboard 仪表板(8082)原始字段展示(2026-09-07)
+    ("/ehb_msg",            "canbus.msg", "ehb_msg",       "_on_ehb_msg"),
 ]
 
 
@@ -538,6 +540,24 @@ class RosVisualizer(object):
     def _on_can_msg(self, msg):
         self._stash("/can_msg", msg)
 
+    def _on_ehb_msg(self, msg):
+        self._stash("/ehb_msg", msg)
+
+    # ---------------- dashboard 取数接口(原始消息+在线状态) ----------------
+
+    def latest(self, topic):
+        """最近一条原始消息:(msg, monotonic) 或 None(dashboard 用)。"""
+        with self._lk:
+            return self._latest.get(topic)
+
+    def master_ok(self):
+        with self._lk:
+            return self._master_ok
+
+    @staticmethod
+    def ros_available():
+        return ROS_AVAILABLE
+
     # ---------------- 快照组装 ----------------
 
     def _age(self, topic, now):
@@ -690,8 +710,9 @@ class RosVisualizer(object):
         # ---- CAN 反馈(can_msg 有效字段) ----
         # 不入栏:throttlePercent/epsCMD/wheelAngleCMD/epsCentring(反馈侧
         # 无写入者恒 0,见 canbus_core.h 字段注释)与 rawcommand/rawfeedback
-        # (原始帧字节,调试用)。epsERR1/2 名为 eps 实为 0x285 的挂钩/托盘
-        # 位置码(码值越小位置越高,181/122 为最高点),按语义命名输出。
+        # (原始帧字节,调试用)。hookPos/palletPos 为 0x285 的挂钩销/托盘
+        # 位置码(码值越小位置越高,181/122 为最高点;旧字段 epsERR1/2
+        # 已悬空不写恒 0,2026-09-03 起),按语义命名输出。
         can = None
         m = latest.get("/can_msg")
         if m:
@@ -713,8 +734,8 @@ class RosVisualizer(object):
                 "link_btn": int(getattr(m, "linkButton", 0) or 0),
                 "eps_mode": int(getattr(m, "epsMode", 0) or 0),
                 "eps_current": _r2(getattr(m, "epsCurrent", 0.0)),
-                "pin_pos": int(getattr(m, "epsERR1", 0) or 0),
-                "seat_pos": int(getattr(m, "epsERR2", 0) or 0),
+                "pin_pos": int(getattr(m, "hookPos", 0) or 0),
+                "seat_pos": int(getattr(m, "palletPos", 0) or 0),
             }
 
         ages = {}
