@@ -6,7 +6,7 @@
 #include "spline_1d_seg.h"
 #include "common/polynomial_xd/polynomial_xd.h"
 
-namespace planning{
+namespace planning {
     class Spline1d {
     public:
         Spline1d(const std::vector<double>& x_knots, const uint32_t order);
@@ -34,4 +34,4 @@ namespace planning{
     };
 }
 
-#endif //PLANNING_SPLINE_1D_H
+#endif  //PLANNING_SPLINE_1D_H

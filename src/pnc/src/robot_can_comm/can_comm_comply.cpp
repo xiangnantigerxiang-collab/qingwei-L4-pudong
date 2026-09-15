@@ -1,7 +1,6 @@
 #include "robot_can_comm/can_comm_comply.h"
 
-CanCommComply::CanCommComply()
-{
+CanCommComply::CanCommComply() {
     CanCommMsg.desireGear = GEAR_N;
     CanCommMsg.hookCmd = 0;
     CanCommMsg.sweepCmd = 0;
@@ -13,34 +12,29 @@ CanCommComply::CanCommComply()
     CanCommMsg.whistleEnable = 0;
 }
 
-CanCommComply::~CanCommComply()
-{
+CanCommComply::~CanCommComply() {
     //nop
 }
 
-void CanCommComply::SetTaskPlanData(robot::task_plan_msg task_plan_t)
-{
+void CanCommComply::SetTaskPlanData(robot::task_plan_msg task_plan_t) {
     CanCommMsg.hookCmd = task_plan_t.hookCmd;
     CanCommMsg.desireGear = task_plan_t.desireGear;
 }
 
-void CanCommComply::SetControlData(robot::control_msg control_t)
-{
+void CanCommComply::SetControlData(robot::control_msg control_t) {
     ControlMsg = control_t;
     CanCommMsg.bypassProcessing = ControlMsg.bypassProcessing;
     CanCommMsg.vehicleSpeed = ControlMsg.vehicleSpeed;
 }
 
-void CanCommComply::SetSoundLightData(robot::sound_light_msg sound_light_t)
-{
+void CanCommComply::SetSoundLightData(robot::sound_light_msg sound_light_t) {
     CanCommMsg.leftLightEnable = sound_light_t.leftLightEnable;
     CanCommMsg.rightLightEnable = sound_light_t.rightLightEnable;
     CanCommMsg.doubleLightEnable = sound_light_t.doubleLightEnable;
     CanCommMsg.whistleEnable = sound_light_t.whistleEnable;
 }
 
-void CanCommComply::CanCommProcess()
-{
+void CanCommComply::CanCommProcess() {
     float ratio = 0.0;
     ros::param::get("vehicle_wheel_co", ratio);
 
@@ -52,6 +46,6 @@ void CanCommComply::CanCommProcess()
 
     if(ControlMsg.throttlePercent - CanCommMsg.throttlePercent > 1.0) {
         CanCommMsg.throttlePercent += 1;
-    }else CanCommMsg.throttlePercent = ControlMsg.throttlePercent;
+    } else
+        CanCommMsg.throttlePercent = ControlMsg.throttlePercent;
 }
-

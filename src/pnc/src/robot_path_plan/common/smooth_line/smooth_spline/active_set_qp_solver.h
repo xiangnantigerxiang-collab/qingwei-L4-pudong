@@ -5,7 +5,7 @@
 #include <qpOASES.hpp>
 #include "common/smooth_line/smooth_spline/qp_solver.h"
 
-namespace planning{
+namespace planning {
     class ActiveSetQpSolver : public QpSolver {
     public:
         ActiveSetQpSolver(const Eigen::MatrixXd& kernel_matrix,
@@ -85,4 +85,4 @@ namespace planning{
     };
 }
 
-#endif //PLANNING_ACTIVE_SET_QP_SOLVER_H
+#endif  //PLANNING_ACTIVE_SET_QP_SOLVER_H

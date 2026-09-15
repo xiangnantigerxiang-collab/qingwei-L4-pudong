@@ -1,4 +1,4 @@
-#include "ros/ros.h" 
+#include "ros/ros.h"
 #include <std_msgs/String.h>
 #include "robot/navigation_msg.h"
 #include "robot/hook_position.h"
@@ -28,8 +28,7 @@ double nav_utmz_temp;
 int HookEnable = 0;
 int PalletType = 0;
 
-void ExtractGpsData(ros::Publisher ros_pub)
-{
+void ExtractGpsData(ros::Publisher ros_pub) {
     if(head_temp < 0) head_temp += 360;
     if(head_temp > 360.0) head_temp -= 360;
     if(hook_heading < 0) hook_heading += 360;
@@ -37,8 +36,8 @@ void ExtractGpsData(ros::Publisher ros_pub)
 
     robot::navigation_msg gps_data;
 
-    gps_data.lat = latitude_temp ;
-    gps_data.lon = longitude_temp ;
+    gps_data.lat = latitude_temp;
+    gps_data.lon = longitude_temp;
     gps_data.altitude = altitude_temp;
     gps_data.gpsSpeed = speed_temp;
     gps_data.rtkState = "no_fixed";
@@ -53,12 +52,11 @@ void ExtractGpsData(ros::Publisher ros_pub)
     ros_pub.publish(gps_data);
 }
 
-void PalletCoorCallback(const robot::hook_position::ConstPtr& msg)
-{
+void PalletCoorCallback(const robot::hook_position::ConstPtr& msg) {
     double x = msg->center_point_x;
     double y = msg->center_point_y;
     double l = hypot(x, y);
-    double h = msg->beta  * M_PI / 180.0;
+    double h = msg->beta * M_PI / 180.0;
 
     if(fabs(x) < 1e-3) x = 1e-3;
     if(fabs(y) < 1e-3) y = 1e-3;
@@ -77,12 +75,12 @@ void PalletCoorCallback(const robot::hook_position::ConstPtr& msg)
         utmy_temp = l * sin(theta);
         utmz_temp = 0.0;
 
-	if(PalletType == 0) {
+        if(PalletType == 0) {
             head_temp = nav_head_temp;
             utmx_temp = nav_utmx_temp;
             utmy_temp = nav_utmy_temp;
             utmz_temp = nav_utmz_temp;
-	}
+        }
 
         hook_xg = 0.0;
         hook_yg = 0.0;
@@ -90,14 +88,14 @@ void PalletCoorCallback(const robot::hook_position::ConstPtr& msg)
     }
 }
 
-void TaskPlanCallBack(const robot::task_plan_msg::ConstPtr& msg)
-{
-    if(msg->taskType == ADAPTIVEHOOK) HookEnable = 1;
-    else HookEnable = 0;
+void TaskPlanCallBack(const robot::task_plan_msg::ConstPtr& msg) {
+    if(msg->taskType == ADAPTIVEHOOK)
+        HookEnable = 1;
+    else
+        HookEnable = 0;
 }
 
-void NavigationCallBack(const ivlocmsg::ivmsglocpos::ConstPtr& msg)
-{
+void NavigationCallBack(const ivlocmsg::ivmsglocpos::ConstPtr& msg) {
     speed_temp = msg->velocity;
 
     if(HookEnable == 0) {
@@ -122,9 +120,8 @@ void NavigationCallBack(const ivlocmsg::ivmsglocpos::ConstPtr& msg)
     }
 }
 
-int main(int argc,char **argv)
-{
-    ros::init(argc,argv,"serial_send_node");
+int main(int argc, char** argv) {
+    ros::init(argc, argv, "serial_send_node");
     ros::NodeHandle nh;
 
     ros::Subscriber sub = nh.subscribe(
@@ -137,7 +134,7 @@ int main(int argc,char **argv)
         "/hook_position", 1, PalletCoorCallback,
         ros::TransportHints().tcpNoDelay());
     ros::Publisher read_pub = nh.advertise<robot::navigation_msg>(
-        "/navigation_msg",10);
+        "/navigation_msg", 10);
 
     ros::Rate loop_rate(50);
 
@@ -149,4 +146,3 @@ int main(int argc,char **argv)
         loop_rate.sleep();
     }
 }
-

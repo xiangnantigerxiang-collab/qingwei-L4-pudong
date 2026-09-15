@@ -1,16 +1,14 @@
 // 本文件由 path_plan_comply.cpp 原位包含，负责输入快照和感知预处理。
 // 最终是否停车不在这里决定，而是在参考路径和最终路径发布阶段分层覆盖。
 
-void PathPlanComply::SetCanData(robot::can_msg can_msg_t)
-{
+void PathPlanComply::SetCanData(robot::can_msg can_msg_t) {
     mVehicleData = can_msg_t;
-    if (mVehicleData.emergencyStop)
+    if(mVehicleData.emergencyStop)
         emergencyStop = 1;
     mPathPlanStatus.curSpeed = mVehicleData.vehicleSpeed;
 }
 
-void PathPlanComply::SetPerceptionData(robot::perception perception_t)
-{
+void PathPlanComply::SetPerceptionData(robot::perception perception_t) {
     // 侧向感知先过滤车辆后方/退化目标，再合并前向扫描框。
     // 本函数计算的 /canbus/brake 是历史参数通道；现役规划安全结果仍由
     // PublishReferPath 的路径碰撞检测写入 mReferPath。
@@ -18,8 +16,7 @@ void PathPlanComply::SetPerceptionData(robot::perception perception_t)
 
     mPerception.objs.clear();
 
-    for (auto i : perception_t.objs)
-    {
+    for(auto i : perception_t.objs) {
         Point me;
         Point point;
         me.x = mNavData.xAxis;
@@ -31,18 +28,17 @@ void PathPlanComply::SetPerceptionData(robot::perception perception_t)
         double dh = PointDirectionToMe(point, me);
         double hCheck = 0;
 
-        if (fabs(dh) > 90.0)
+        if(fabs(dh) > 90.0)
             hCheck = 1;
-        if (hCheck == 0)
-        {
-            if (i.dx < 0.05 || i.dy < 0.05)
+        if(hCheck == 0) {
+            if(i.dx < 0.05 || i.dy < 0.05)
                 continue;
             mPerception.objs.push_back(i);
         }
         // mPerception.objs.push_back(i);
     }
 
-    for (auto i : mPerceptionFrontScan.objs)
+    for(auto i : mPerceptionFrontScan.objs)
         mPerception.objs.push_back(i);
 
     // collistion check precise
@@ -53,11 +49,10 @@ void PathPlanComply::SetPerceptionData(robot::perception perception_t)
     VehicleInfo.length = 3.6;
     VehicleInfo.width = 2.0;
 
-    double dist = 10000.0; // 距离车辆最近障碍物距离
-    double sdh = 100.0;    // 距离车辆最近障碍物朝向
+    double dist = 10000.0;  // 距离车辆最近障碍物距离
+    double sdh = 100.0;     // 距离车辆最近障碍物朝向
 
-    for (auto i : mPerception.objs)
-    {
+    for(auto i : mPerception.objs) {
         Point point;
         point.x = i.x;
         point.y = i.y;
@@ -67,8 +62,7 @@ void PathPlanComply::SetPerceptionData(robot::perception perception_t)
         double dy = VehicleInfo.y - point.y;
         double ds = hypot(dx, dy) - VehicleInfo.length / 2.0;
 
-        if (ds < dist)
-        {
+        if(ds < dist) {
             dist = ds;
             sdh = fabs(dertah) * M_PI / 180.0;
         }
@@ -78,61 +72,57 @@ void PathPlanComply::SetPerceptionData(robot::perception perception_t)
     double desireSpeed = mNavData.gpsSpeed + 1.0;
     double width = dist * sin(sdh);
 
-    if (dist < 20.0 && width < 1.5)
+    if(dist < 20.0 && width < 1.5)
         desireSpeed = std::min<double>(desireSpeed, 4.0 * dist / 20.0);
-    if (dist < 5.0 && width < 1.5)
+    if(dist < 5.0 && width < 1.5)
         safety = 1;
 
     // high frequncy safaty check filter
 
-    if (safety == 1)
-    {
+    if(safety == 1) {
         safety_check_counter_percep += 1;
 
-        if (safety_check_counter_percep < 3)
+        if(safety_check_counter_percep < 3)
             mReferPath.safety = 0;
         else
             safety_check_counter_percep = 10;
-    }
-    else
+    } else
         safety_check_counter_percep = 0;
 
-    if (safety == 1)
+    if(safety == 1)
         desireSpeed = 0.0;
 
     // 这里的brake命令没有在代码中用到
     int BrakeCmd = (int)((mNavData.gpsSpeed - desireSpeed) * 30.0);
 
-    if (BrakeCmd < 0)
+    if(BrakeCmd < 0)
         BrakeCmd = 0;
-    if (desireSpeed == 0.0)
+    if(desireSpeed == 0.0)
         BrakeCmd = 85;
 
     ros::param::set("/canbus/brake", BrakeCmd);
 }
 
-void PathPlanComply::SetFrontScanData(jsk_recognition_msgs::BoundingBoxArray msg)
-{
+void PathPlanComply::SetFrontScanData(jsk_recognition_msgs::BoundingBoxArray msg) {
     // scan_bbox_result 使用车体局部坐标，这里按最新定位旋转、平移到地图坐标。
     // 前雷达相对后轴中心的纵向偏移沿用既有 -1.5 m 口径。
     mPerceptionFrontScan.objs.clear();
 
-    if (!msg.boxes.size())
+    if(!msg.boxes.size())
         return;
 
     double x = mNavData.xAxis;
     double y = mNavData.yAxis;
     double h = 90.0 - mNavData.heading;
 
-    if (h > 360.0)
+    if(h > 360.0)
         h -= 360.0;
-    if (h < 0.0)
+    if(h < 0.0)
         h += 360.0;
 
     double theta = h * M_PI / 180.0;
 
-    for (auto i : msg.boxes)
-    {
+    for(auto i : msg.boxes) {
         robot::object obj;
         obj.x = x - 1.5 + i.pose.position.x * cos(theta) - i.pose.position.y * sin(theta);
         obj.y = y + i.pose.position.x * sin(theta) + i.pose.position.y * cos(theta);
@@ -142,14 +132,12 @@ void PathPlanComply::SetFrontScanData(jsk_recognition_msgs::BoundingBoxArray msg
     }
 }
 
-void PathPlanComply::SetPerceptionData2(robot::perception perception_t)
-{
+void PathPlanComply::SetPerceptionData2(robot::perception perception_t) {
     sysTime.msgPerception = ros::Time::now().toSec();
     // 侧向雷达
     std::vector<ObstaclePtr> new_obstacles;
-    for (auto i : perception_t.objs)
-    {
-    if (fabs(i.dx) < 0.01 || fabs(i.dy) < 0.01)
+    for(auto i : perception_t.objs) {
+        if(fabs(i.dx) < 0.01 || fabs(i.dy) < 0.01)
             continue;
         // mPerception.objs.push_back(i);
         ObstaclePtr obstacle = std::make_shared<Obstacle>();
@@ -157,13 +145,12 @@ void PathPlanComply::SetPerceptionData2(robot::perception perception_t)
         obstacle->y = i.y;
         obstacle->width = i.dx;
         obstacle->length = i.dy;
-        obstacle->heading = gis_utils::azimuthToYaw(i.heading-90);
+        obstacle->heading = gis_utils::azimuthToYaw(i.heading - 90);
         new_obstacles.push_back(obstacle);
     }
     // 前向雷达
-    for (auto i : mPerceptionFrontScan.objs)
-    {
-    if (fabs(i.dx) < 0.01 || fabs(i.dy) < 0.01)
+    for(auto i : mPerceptionFrontScan.objs) {
+        if(fabs(i.dx) < 0.01 || fabs(i.dy) < 0.01)
             continue;
         // mPerception.objs.push_back(i);
         ObstaclePtr obstacle = std::make_shared<Obstacle>();
@@ -171,17 +158,15 @@ void PathPlanComply::SetPerceptionData2(robot::perception perception_t)
         obstacle->y = i.y;
         obstacle->width = i.dx;
         obstacle->length = i.dy;
-        obstacle->heading = gis_utils::azimuthToYaw(i.heading-90);
+        obstacle->heading = gis_utils::azimuthToYaw(i.heading - 90);
         new_obstacles.push_back(obstacle);
     }
     // 比较old and new obstacles
     // new find old
-    for (int i = 0; i < new_obstacles.size(); i++)
-    {
+    for(int i = 0; i < new_obstacles.size(); i++) {
         auto o = new_obstacles[i];
         auto find_it = findObstacle(obstacles_, o->x, o->y);
-        if (find_it)
-        {
+        if(find_it) {
             find_it->history.erase(find_it->history.begin());
             find_it->x = o->x;
             find_it->y = o->y;
@@ -189,35 +174,27 @@ void PathPlanComply::SetPerceptionData2(robot::perception perception_t)
             find_it->width = o->width;
             find_it->heading = o->heading;
             find_it->history.push_back(1);
-        }
-        else
-        {
+        } else {
             obstacles_.push_back(o);
         }
     }
     // old find new
-    for (int i = 0; i < obstacles_.size(); i++)
-    {
+    for(int i = 0; i < obstacles_.size(); i++) {
         auto o = obstacles_[i];
         auto find_it = findObstacle(new_obstacles, o->x, o->y);
-        if (!find_it)
-        {
+        if(!find_it) {
             o->history.erase(o->history.begin());
             o->history.push_back(0);
         }
     }
     // 清理消失的障碍物
-    for (auto it = obstacles_.begin(); it != obstacles_.end();)
-    {
+    for(auto it = obstacles_.begin(); it != obstacles_.end();) {
         auto o = *it;
-        
-         bool erase = o->historySum() < 1;
-        if (erase)
-        {
+
+        bool erase = o->historySum() < 1;
+        if(erase) {
             it = obstacles_.erase(it);
-        }
-        else
-        {
+        } else {
             it++;
         }
     }
@@ -230,27 +207,25 @@ void PathPlanComply::SetPerceptionData2(robot::perception perception_t)
     // }
 }
 
-void PathPlanComply::SetBackScanData(jsk_recognition_msgs::BoundingBoxArray msg)
-{
+void PathPlanComply::SetBackScanData(jsk_recognition_msgs::BoundingBoxArray msg) {
     // 后向框同样转换到地图坐标，仅供 R 挡 2.5 m 停车判断使用。
     mPerceptionBackScan.objs.clear();
 
-    if (!msg.boxes.size())
+    if(!msg.boxes.size())
         return;
 
     double x = mNavData.xAxis;
     double y = mNavData.yAxis;
     double h = 90.0 - mNavData.heading;
 
-    if (h > 360.0)
+    if(h > 360.0)
         h -= 360.0;
-    if (h < 0.0)
+    if(h < 0.0)
         h += 360.0;
 
     double theta = h * M_PI / 180.0;
 
-    for (auto i : msg.boxes)
-    {
+    for(auto i : msg.boxes) {
         robot::object obj;
         obj.x = x - 0.9 - i.pose.position.x * cos(theta) + i.pose.position.y * sin(theta);
         obj.y = y - i.pose.position.x * sin(theta) - i.pose.position.y * cos(theta);
@@ -258,21 +233,20 @@ void PathPlanComply::SetBackScanData(jsk_recognition_msgs::BoundingBoxArray msg)
         obj.dy = 0.5;
         mPerceptionBackScan.objs.push_back(obj);
     }
+
+    std::cout << "bbox size ======== " << (int)mPerceptionBackScan.objs.size() << std::endl;
 }
 
-void PathPlanComply::SetPalletCoorData(robot::hook_position hook_pos_t)
-{
+void PathPlanComply::SetPalletCoorData(robot::hook_position hook_pos_t) {
     mHookPos = hook_pos_t;
     // mHookPos.center_point_y += 0.1;
 }
 
-void PathPlanComply::SetLoadPosition(robot::palletpos load_pos_t)
-{
+void PathPlanComply::SetLoadPosition(robot::palletpos load_pos_t) {
     mLoadPos = load_pos_t;
 }
 
-void PathPlanComply::SetNavigationData(robot::navigation_msg navigation_msg_t)
-{
+void PathPlanComply::SetNavigationData(robot::navigation_msg navigation_msg_t) {
     mNavData = navigation_msg_t;
     mPathPlanStatus.curXAxis = mNavData.xAxis;
     mPathPlanStatus.curYAxis = mNavData.yAxis;
@@ -285,20 +259,17 @@ void PathPlanComply::SetNavigationData(robot::navigation_msg navigation_msg_t)
     //  double w = 3.4;
 }
 
-void PathPlanComply::SetButtonData(robot::rs232 button_data_t)
-{
-    if (mVehicleData.emergencyStop)
+void PathPlanComply::SetButtonData(robot::rs232 button_data_t) {
+    if(mVehicleData.emergencyStop)
         return;
-    if (button_data_t.data[3])
+    if(button_data_t.data[3])
         emergencyStop = 0;
 }
 
-double PathPlanComply::Distance2PerceptionObjs(double x, double y)
-{
+double PathPlanComply::Distance2PerceptionObjs(double x, double y) {
     double dist = 10000.0;
 
-    for (auto i : mPerception.objs)
-    {
+    for(auto i : mPerception.objs) {
         double dx = fabs(x - i.x);
         double dy = fabs(y - i.y);
         double len = std::min<double>(i.dx / 2.0, i.dy / 2.0);
@@ -306,19 +277,17 @@ double PathPlanComply::Distance2PerceptionObjs(double x, double y)
         double dl = dx - i.dx / 2.0;
         double dw = dy - i.dy / 2.0;
 
-        if (dist > ds)
+        if(dist > ds)
             dist = ds;
     }
 
     return dist;
 }
 
-double PathPlanComply::Distance2PerceptionObjs(GeoLine line)
-{
+double PathPlanComply::Distance2PerceptionObjs(GeoLine line) {
     double dist = 10000.0;
 
-    for (auto i : mPerception.objs)
-    {
+    for(auto i : mPerception.objs) {
         GeoPoint point(i.x, i.y);
         double len = std::min<double>(fabs(i.dx / 2.0), fabs(i.dy / 2.0));
         double d = bg::distance(point, line) - len - 0.15;
@@ -332,11 +301,48 @@ double PathPlanComply::Distance2PerceptionObjs(GeoLine line)
 
         // if (dist > ds)
         //     dist = ds;
-        if (d < dist)
-        {
+        if(d < dist) {
             dist = d;
         }
     }
 
     return dist;
+}
+
+void PathPlanComply::SetCommandData(robot::v2nCommandFeedback command_t) {
+    // 云端指令先写入状态；停车再清任务，暂停/继续由最终输出阶段消费。
+    SetCommandState(command_t.commandState);  // 0停车 1暂停 2继续
+    if(command_t.commandState == 0) {
+        resetTask();
+    }
+}
+
+ObstaclePtr PathPlanComply::findObstacle(std::vector<ObstaclePtr> &obstacles, double x, double y) {
+    for(auto obstacle_ptr : obstacles) {
+        double ox = obstacle_ptr->x;
+        double oy = obstacle_ptr->y;
+        double dist = hypot(ox - x, oy - y);
+        if(dist < 0.5) {
+            return obstacle_ptr;
+        }
+    }
+    return nullptr;
+}
+
+std::vector<sCellMsg> PathPlanComply::Obj_Projecte_Map(robot::perception local_object, std::vector<sCellMsg> ldobjs_global) {
+    int obj_nums = local_object.objs.size();
+    int subcon_num = 0;
+
+    if(obj_nums < 1)
+        return ldobjs_global;
+
+    for(int i = 0; i < obj_nums; i++) {
+        sCellMsg center_point;
+        center_point.xg = local_object.objs[i].x;
+        center_point.yg = local_object.objs[i].y;
+        center_point.heading = local_object.objs[i].heading;
+        ldobjs_global.emplace_back(center_point);
+    }
+
+    return ldobjs_global;
 }

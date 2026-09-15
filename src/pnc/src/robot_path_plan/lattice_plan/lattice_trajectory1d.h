@@ -5,8 +5,7 @@
 
 #include "common/curve1d/curve1d.h"
 
-class LatticeTrajectory1d : public Curve1d 
-{
+class LatticeTrajectory1d : public Curve1d {
 public:
     explicit LatticeTrajectory1d(std::shared_ptr<Curve1d> ptr_trajectory1d);
     virtual ~LatticeTrajectory1d() = default;
@@ -35,4 +34,3 @@ private:
     bool has_target_velocity_ = false;
     bool has_target_time_ = false;
 };
-

@@ -17,17 +17,14 @@
 #include <fstream>
 // #include "planning_msgs/Path.h"
 
-class TimeLogger
-{
+class TimeLogger {
 public:
     TimeLogger() = default;
     ~TimeLogger() = default;
-    void start()
-    {
+    void start() {
         start_ = std::chrono::high_resolution_clock::now();
     }
-    double duration()
-    {
+    double duration() {
         auto end = std::chrono::high_resolution_clock::now();
         double esplase = std::chrono::duration<double, std::ratio<1, 1000>>(end - start_).count();
         return esplase;
@@ -37,18 +34,15 @@ private:
     std::chrono::high_resolution_clock::time_point start_;
 };
 
-class CSVLogger
-{
+class CSVLogger {
 public:
     CSVLogger(const std::string &csv_dir, const std::string prefix_name = "");
     ~CSVLogger();
     bool start(const std::string &header);
 
     template <typename... Args>
-    void log(Args... args)
-    {
-        if (log_file_.is_open())
-        {
+    void log(Args... args) {
+        if(log_file_.is_open()) {
             log_file_ << getLogTime() << ",";
             ((log_file_ << std::forward<Args>(args) << ","), ...);
             log_file_ << "\n";
@@ -67,35 +61,33 @@ private:
     std::chrono::high_resolution_clock::time_point start_;
 };
 
-struct GridPoint
-{
-    int x = 0; // col
-    int y = 0; // row
+struct GridPoint {
+    int x = 0;  // col
+    int y = 0;  // row
     GridPoint() = default;
-    GridPoint(const int &in_x, const int &in_y) : x(in_x), y(in_y) {}
+    GridPoint(const int &in_x, const int &in_y)
+        : x(in_x), y(in_y) {
+    }
 };
 
-struct Node2d : GridPoint
-{
-    double f_cost = INFINITY; // 总消耗
-    double g_cost = INFINITY; // 起点到中间消耗
-    double h_cost = INFINITY; // 中间到终点消耗 启发项
+struct Node2d : GridPoint {
+    double f_cost = INFINITY;  // 总消耗
+    double g_cost = INFINITY;  // 起点到中间消耗
+    double h_cost = INFINITY;  // 中间到终点消耗 启发项
     Node2d *parent = nullptr;
 
     Node2d() = default;
-    Node2d(const int &in_x, const int &in_y) : GridPoint(in_x, in_y) {};
-    bool operator>(const Node2d &other) const
-    {
-        return f_cost > other.f_cost; // 代價越大，越往後
+    Node2d(const int &in_x, const int &in_y)
+        : GridPoint(in_x, in_y) {};
+    bool operator>(const Node2d &other) const {
+        return f_cost > other.f_cost;  // 代價越大，越往後
     }
-    bool operator==(const Node2d &other)
-    {
+    bool operator==(const Node2d &other) {
         return (this->x == other.x && this->y == other.y);
     }
 };
 
-struct Node3d : GridPoint
-{
+struct Node3d : GridPoint {
     int yaw = 0;
     double wx = 0.0;
     double wy = 0.0;
@@ -103,31 +95,30 @@ struct Node3d : GridPoint
     double steer = 0.0;
     int gear = 1;
     double cost = 0.0;
-    std::vector<Node3d *> head_nodes; // 前驱节点
+    std::vector<Node3d *> head_nodes;  // 前驱节点
     Node3d *parent = nullptr;
-    boost::heap::fibonacci_heap<Node3d>::handle_type handle; // 用于更新优先队列
+    boost::heap::fibonacci_heap<Node3d>::handle_type handle;  // 用于更新优先队列
     Node3d() = default;
-    Node3d(const double &in_wx, const double &in_wy, const double &in_wyaw) : wx(in_wx), wy(in_wy), wyaw(in_wyaw) {}
-    bool operator<(const Node3d &other) const
-    {
-        return cost > other.cost; // 代價越大，越往後
+    Node3d(const double &in_wx, const double &in_wy, const double &in_wyaw)
+        : wx(in_wx), wy(in_wy), wyaw(in_wyaw) {
     }
-    bool operator==(const Node3d &other)
-    {
+    bool operator<(const Node3d &other) const {
+        return cost > other.cost;  // 代價越大，越往後
+    }
+    bool operator==(const Node3d &other) {
         return (this->x == other.x && this->y == other.y && this->yaw == other.yaw);
     }
 };
 
 typedef boost::heap::fibonacci_heap<Node3d> PriorQueue;
 
-struct CarModel
-{
+struct CarModel {
     double width;
     double length;
-    double base_to_front; // base到前保险杠距离
-    double base_to_back;  // base到后保险杠距离
-    double l_wb;          // 轴距
-    double max_steer;     // 最大转向角
+    double base_to_front;  // base到前保险杠距离
+    double base_to_back;   // base到后保险杠距离
+    double l_wb;           // 轴距
+    double max_steer;      // 最大转向角
 };
 void worldToGrid(const nav_msgs::OccupancyGrid &grid_map, const double &wx, const double &wy, int &out_gx, int &out_gy);
 void gridToWorld(const nav_msgs::OccupancyGrid &grid_map, const int &gx, const int &gy, double &out_wx, double &out_wy);

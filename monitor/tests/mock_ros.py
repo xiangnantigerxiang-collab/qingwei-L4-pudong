@@ -43,7 +43,8 @@ DEFAULT_FIELDS = {
                         "gpsSpeed": 2.5},
     "/perception": {"objs": [
         {"id": 1, "type": 0, "x": 58.0, "y": -10.0, "dx": 1.0, "dy": 4.0,
-         "heading": 100.0, "height": 1.8, "vx": 0.0, "vy": 0.0},
+         "heading": 100.0, "height": 1.8, "vx": 0.0, "vy": 0.0,
+         "confidence": 0.87},
     ]},
     "/plan_path_msg": {"x": [55.0, 56.0, 57.0], "y": [-12.0, -12.1, -12.2],
                        "desireSpeed": 1.8, "planspeed": 1.6,

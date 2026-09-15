@@ -8,4 +8,5 @@ float32 heading     # box rotation heading in map frame
 float32 height      # box height
 float32 vx          # velocity x in map frame
 float32 vy          # velocity y in map frame
+float32 confidence  # confidence for obstacle filter
 geometry_msgs/Point[] polygons # polygons of objects

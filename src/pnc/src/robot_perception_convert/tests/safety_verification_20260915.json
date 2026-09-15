@@ -1,0 +1,84 @@
+{
+  "date": "2026-09-15",
+  "purpose": "空帧、过期清空与发布安全复核",
+  "backup": "/home/mothotob/work/projects/claude-code/perception_before_safety_review_20260915_135526.tar.gz",
+  "scope": {
+    "module": "src/pnc/src/robot_perception_convert",
+    "modified": [
+      "src/pnc/src/robot_perception_convert/perception_msg_convert.cpp",
+      "src/pnc/src/robot_perception_convert/README.md",
+      "src/pnc/src/robot_perception_convert/tests/publish_integration.cpp",
+      "src/pnc/src/robot_perception_convert/tests/verify_publish.py"
+    ],
+    "added": [
+      "src/pnc/src/robot_perception_convert/tests/safety_review_20260915.md",
+      "src/pnc/src/robot_perception_convert/tests/safety_verification_20260915.json"
+    ],
+    "core_algorithm_unchanged": true,
+    "unrelated_changes_observed_and_preserved": [
+      "workflow.md"
+    ],
+    "unrelated_changes_note": "workflow.md 在本次工作期间另有变化；本次没有写入或回滚该文件。"
+  },
+  "checks": {
+    "publisher": {
+      "language": "C++11",
+      "transport": "generated ROS message stubs",
+      "sdk": "/home/mothotob/work/projects/claude-code/qingwei-L4-No2-pudong/src/hdmap/sdk",
+      "cmake_target": "perception_msg_convert",
+      "dynamic_link": "PASS",
+      "integration": "PASS: 2976 filtered perception publish checks",
+      "sanitizers": "PASS: 2976 filtered perception publish checks"
+    },
+    "filter": {
+      "language": "C++11",
+      "transport": "generated ROS message stubs",
+      "test": "PASS: 27149 temporal filter checks",
+      "sanitizers": "PASS: 27149 temporal filter checks",
+      "benchmark": [
+        "BENCH frames=40 objects_per_frame=100 observations=4000 p50_ms=0.2401 p99_ms=0.2733 max_ms=0.2747",
+        "BENCH frames=200 objects_per_frame=100 observations=20000 p50_ms=0.8325 p99_ms=0.9192 max_ms=0.9527",
+        "BENCH frames=40 objects_per_frame=300 observations=12000 p50_ms=0.5187 p99_ms=0.5736 max_ms=0.5780",
+        "BENCH frames=200 objects_per_frame=300 observations=60000 p50_ms=2.5847 p99_ms=2.7545 max_ms=2.8296",
+        "PASS: 440 temporal filter checks"
+      ],
+      "machine": "x86_64",
+      "python": "3.12.3"
+    },
+    "cppcheck": {
+      "command": [
+        "cppcheck",
+        "--enable=warning,performance,portability",
+        "--std=c++11",
+        "--error-exitcode=1",
+        "--suppress=missingIncludeSystem",
+        "-I",
+        "/tmp/perception_safety_publish_verify/stubs",
+        "-I",
+        "src/pnc/include",
+        "-I",
+        "src/hdmap/sdk/include",
+        "src/pnc/src/robot_perception_convert/perception_msg_convert.cpp"
+      ],
+      "exit_code": 0,
+      "status": "PASS"
+    }
+  },
+  "behavior": {
+    "valid_empty_frame": "参与滤波分母，历史目标最后真实观测满两秒后剔除",
+    "periodic_cleanup": "原有 100Hz 主循环和回调开始维护，两秒过期前缀删除并清除旧计算结果",
+    "silent_or_invalid_input": "停止发布；过期维护不发送空心跳，保留下游接收超时判断",
+    "navigation": "首次已接收、年龄在 [0,2s) 且坐标与朝向有限；发布前复核",
+    "processing_errors": "局部变量保存工作帧；异常追加回滚，重复时间戳在成功后提交",
+    "publish_validation": "接收与发布时间均有效、当前帧未过期、定位仍有效、输出 header 属于当前帧；零时间戳下非空输入不能丢为默认空结果"
+  },
+  "limitations": [
+    "测试使用真实消息生成的 ROS 桩和真实 SDK；尚未验证 ROS1 通信、Orin 编译及车载运行",
+    "过期依据 ROS 接收时间；仿真时钟暂停时不按墙上时间过期",
+    "保留用户确认的加权出现率，无置信度剔除阈值或位置平滑"
+  ],
+  "logs": [
+    "/tmp/perception_safety_publish_verify",
+    "/tmp/perception_safety_core_verify"
+  ]
+}

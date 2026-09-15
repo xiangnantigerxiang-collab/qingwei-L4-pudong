@@ -7,31 +7,32 @@
 #include "common/smooth_line/smooth_spline/active_set_qp_solver.h"
 #include "common/config/planning_gflag/planning_gflag.h"
 
-namespace planning{
+namespace planning {
     ActiveSetQpSolver::ActiveSetQpSolver(
-            const Eigen::MatrixXd& kernel_matrix, const Eigen::MatrixXd& offset,
-            const Eigen::MatrixXd& affine_inequality_matrix,
-            const Eigen::MatrixXd& affine_inequality_boundary,
-            const Eigen::MatrixXd& affine_equality_matrix,
-            const Eigen::MatrixXd& affine_equality_boundary)
-            : QpSolver(kernel_matrix, offset, affine_inequality_matrix,
-                       affine_inequality_boundary, affine_equality_matrix,
-                       affine_equality_boundary),
-              num_constraint_(affine_equality_matrix_.rows() +
-                              affine_inequality_matrix_.rows()),
-              num_param_(kernel_matrix.rows()),
-              qp_eps_num_(FLAGS_default_active_set_eps_num),
-              qp_eps_den_(FLAGS_default_active_set_eps_den),
-              qp_eps_iter_ref_(FLAGS_default_active_set_eps_iter_ref),
-              debug_info_(FLAGS_default_enable_active_set_debug_info) {}
+        const Eigen::MatrixXd& kernel_matrix, const Eigen::MatrixXd& offset,
+        const Eigen::MatrixXd& affine_inequality_matrix,
+        const Eigen::MatrixXd& affine_inequality_boundary,
+        const Eigen::MatrixXd& affine_equality_matrix,
+        const Eigen::MatrixXd& affine_equality_boundary)
+        : QpSolver(kernel_matrix, offset, affine_inequality_matrix,
+                   affine_inequality_boundary, affine_equality_matrix,
+                   affine_equality_boundary),
+          num_constraint_(affine_equality_matrix_.rows() +
+                          affine_inequality_matrix_.rows()),
+          num_param_(kernel_matrix.rows()),
+          qp_eps_num_(FLAGS_default_active_set_eps_num),
+          qp_eps_den_(FLAGS_default_active_set_eps_den),
+          qp_eps_iter_ref_(FLAGS_default_active_set_eps_iter_ref),
+          debug_info_(FLAGS_default_enable_active_set_debug_info) {
+    }
 
     bool ActiveSetQpSolver::Solve() {
         ::qpOASES::QProblem qp_problem(num_param_, num_constraint_, hessian_type_);
         ::qpOASES::Options my_options;
 
         my_options.enableCholeskyRefactorisation = cholesky_refactorisation_freq_;
-        if (hessian_type_ == ::qpOASES::HST_POSDEF ||
-            hessian_type_ == ::qpOASES::HST_SEMIDEF) {
+        if(hessian_type_ == ::qpOASES::HST_POSDEF ||
+           hessian_type_ == ::qpOASES::HST_SEMIDEF) {
             my_options.enableRegularisation = ::qpOASES::BT_TRUE;
         }
         my_options.epsNum = qp_eps_num_;
@@ -39,24 +40,24 @@ namespace planning{
         my_options.epsIterRef = qp_eps_iter_ref_;
         my_options.terminationTolerance = termination_tolerance_;
         qp_problem.setOptions(my_options);
-        if (!debug_info_) {
+        if(!debug_info_) {
             qp_problem.setPrintLevel(qpOASES::PL_NONE);
         }
-        if (kernel_matrix_.rows() != kernel_matrix_.cols()) {
+        if(kernel_matrix_.rows() != kernel_matrix_.cols()) {
             return false;
         }
         // definition of qpOASESproblem
         const int kNumOfMatrixElements =
-                kernel_matrix_.rows() * kernel_matrix_.cols();
+            kernel_matrix_.rows() * kernel_matrix_.cols();
         double h_matrix[kNumOfMatrixElements];  // NOLINT
 
         const int kNumOfOffsetRows = offset_.rows();
         double g_matrix[kNumOfOffsetRows];  // NOLINT
         int index = 0;
 
-        for (int r = 0; r < kernel_matrix_.rows(); ++r) {
+        for(int r = 0; r < kernel_matrix_.rows(); ++r) {
             g_matrix[r] = offset_(r, 0);
-            for (int c = 0; c < kernel_matrix_.cols(); ++c) {
+            for(int c = 0; c < kernel_matrix_.cols(); ++c) {
                 h_matrix[index++] = kernel_matrix_(r, c);
             }
         }
@@ -65,7 +66,7 @@ namespace planning{
         double lower_bound[num_param_];  // NOLINT
         double upper_bound[num_param_];  // NOLINT
 
-        for (int i = 0; i < num_param_; ++i) {
+        for(int i = 0; i < num_param_; ++i) {
             lower_bound[i] = l_lower_bound_;
             upper_bound[i] = l_upper_bound_;
         }
@@ -78,25 +79,25 @@ namespace planning{
 
         int a = affine_equality_matrix_.rows();
         int b = affine_equality_matrix_.cols();
-        printf("a = %d, b = %d\r\n",a,b);
+        printf("a = %d, b = %d\r\n", a, b);
 
         //todo:下面的等式约束,因为apollo工程中的piecewise_st_graph并没有添加等式约束,所以调用会崩溃
-//        for (int r = 0; r < affine_equality_matrix_.rows(); ++r) {
-//            constraint_lower_bound[r] = affine_equality_boundary_(r, 0);
-//            constraint_upper_bound[r] = affine_equality_boundary_(r, 0);
-//
-//            for (int c = 0; c < num_param_; ++c) {
-//                affine_constraint_matrix[index++] = affine_equality_matrix_(r, c);
-//            }
-//        }
+        //        for (int r = 0; r < affine_equality_matrix_.rows(); ++r) {
+        //            constraint_lower_bound[r] = affine_equality_boundary_(r, 0);
+        //            constraint_upper_bound[r] = affine_equality_boundary_(r, 0);
+        //
+        //            for (int c = 0; c < num_param_; ++c) {
+        //                affine_constraint_matrix[index++] = affine_equality_matrix_(r, c);
+        //            }
+        //        }
 
-        for (int r = 0; r < affine_inequality_matrix_.rows(); ++r) {
+        for(int r = 0; r < affine_inequality_matrix_.rows(); ++r) {
             constraint_lower_bound[r + affine_equality_boundary_.rows()] =
-                    affine_inequality_boundary_(r, 0);
+                affine_inequality_boundary_(r, 0);
             constraint_upper_bound[r + affine_equality_boundary_.rows()] =
-                    constraint_upper_bound_;
+                constraint_upper_bound_;
 
-            for (int c = 0; c < num_param_; ++c) {
+            for(int c = 0; c < num_param_; ++c) {
                 affine_constraint_matrix[index++] = affine_inequality_matrix_(r, c);
             }
         }
@@ -107,26 +108,26 @@ namespace planning{
         auto ret = qp_problem.init(h_matrix, g_matrix, affine_constraint_matrix,
                                    lower_bound, upper_bound, constraint_lower_bound,
                                    constraint_upper_bound, max_iter);
-        if (ret != qpOASES::SUCCESSFUL_RETURN) {
-//            if (ret == qpOASES::RET_MAX_NWSR_REACHED) {
-//                AERROR << "qpOASES solver failed due to reached max iteration";
-//            } else {
-//                AERROR << "qpOASES solver failed due to infeasibility or other internal "
-//                        "reasons";
-//            }
-//            std::stringstream ss;
-//            ss << "ActiveSetQpSolver inputs: " << std::endl;
-//            ss << "kernel_matrix:\n" << kernel_matrix_ << std::endl;
-//            ss << "offset:\n" << offset_ << std::endl;
-//            ss << "affine_inequality_matrix:\n"
-//               << affine_inequality_matrix_ << std::endl;
-//            ss << "affine_inequality_boundary:\n"
-//               << affine_inequality_boundary_ << std::endl;
-//            ss << "affine_equality_matrix:\n" << affine_equality_matrix_ << std::endl;
-//            ss << "affine_equality_boundary:\n"
-//               << affine_equality_boundary_ << std::endl;
-//
-//            ADEBUG << ss.str();
+        if(ret != qpOASES::SUCCESSFUL_RETURN) {
+            //            if (ret == qpOASES::RET_MAX_NWSR_REACHED) {
+            //                AERROR << "qpOASES solver failed due to reached max iteration";
+            //            } else {
+            //                AERROR << "qpOASES solver failed due to infeasibility or other internal "
+            //                        "reasons";
+            //            }
+            //            std::stringstream ss;
+            //            ss << "ActiveSetQpSolver inputs: " << std::endl;
+            //            ss << "kernel_matrix:\n" << kernel_matrix_ << std::endl;
+            //            ss << "offset:\n" << offset_ << std::endl;
+            //            ss << "affine_inequality_matrix:\n"
+            //               << affine_inequality_matrix_ << std::endl;
+            //            ss << "affine_inequality_boundary:\n"
+            //               << affine_inequality_boundary_ << std::endl;
+            //            ss << "affine_equality_matrix:\n" << affine_equality_matrix_ << std::endl;
+            //            ss << "affine_equality_boundary:\n"
+            //               << affine_equality_boundary_ << std::endl;
+            //
+            //            ADEBUG << ss.str();
 
             return false;
         }
@@ -135,15 +136,19 @@ namespace planning{
         qp_problem.getPrimalSolution(result);
 
         params_ = Eigen::MatrixXd::Zero(num_param_, 1);
-        for (int i = 0; i < num_param_; ++i) {
+        for(int i = 0; i < num_param_; ++i) {
             params_(i, 0) = result[i];
         }
         return qp_problem.isSolved() == qpOASES::BT_TRUE;
     }
 
-    void ActiveSetQpSolver::set_qp_eps_num(const double eps) { qp_eps_num_ = eps; }
+    void ActiveSetQpSolver::set_qp_eps_num(const double eps) {
+        qp_eps_num_ = eps;
+    }
 
-    void ActiveSetQpSolver::set_qp_eps_den(const double eps) { qp_eps_den_ = eps; }
+    void ActiveSetQpSolver::set_qp_eps_den(const double eps) {
+        qp_eps_den_ = eps;
+    }
 
     void ActiveSetQpSolver::set_qp_eps_iter_ref(const double eps) {
         qp_eps_iter_ref_ = eps;
@@ -162,7 +167,7 @@ namespace planning{
     }
 
     void ActiveSetQpSolver::set_constraint_upper_bound(
-            const double la_upper_bound) {
+        const double la_upper_bound) {
         constraint_upper_bound_ = la_upper_bound;
     }
 
@@ -170,25 +175,39 @@ namespace planning{
         max_iteration_ = max_iter;
     }
 
-    double ActiveSetQpSolver::qp_eps_num() const { return qp_eps_num_; }
+    double ActiveSetQpSolver::qp_eps_num() const {
+        return qp_eps_num_;
+    }
 
-    double ActiveSetQpSolver::qp_eps_den() const { return qp_eps_den_; }
+    double ActiveSetQpSolver::qp_eps_den() const {
+        return qp_eps_den_;
+    }
 
-    double ActiveSetQpSolver::qp_eps_iter_ref() const { return qp_eps_iter_ref_; }
+    double ActiveSetQpSolver::qp_eps_iter_ref() const {
+        return qp_eps_iter_ref_;
+    }
 
-    bool ActiveSetQpSolver::debug_info() const { return debug_info_; }
+    bool ActiveSetQpSolver::debug_info() const {
+        return debug_info_;
+    }
 
-    double ActiveSetQpSolver::l_lower_bound() const { return l_lower_bound_; }
+    double ActiveSetQpSolver::l_lower_bound() const {
+        return l_lower_bound_;
+    }
 
-    double ActiveSetQpSolver::l_upper_bound() const { return l_upper_bound_; }
+    double ActiveSetQpSolver::l_upper_bound() const {
+        return l_upper_bound_;
+    }
 
     double ActiveSetQpSolver::constraint_upper_bound() const {
         return constraint_upper_bound_;
     }
 
-    int ActiveSetQpSolver::max_iteration() const { return max_iteration_; }
+    int ActiveSetQpSolver::max_iteration() const {
+        return max_iteration_;
+    }
 
-// pure virtual
+    // pure virtual
     bool ActiveSetQpSolver::sanity_check() {
         return kernel_matrix_.rows() == kernel_matrix_.cols() &&
                kernel_matrix_.rows() == affine_inequality_matrix_.cols() &&

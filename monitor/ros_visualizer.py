@@ -594,6 +594,7 @@ class RosVisualizer(object):
         if m:
             for o in (getattr(m[0], "objs", None) or []):
                 try:
+                    conf = getattr(o, "confidence", None)
                     obstacles.append({
                         # 对标 DrawLidarObjects:length=dy / width=dx(代码
                         # 实际行为,与 object.msg 注释相反)
@@ -605,6 +606,14 @@ class RosVisualizer(object):
                         "yaw": round(yaw_from_heading(
                             getattr(o, "heading", 0.0)), 4),
                         "id": int(getattr(o, "id", 0)),
+                        # 前端按 type 着色;语义由上游定:
+                        # hdmap 车道占用 0-本道/1-左一/2-左二/3-左外/
+                        # 4-右外(object.msg 旧注释 0-车/1-行人/2-骑行)
+                        "type": int(getattr(o, "type", 3)),
+                        # 置信度(object.msg confidence,上游时域滤波重算);
+                        # 前端以同色文字悬浮显示在障碍框正上方。
+                        # 字段缺失(旧消息定义)发 null,前端隐藏文字
+                        "conf": _r2(conf) if conf is not None else None,
                         "vx": _r2(getattr(o, "vx", 0.0)),
                         "vy": _r2(getattr(o, "vy", 0.0)),
                     })

@@ -3,18 +3,16 @@
 #include <cmath>
 #include "pathmatcher.h"
 
-double NormalizeAngle(const double angle) 
-{
+double NormalizeAngle(const double angle) {
     double a = std::fmod(angle + M_PI, 2.0 * M_PI);
 
     if(a < 0.0) a += (2.0 * M_PI);
- 
+
     return a - M_PI;
 }
 
-double slerp(const double a0, const double t0, 
-             const double a1, const double t1, const double t) 
-{
+double slerp(const double a0, const double t0,
+             const double a1, const double t1, const double t) {
     if(std::abs(t1 - t0) <= 0.0001) return NormalizeAngle(a0);
 
     const double a0_n = NormalizeAngle(a0);
@@ -24,7 +22,7 @@ double slerp(const double a0, const double t0,
 
     if(d > M_PI) {
         d = d - 2 * M_PI;
-    } else if (d < -M_PI) {
+    } else if(d < -M_PI) {
         d = d + 2 * M_PI;
     }
 
@@ -35,10 +33,9 @@ double slerp(const double a0, const double t0,
 }
 
 PathPoint PathMatcher::MatchToPath(const std::vector<PathPoint>& reference_line,
-                                   const double x, const double y) 
-{
+                                   const double x, const double y) {
     auto func_distance_square = [](const PathPoint& point, const double x,
-                                 const double y) {
+                                   const double y) {
         double dx = point.x() - x;
         double dy = point.y() - y;
         return dx * dx + dy * dy;
@@ -48,28 +45,27 @@ PathPoint PathMatcher::MatchToPath(const std::vector<PathPoint>& reference_line,
     std::size_t index_min = 0;
 
     for(std::size_t i = 1; i < reference_line.size(); ++i) {
-      double distance_temp = func_distance_square(reference_line[i], x, y);
-      if(distance_temp < distance_min) {
-        distance_min = distance_temp;
-        index_min = i;
-      }
+        double distance_temp = func_distance_square(reference_line[i], x, y);
+        if(distance_temp < distance_min) {
+            distance_min = distance_temp;
+            index_min = i;
+        }
     }
 
     std::size_t index_start = (index_min == 0) ? index_min : index_min - 1;
     std::size_t index_end =
-      (index_min + 1 == reference_line.size()) ? index_min : index_min + 1;
+        (index_min + 1 == reference_line.size()) ? index_min : index_min + 1;
 
     if(index_start == index_end) {
-      return reference_line[index_start];
+        return reference_line[index_start];
     }
 
     return FindProjectionPoint(
-               reference_line[index_start], reference_line[index_end], x, y);
+        reference_line[index_start], reference_line[index_end], x, y);
 }
 
 PathPoint PathMatcher::MatchToPath(const std::vector<PathPoint>& reference_line,
-                                   const double s) 
-{
+                                   const double s) {
     auto comp = [](const PathPoint& point, const double s) {
         return point.s() < s;
     };
@@ -79,7 +75,7 @@ PathPoint PathMatcher::MatchToPath(const std::vector<PathPoint>& reference_line,
 
     if(it_lower == reference_line.begin()) {
         return reference_line.front();
-    }else if (it_lower == reference_line.end()) {
+    } else if(it_lower == reference_line.end()) {
         return reference_line.back();
     }
 
@@ -88,8 +84,7 @@ PathPoint PathMatcher::MatchToPath(const std::vector<PathPoint>& reference_line,
 
 PathPoint PathMatcher::FindProjectionPoint(const PathPoint& p0,
                                            const PathPoint& p1, const double x,
-                                           const double y) 
-{
+                                           const double y) {
     double v0x = x - p0.x();
     double v0y = y - p0.y();
 
@@ -103,10 +98,9 @@ PathPoint PathMatcher::FindProjectionPoint(const PathPoint& p0,
     return InterpolateUsingLinearApproximation(p0, p1, p0.s() + delta_s);
 }
 
-PathPoint PathMatcher::InterpolateUsingLinearApproximation(const PathPoint &p0,
-                                              const PathPoint &p1,
-                                              const double s) 
-{
+PathPoint PathMatcher::InterpolateUsingLinearApproximation(const PathPoint& p0,
+                                                           const PathPoint& p1,
+                                                           const double s) {
     double s0 = p0.s();
     double s1 = p1.s();
 
@@ -114,7 +108,7 @@ PathPoint PathMatcher::InterpolateUsingLinearApproximation(const PathPoint &p0,
     double weight = (s - s0) / (s1 - s0);
     double x = (1 - weight) * p0.x() + weight * p1.x();
     double y = (1 - weight) * p0.y() + weight * p1.y();
-    double theta = (p0.theta() + p1.theta())/2;
+    double theta = (p0.theta() + p1.theta()) / 2;
     double kappa = (1 - weight) * p0.kappa() + weight * p1.kappa();
     double dkappa = (1 - weight) * p0.dkappa() + weight * p1.dkappa();
     double ddkappa = (1 - weight) * p0.ddkappa() + weight * p1.ddkappa();

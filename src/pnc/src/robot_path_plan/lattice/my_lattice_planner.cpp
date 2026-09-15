@@ -7,21 +7,17 @@
 #include "my_lattice_planner.h"
 
 MyLatticePlanner::MyLatticePlanner(CollisionCheckWithBBoxSPtr &collision_check)
-    : collision_check_with_bbox_ptr_(collision_check)
-
-{
+    : collision_check_with_bbox_ptr_(collision_check) {
     this->loadParams();
     sample_path_pub_ = nh_.advertise<visualization_msgs::MarkerArray>("/sampled_path", 1);
     optimal_path_pub_ = nh_.advertise<nav_msgs::Path>("/optimal_path", 1);
     // csv_logger_ = std::make_unique<CSVLogger>("/root/workspace/chrtc_626project/", "lattice");
 }
 
-MyLatticePlanner::~MyLatticePlanner()
-{
+MyLatticePlanner::~MyLatticePlanner() {
 }
 
-void MyLatticePlanner::loadParams()
-{
+void MyLatticePlanner::loadParams() {
     // 加载参数
     inflation_w_ = 0.1;
     inflation_l_ = 0.1;
@@ -42,24 +38,18 @@ void MyLatticePlanner::loadParams()
     printf("Lattice Planner参数:\n车宽膨胀值:%f\n车长膨胀值:%f\n最大曲率:%f\n参考线偏差权重:%f\n上一帧路径权重:%f\n",
            inflation_w_, inflation_l_, max_curvature_, weight_lat2ref_, weight_lat2last_);
     end_l_states_.push_back(0);
-    for (int i = 1; i <= end_l_left_num_; ++i)
-    {
+    for(int i = 1; i <= end_l_left_num_; ++i) {
         end_l_states_.push_back(end_l_step_ * i);
     }
-    for (int i = 1; i <= end_l_right_num_; ++i)
-    {
+    for(int i = 1; i <= end_l_right_num_; ++i) {
         end_l_states_.push_back(-end_l_step_ * i);
     }
     printf("横向采样: [");
-    for (int i = 0; i < end_l_states_.size(); ++i)
-    {
+    for(int i = 0; i < end_l_states_.size(); ++i) {
         double &l = end_l_states_[i];
-        if (i == end_l_states_.size() - 1)
-        {
+        if(i == end_l_states_.size() - 1) {
             printf("%f]\n", l);
-        }
-        else
-        {
+        } else {
             printf("%f,", l);
         }
     }
@@ -67,13 +57,11 @@ void MyLatticePlanner::loadParams()
 
 std::vector<Pose2d> MyLatticePlanner::plan(const std::vector<Pose2d> &reference_path,
                                            const Pose2d &ego_pose,
-                                           std::vector<ObstaclePtr> obstacles)
-{
+                                           std::vector<ObstaclePtr> obstacles) {
     printf("=========================== 进入lattice规划 ===========================\n");
     TimeLogger timer;
     timer.start();
-    if(reference_path.empty())
-    {
+    if(reference_path.empty()) {
         printf("参考轨迹为空\n");
         return {};
     }
@@ -83,19 +71,16 @@ std::vector<Pose2d> MyLatticePlanner::plan(const std::vector<Pose2d> &reference_
     std::vector<Pose2d> base_path;
     Pose2d matched_pose;
     FrenetPoint sfre_pose;
-    if (!last_path_.empty())
-    {
+    if(!last_path_.empty()) {
         auto foot_pose = math_utils::getFootPose(ego_pose, last_path_);
         // 计算拼接点
         double base_length = std::max(ego_pose.v * 0.5, 2.0);
         printf("轨迹拼接, 拼接长度: %f\n", base_length);
         // 裁剪拼接路径
-        for (auto &pose : last_path_)
-        {
+        for(auto &pose : last_path_) {
             double delta_s = pose.s - foot_pose.s;
             printf("foot_s:%f, pose_s:%f\n", foot_pose.s, pose.s);
-            if (delta_s >= 0 && delta_s <= base_length)
-            {
+            if(delta_s >= 0 && delta_s <= base_length) {
                 base_path.push_back(pose);
             }
         }
@@ -103,9 +88,7 @@ std::vector<Pose2d> MyLatticePlanner::plan(const std::vector<Pose2d> &reference_
         Pose2d stitch_pose = base_path.back();
         matched_pose = findMatchedPoint(stitch_pose, ref_path);
         sfre_pose = toFrenet(stitch_pose, matched_pose);
-    }
-    else
-    {
+    } else {
         matched_pose = findMatchedPoint(ego_pose, ref_path);
         sfre_pose = toFrenet(ego_pose, matched_pose);
     }
@@ -121,21 +104,19 @@ std::vector<Pose2d> MyLatticePlanner::plan(const std::vector<Pose2d> &reference_
     auto cs_paths = filterValidPaths(fre_ls_vec, ref_path, obstacles);
     printf("筛选出的轨迹数量为: %d\n", cs_paths.size());
     std::vector<Pose2d> result = base_path;
-    if (!cs_paths.empty())
-    {
+    if(!cs_paths.empty()) {
         auto stitch_path = cs_paths.front();
         result.insert(result.end(), stitch_path.poses.begin(), stitch_path.poses.end());
     }
     math_utils::computePoseAttr(result);
     // drawSampledPath(cs_paths);
     //  drawOptimalPath(cs_paths.front());
-     printf("================Lattice 规划完成， 耗时: %f ms\n", timer.duration());
+    printf("================Lattice 规划完成， 耗时: %f ms\n", timer.duration());
     last_path_ = result;
     return result;
 }
 
-SPolyParam MyLatticePlanner::computePolyParam(SState start, SState end)
-{
+SPolyParam MyLatticePlanner::computePolyParam(SState start, SState end) {
     // 起始条件
     double t_0 = start[0];
     double s_0 = start[1];
@@ -172,8 +153,7 @@ SPolyParam MyLatticePlanner::computePolyParam(SState start, SState end)
     return s_param;
 }
 
-std::vector<LPolyParam> MyLatticePlanner::latPlan(const FrenetPoint &sfre_pt, const Pose2d &end_ref_pt)
-{
+std::vector<LPolyParam> MyLatticePlanner::latPlan(const FrenetPoint &sfre_pt, const Pose2d &end_ref_pt) {
     std::vector<LPolyParam> lpoly_vec;
     // 建立五次多项式模型
     //  l_s = a0 + a1s + a2s^2 + a3s^3 + a4s^4 + a5s^5
@@ -195,20 +175,16 @@ std::vector<LPolyParam> MyLatticePlanner::latPlan(const FrenetPoint &sfre_pt, co
     max_s = max_s < end_s_min_ ? end_s_min_ : max_s;
     double s_step = (max_s - end_s_min_) / end_s_sample_num_;
     std::vector<double> end_s_states;
-    for (int i = 1; i <= end_s_sample_num_; i++)
-    {
+    for(int i = 1; i <= end_s_sample_num_; i++) {
         double end_s = end_s_min_ + s_step * i;
         printf("i:%d, end_s:%f, max_s:%f\n", i, end_s, max_s);
         end_s_states.push_back(end_s);
     }
     // std::array<double, 2> end_s_states = {8, 15};
     //  3. 生成五次多项式
-    for (auto &end_s : end_s_states)
-    {
+    for(auto &end_s : end_s_states) {
         int i = 0;
-        for (auto &end_l : end_l_states_)
-        {
-
+        for(auto &end_l : end_l_states_) {
             double param_c0 = end_l - a0 - a1 * end_s - 2 * a2 * end_s * end_s;
             double param_c1 = -a1 - 2 * a2 * end_s;
             double param_c2 = -2 * a2;
@@ -219,8 +195,7 @@ std::vector<LPolyParam> MyLatticePlanner::latPlan(const FrenetPoint &sfre_pt, co
             // std::array<double, 6> params = {a0, a1, a2, a3, a4, a5};
 
             // printf("i: %d, a0:%f a1:%f a2:%f a3:%f a4:%f a5:%f\n", i++, a0, a1, a2, a3, a4, a5);
-            if (std::isnan(a3) || std::isnan(a4))
-            {
+            if(std::isnan(a3) || std::isnan(a4)) {
                 printf("============nannan===============\n");
                 // printf("end_s:%f, end_l:%f, c0:%f, c1:%f, c2:%f\n", end_s, end_l, param_c0, param_c1, param_c2);
                 printf("i: %d, a0:%f a1:%f a2:%f a3:%f a4:%f a5:%f\n", i++, a0, a1, a2, a3, a4, a5);
@@ -237,17 +212,14 @@ std::vector<LPolyParam> MyLatticePlanner::latPlan(const FrenetPoint &sfre_pt, co
 }
 
 std::vector<FrenetPath> MyLatticePlanner::combineSLTrajectory(const std::vector<LPolyParam> &lpoly_vec,
-                                                              const double &s0, const double &max_s)
-{
+                                                              const double &s0, const double &max_s) {
     std::vector<FrenetPath> frenet_paths;
-    for (auto ldata : lpoly_vec)
-    {
+    for(auto ldata : lpoly_vec) {
         auto lpoly = ldata.params;
         FrenetPath fre_path;
         FrenetPoint last_fre_pt;
         double s = s0;
-        while (ros::ok())
-        {
+        while(ros::ok()) {
             double rs = s - s0;
             double l = lpoly[0] + lpoly[1] * rs + lpoly[2] * std::pow(rs, 2) + lpoly[3] * std::pow(rs, 3) + lpoly[4] * std::pow(rs, 4) +
                        lpoly[5] * std::pow(rs, 5);
@@ -256,13 +228,11 @@ std::vector<FrenetPath> MyLatticePlanner::combineSLTrajectory(const std::vector<
             double d2l_s = 2 * lpoly[2] + 6 * lpoly[3] * rs + 12 * lpoly[4] * std::pow(rs, 2) + 20 * lpoly[5] * std::pow(rs, 3);
             // printf("0: %f, 1:%f, 2:%f, ")
             // printf("t: %f, s:%f s0:%f l:%f\n", t, s, s0, l);
-            if (s > max_s)
-            {
+            if(s > max_s) {
                 // printf("达到终止条件, s:%f, s0:%f, max_s:%f\n", s, s0, max_s);
                 break;
             }
-            if (rs > ldata.end_s)
-            {
+            if(rs > ldata.end_s) {
                 l = last_fre_pt.l;
                 dl_s = last_fre_pt.dl_s;
                 d2l_s = last_fre_pt.d2l_s;
@@ -287,13 +257,11 @@ std::vector<FrenetPath> MyLatticePlanner::combineSLTrajectory(const std::vector<
 
 std::vector<Path2d> MyLatticePlanner::filterValidPaths(std::vector<FrenetPath> &fre_paths,
                                                        const std::vector<Pose2d> &ref_ls,
-                                                       std::vector<ObstaclePtr> obstacles)
-{
+                                                       std::vector<ObstaclePtr> obstacles) {
     std::vector<Path2d> results;
     double min_cost = 1e6;
     int min_idx = 0;
-    for (int i = 0; i < fre_paths.size(); ++i)
-    {
+    for(int i = 0; i < fre_paths.size(); ++i) {
         Path2d cs_path;
         FrenetPath fre_path = fre_paths.at(i);
         bool check_ok = true;
@@ -301,12 +269,10 @@ std::vector<Path2d> MyLatticePlanner::filterValidPaths(std::vector<FrenetPath> &
         // logger.start();
         double min_obstalce_dist = 1e6;
         FrenetPoint last_check_collison_point;
-        for (int j = 0; j < fre_path.size(); ++j)
-        {
+        for(int j = 0; j < fre_path.size(); ++j) {
             FrenetPoint fre_pt = fre_path.at(j);
             // logger.log(fre_pt.s, fre_pt.l);
-            if (j == 0)
-            {
+            if(j == 0) {
                 last_check_collison_point = fre_pt;
             }
             double dist = fre_pt.s - last_check_collison_point.s;
@@ -324,10 +290,8 @@ std::vector<Path2d> MyLatticePlanner::filterValidPaths(std::vector<FrenetPath> &
             //     break;
             // }
             // 检查碰撞
-            if (dist > 1.0) //每隔1m进行碰撞检测
-            {
-                if (isCollision(cs_pt, obstacles))
-                {
+            if(dist > 1.0) {  //每隔1m进行碰撞检测
+                if(isCollision(cs_pt, obstacles)) {
                     printf("碰撞, %d, %d\n", i, j);
                     check_ok = false;
                     break;
@@ -336,23 +300,20 @@ std::vector<Path2d> MyLatticePlanner::filterValidPaths(std::vector<FrenetPath> &
             }
             // 计算曲率代价
             // cs_path.curvature_cost += fabs(cs_pt.k);
-            if (j > 0)
-            {
+            if(j > 0) {
                 auto last_pt = cs_path.poses.back();
                 cs_path.smooth_cost += fabs(cs_pt.heading - last_pt.heading);
             }
             // 计算与参考线的横向偏差代价
             cs_path.lat_diff_ref_cost += fabs(fre_pt.l);
             // 计算与上一帧路径的横向偏差代价
-            if (!last_fre_path_.empty() && j < last_fre_path_.size())
-            {
+            if(!last_fre_path_.empty() && j < last_fre_path_.size()) {
                 double last_diff_l = fabs(last_fre_path_.at(j).l - fre_pt.l);
                 cs_path.lat_diff_last_cost += last_diff_l;
             }
             cs_path.poses.push_back(cs_pt);
         }
-        if (check_ok)
-        {
+        if(check_ok) {
             // printf("cs_path size:%d\n", cs_path.ls.size());
             double travelled_s = cs_path.poses.back().s;
             double travelled_l = cs_path.poses.back().l;
@@ -373,8 +334,7 @@ std::vector<Path2d> MyLatticePlanner::filterValidPaths(std::vector<FrenetPath> &
             //        i, travelled_s, travelled_l, cs_path.lat_diff_last_cost, cs_path.lat_diff_ref_cost,
             //        cs_path.travelled_cost, cs_path.cost);
             results.emplace_back(cs_path);
-            if (cs_path.cost < min_cost)
-            {
+            if(cs_path.cost < min_cost) {
                 min_idx = i;
                 min_cost = cs_path.cost;
             }
@@ -383,12 +343,10 @@ std::vector<Path2d> MyLatticePlanner::filterValidPaths(std::vector<FrenetPath> &
     printf("min idx: %d\n", min_idx);
     last_fre_path_ = fre_paths.at(min_idx);
     // 排序
-    std::sort(results.begin(), results.end(), [](Path2d &left, Path2d &right)
-              { return left.cost < right.cost; });
+    std::sort(results.begin(), results.end(), [](Path2d &left, Path2d &right) { return left.cost < right.cost; });
     return results;
 }
-FrenetPoint MyLatticePlanner::toFrenet(const Pose2d &path_pt, const Pose2d &ref_pt)
-{
+FrenetPoint MyLatticePlanner::toFrenet(const Pose2d &path_pt, const Pose2d &ref_pt) {
     FrenetPoint frenet_pt;
 
     // 计算l
@@ -439,8 +397,7 @@ FrenetPoint MyLatticePlanner::toFrenet(const Pose2d &path_pt, const Pose2d &ref_
     return frenet_pt;
 }
 
-Pose2d MyLatticePlanner::toCartesian(const FrenetPoint &fre, const Pose2d &ref)
-{
+Pose2d MyLatticePlanner::toCartesian(const FrenetPoint &fre, const Pose2d &ref) {
     Pose2d carts_pt;
     // 计算位置x,y
     // printf("ref.x: %f, param:%f\n", ref.x, fre.l * sin(ref.heading));
@@ -476,17 +433,14 @@ Pose2d MyLatticePlanner::toCartesian(const FrenetPoint &fre, const Pose2d &ref)
     return carts_pt;
 }
 
-Pose2d MyLatticePlanner::findMatchedPoint(const Pose2d &path_pt, const std::vector<Pose2d> &ref_ls)
-{
+Pose2d MyLatticePlanner::findMatchedPoint(const Pose2d &path_pt, const std::vector<Pose2d> &ref_ls) {
     int min_index = 0;
     double min_dist = 1e9;
     // 1. 查找最近点
-    for (size_t i = 0; i < ref_ls.size(); ++i)
-    {
+    for(size_t i = 0; i < ref_ls.size(); ++i) {
         auto &ref_pt = ref_ls.at(i);
         double dist = math_utils::distance(path_pt, ref_pt);
-        if (dist > min_dist)
-        {
+        if(dist > min_dist) {
             break;
         }
         // min_dist = dist < min_dist ? dist : min_dist;
@@ -497,12 +451,10 @@ Pose2d MyLatticePlanner::findMatchedPoint(const Pose2d &path_pt, const std::vect
     // 2. 计算投影点
     int last_idx = min_index - 1;
     int next_idx = min_index + 1;
-    if (min_index == 0)
-    {
+    if(min_index == 0) {
         last_idx = min_index;
     }
-    if (min_index == ref_ls.size() - 1)
-    {
+    if(min_index == ref_ls.size() - 1) {
         next_idx = min_index;
     }
     auto &last_pt = ref_ls.at(last_idx);
@@ -556,16 +508,13 @@ Pose2d MyLatticePlanner::findMatchedPoint(const Pose2d &path_pt, const std::vect
     return matched_cs_pt;
 }
 
-Pose2d MyLatticePlanner::findMatchedPoint(const double &s, const std::vector<Pose2d> &ref_ls)
-{
-    auto comp = [](const Pose2d &point, const double s)
-    {
+Pose2d MyLatticePlanner::findMatchedPoint(const double &s, const std::vector<Pose2d> &ref_ls) {
+    auto comp = [](const Pose2d &point, const double s) {
         return point.s < s;
     };
 
     auto it_lower = std::lower_bound(ref_ls.begin(), ref_ls.end(), s, comp);
-    if (it_lower == ref_ls.begin())
-    {
+    if(it_lower == ref_ls.begin()) {
         return ref_ls.front();
     }
     auto p0 = *(it_lower - 1);
@@ -590,13 +539,11 @@ Pose2d MyLatticePlanner::findMatchedPoint(const double &s, const std::vector<Pos
     return path_point;
 }
 
-Pose2d MyLatticePlanner::findNearstRefPoint(const double &s, const std::vector<Pose2d> &ref_ls)
-{
+Pose2d MyLatticePlanner::findNearstRefPoint(const double &s, const std::vector<Pose2d> &ref_ls) {
     Pose2d result_pt;
     int min_index = 0;
     double min_dist = 1e9;
-    for (size_t i = 0; i < ref_ls.size(); ++i)
-    {
+    for(size_t i = 0; i < ref_ls.size(); ++i) {
         auto &ref_pt = ref_ls.at(i);
         double ref_s = ref_pt.s;
         double dist = fabs(s - ref_s);
@@ -604,8 +551,7 @@ Pose2d MyLatticePlanner::findNearstRefPoint(const double &s, const std::vector<P
         // {
         //     break;
         // }
-        if (dist < min_dist)
-        {
+        if(dist < min_dist) {
             min_dist = dist;
             min_index = i;
         }
@@ -630,37 +576,29 @@ Pose2d MyLatticePlanner::findNearstRefPoint(const double &s, const std::vector<P
     return result_pt;
 }
 
-bool MyLatticePlanner::isCurvatureOk(const Pose2d &cs_pt)
-{
+bool MyLatticePlanner::isCurvatureOk(const Pose2d &cs_pt) {
     return fabs(cs_pt.curvature) < max_curvature_;
 }
 
-bool MyLatticePlanner::isCollision(const Pose2d &cs_pt, const std::vector<ObstaclePtr> &obbs)
-{
-    for (auto &obb : obbs)
-    {
+bool MyLatticePlanner::isCollision(const Pose2d &cs_pt, const std::vector<ObstaclePtr> &obbs) {
+    for(auto &obb : obbs) {
         bool result = collision_check_with_bbox_ptr_->isCollision(*obb, cs_pt, inflation_w_, inflation_l_);
-        if (result)
-        {
+        if(result) {
             return true;
         }
     }
     return false;
 }
 
-void MyLatticePlanner::writeToFile(const std::vector<SPolyParam> &spoly_vec, const std::vector<LPolyParam> &lpoly_vec)
-{
+void MyLatticePlanner::writeToFile(const std::vector<SPolyParam> &spoly_vec, const std::vector<LPolyParam> &lpoly_vec) {
     std::string filename = "/home/cqw/workspace/param.csv";
     std::ofstream file_log;
     file_log.open(filename, std::ios::out | std::ios::trunc);
     file_log << "a0,a1,a2,a3,a4,b0,b1,b2,b3,b4,b5\n";
-    if (file_log.is_open())
-    {
-        for (auto &sdata : spoly_vec)
-        {
+    if(file_log.is_open()) {
+        for(auto &sdata : spoly_vec) {
             auto spoly = sdata.params;
-            for (auto &ldata : lpoly_vec)
-            {
+            for(auto &ldata : lpoly_vec) {
                 auto lpoly = ldata.params;
                 file_log << spoly[0] << "," << spoly[1] << "," << spoly[2] << "," << spoly[3] << "," << spoly[4]
                          << "," << lpoly[0] << "," << lpoly[1] << "," << lpoly[2] << "," << lpoly[3] << "," << lpoly[4] << "," << lpoly[5] << std::endl;
@@ -669,12 +607,10 @@ void MyLatticePlanner::writeToFile(const std::vector<SPolyParam> &spoly_vec, con
     }
 }
 
-void MyLatticePlanner::drawSampledPath(std::vector<Path2d> &path_vec)
-{
+void MyLatticePlanner::drawSampledPath(std::vector<Path2d> &path_vec) {
     visualization_msgs::MarkerArray ls_array;
     // printf("sample ve size: %d\n", path_vec.size());
-    for (int i = 0; i < path_vec.size(); i++)
-    {
+    for(int i = 0; i < path_vec.size(); i++) {
         auto path = path_vec.at(i);
         visualization_msgs::Marker ls_marker;
         ls_marker.header.frame_id = "map";
@@ -692,8 +628,7 @@ void MyLatticePlanner::drawSampledPath(std::vector<Path2d> &path_vec)
         // {
         //     printf("path size: %d\n", path.ls.size());
         // }
-        for (auto &cs_pt : path.poses)
-        {
+        for(auto &cs_pt : path.poses) {
             geometry_msgs::Point p;
             p.x = cs_pt.x;
             p.y = cs_pt.y;

@@ -5,7 +5,7 @@
 #include <vector>
 #include "Eigen/Core"
 
-namespace planning{
+namespace planning {
     class PiecewiseLinearKernel {
     public:
         PiecewiseLinearKernel(const uint32_t dimension, const double unit_segment);
@@ -34,4 +34,4 @@ namespace planning{
     };
 }
 
-#endif //PLANNING_PIECEWISE_LINEAR_KERNEL_H
+#endif  //PLANNING_PIECEWISE_LINEAR_KERNEL_H

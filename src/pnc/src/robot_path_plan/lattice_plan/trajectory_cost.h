@@ -9,17 +9,16 @@
 
 using namespace planning;
 
-class TrajectoryCost 
-{
+class TrajectoryCost {
 public:
     TrajectoryCost() = default;
     explicit TrajectoryCost(const DpPolyPathConfig &config);
-    double Calculate(const SDPoint &cur_point,const std::vector<PathPoint>& reference_line);
-    double PathChangeCost(const int pathnumber_last,const int pathnumber_current);
+    double Calculate(const SDPoint &cur_point, const std::vector<PathPoint> &reference_line);
+    double PathChangeCost(const int pathnumber_last, const int pathnumber_current);
 
 private:
     double CalculatePathCost(const SDPoint &cur_point);
-    double CentripetalAccelerationCost(const SDPoint &cur_point,const std::vector<PathPoint>& reference_line);
+    double CentripetalAccelerationCost(const SDPoint &cur_point, const std::vector<PathPoint> &reference_line);
     double LatComfortCost(const SDPoint &cur_point);
     double calculateDlWeight(const float speed);
     const DpPolyPathConfig config_;
@@ -27,4 +26,4 @@ private:
 
 // }  // namespace planning
 
-#endif //PLANNING_TRAJECTORY_COST_H
+#endif  //PLANNING_TRAJECTORY_COST_H

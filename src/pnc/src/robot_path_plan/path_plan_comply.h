@@ -50,17 +50,16 @@ using GeoPoint = bg::model::d2::point_xy<double>;
 using GeoLine = bg::model::segment<GeoPoint>;
 using GeoBox = bg::model::box<GeoPoint>;
 
-struct AirCraftParkingPort{
-    int id; //飞机位id
-    uint parking = 0; //0 非入位中 1 入位中
+struct AirCraftParkingPort {
+    int id;            //飞机位id
+    uint parking = 0;  //0 非入位中 1 入位中
     Point go_stop_point;
     Point back_stop_point;
     int go_stop_index = 0;
     int back_stop_index = 0;
 };
 
-class PathPlanComply
-{
+class PathPlanComply {
 public:
     // 生命周期与配置初始化。
     PathPlanComply();
@@ -79,7 +78,10 @@ public:
     void SetPerceptionData2(robot::perception perception_t);
     void SetLoadPosition(robot::palletpos load_pos_t);
     void SetButtonData(robot::rs232 button_data_t);
-    void SetCommandState(int in_command) { command_state = in_command; }
+    void SetCommandData(robot::v2nCommandFeedback command_t);
+    void SetCommandState(int in_command) {
+        command_state = in_command;
+    }
     void resetTask();
 
     // 飞机位动态占用信息。
@@ -93,10 +95,6 @@ public:
     void PublishReferPath(ros::Publisher &tPub);
     void PublishPlanPath(ros::Publisher &tPub1, ros::Publisher &tPub2);
 
-    // 调试可视化，节点中的调用当前被注释。
-    void pubLatticeTrajs(ros::Publisher &tPub);
-    void pubObstacles(ros::Publisher &tPub);
-
     void handleDrivingPath();
     double getLaneLimitSpeedTest(double cur_lane_speed, double next_lane_speed);
     bool checkAroundObstacle();
@@ -107,25 +105,23 @@ public:
     std::vector<GeoPolygon> obstacle_obbs_;
     GeoPolygon vehicle_obb_;
 
-    int sumVec(std::vector<bool> &vec)
-    {
+    int sumVec(std::vector<bool> &vec) {
         int sum = 0;
-        for (int i = 0; i < vec.size(); i++)
-        {
+        for(int i = 0; i < vec.size(); i++) {
             sum += int(vec[i]);
         }
         return sum;
     }
 
     int AccSwitch = 0;
-    int PalletType = 0; //0-static pallet pos 1-reflect pallet pos
-    int LaneChangeRequset = 0; // 0-none 1-left 2-right
+    int PalletType = 0;         //0-static pallet pos 1-reflect pallet pos
+    int LaneChangeRequset = 0;  // 0-none 1-left 2-right
     // 挂钩销/鞍座位置判定线(0x285 码值, 小=高), 由节点主循环热读 canbus
     // 发布的 rosparam 注入; 初值=config.cfg 默认值(参数缺失时保持)
-    int HookPosMin = 185; // 销<min=钩完全升起
-    int HookPosMax = 240; // 销>max=销退到底
-    int PalletPosMin = 130; // 鞍座<min=托盘升顶
-    int PalletPosMax = 240; // 鞍座>max=托盘落底
+    int HookPosMin = 185;    // 销<min=钩完全升起
+    int HookPosMax = 240;    // 销>max=销退到底
+    int PalletPosMin = 130;  // 鞍座<min=托盘升顶
+    int PalletPosMax = 240;  // 鞍座>max=托盘落底
     int workMode = 0;
     int InitSafetyCheck = 0;
     int emergencyStop = 0;
@@ -133,8 +129,7 @@ public:
     std::vector<OriginalInsData> path_final;
     std::vector<OriginalInsData> path_final_last;
 
-    struct SysTime
-    {
+    struct SysTime {
         double now;
         double init;
         double planningStop;
@@ -149,6 +144,43 @@ public:
     } sysTime;
 
 private:
+    // 全局路径构建阶段；实现见 task/global_path.inc。
+    void LoadTaskPaths(const robot::task_plan_msg &task_plan_t);
+    void FindTaskStartPoint();
+    void ConnectVehicleToPath();
+    void FindTaskStopPoint(const robot::task_plan_msg &task_plan_t);
+    void ResetTaskHistory();
+
+    // 任务停车规则；实现见 task/stop_speed.inc。
+    void UpdateActionTaskStatus();
+    float LimitParkTaskSpeed(float tCurX, float tCurY, float tCurAngle,
+                             float tTargetX, float tTargetY);
+    float LimitHookTaskSpeed();
+    float LimitDrivingTaskSpeed();
+
+    // 参考路径生成与碰撞检查；计算阶段只更新 mReferPath，不发布消息。
+    void BuildReferencePathPoints(std::vector<float> &x, std::vector<float> &y,
+                                  std::vector<float> &heading, int &LaneChangeSwitch);
+    void UpdateReverseReferencePath(const std::vector<float> &x, const std::vector<float> &y);
+    void UpdateForwardReferencePath(const std::vector<float> &x, const std::vector<float> &y,
+                                    const std::vector<float> &heading, int LaneChangeSwitch);
+    void ReusePreviousTrajectory();
+    void CheckForwardReferenceSafety();
+    std::vector<robot::object> CollectReferenceRiskObjects();
+    bool UpdateReferenceRiskHistory(std::vector<robot::object> &risk_objs);
+    std::vector<robot::object> FilterForwardRiskObjects(
+        const std::vector<robot::object> &risk_objs, double &dh);
+    void ApplyReferenceCollisionSpeed(const std::vector<robot::object> &risk_objs_filter, double dh);
+
+    // 最终路径覆盖顺序集中在 PublishPlanPath；实现见 path_plan_output.inc。
+    void PublishStoppedPath(ros::Publisher &tPub1);
+    void UpdateStartupSafety(bool is_around_unsafe, bool is_T_unsafe);
+    void CopyReferencePath();
+    void SmoothPlanSpeed();
+    void ApplyEmergencyAndNetworkStop();
+    void UpdateSoundLightCommand(int &HornCmd, int &LightCmd);
+    void ApplyWaitingAreaStop(bool is_T_unsafe, int &LightCmd);
+
     // 任务变化判断与路径构建。
     bool JudgeTaskPlanMsgChanged(robot::task_plan_msg tLast, robot::task_plan_msg tNow);
     bool JudgeShiftParkingPoint(robot::task_plan_msg tLast, robot::task_plan_msg tNow);
@@ -178,7 +210,6 @@ private:
 
     double GetLineDirection(double xsecond, double ysecond,
                             double xfirst, double yfirst);
-
 
     int FindNearestPoint2VehicleID(double x, double y, vector<OriginalInsData> lpath);
 
@@ -214,13 +245,13 @@ private:
 
     // 跨帧去抖/迟滞状态(原为各函数内 static, 转成员以便任务切换时统一复位;
     // 两处同名 safety_check_counter 因合并类作用域被迫消歧为 _percep/_refer)
-    int safety_check_counter_percep = 0; // SetPerceptionData 安全过滤去抖
-    int safety_check_counter_refer = 0;  // PublishReferPath safety 去抖
-    std::vector<std::vector<robot::object>> history_risk_vec; // 4 帧风险障碍环形历史
-    int HornFlag = 1;                   // PublishPlanPath 喇叭去抖
-    std::vector<bool> unsafe_vec;       // checkTJunctionObstacle 4 帧去抖
-    std::vector<bool> history_unsafe;   // checkAroundObstacle 30 帧起步观察
-    int backdist_flag = 0;              // ADAPTIVEHOOK 倒车距离迟滞
+    int safety_check_counter_percep = 0;                       // SetPerceptionData 安全过滤去抖
+    int safety_check_counter_refer = 0;                        // PublishReferPath safety 去抖
+    std::vector<std::vector<robot::object>> history_risk_vec;  // 4 帧风险障碍环形历史
+    int HornFlag = 1;                                          // PublishPlanPath 喇叭去抖
+    std::vector<bool> unsafe_vec;                              // checkTJunctionObstacle 4 帧去抖
+    std::vector<bool> history_unsafe;                          // checkAroundObstacle 30 帧起步观察
+    int backdist_flag = 0;                                     // ADAPTIVEHOOK 倒车距离迟滞
 
     robot::navigation_msg mNavData;
     robot::perception mPerception;
@@ -244,21 +275,21 @@ private:
     std::vector<sCellMsg> lidarobjs_global_;
 
     int mLaneChangeSwitch = 0;
-    int mLaneChangeStatus = 0; // 0-done 1-running 2-l enable 3-r enable
-    int mLaneId = 0;           // 0-origin lane 1-virtual lane
+    int mLaneChangeStatus = 0;  // 0-done 1-running 2-l enable 3-r enable
+    int mLaneId = 0;            // 0-origin lane 1-virtual lane
     std::vector<XYZ_COOR_S> mOriginPath;
     std::vector<XYZ_COOR_S> mVirtualPath;
     void TrajectoryMove(double offset);
     void LaneChange(int quest);
     int mVirtualKeypoint;
-    
-     //test
+
+    //test
     std::vector<std::vector<TrajectoryPoint>> lattice_trajs_;
     std::shared_ptr<MyLatticePlanner> my_lattice_planner_;
     CollisionCheckWithBBoxSPtr collision_ptr_;
     State state_;
     std::vector<ObstaclePtr> obstacles_;
-    std::vector<AirCraftParkingPort>  aircraft_parking_ports_; //飞机位信息
+    std::vector<AirCraftParkingPort> aircraft_parking_ports_;  //飞机位信息
     int go_task_id_ = 0;
     int back_task_id_ = 0;
 };

@@ -5,8 +5,8 @@
 #include "spline_1d.h"
 #include "spline_seg_kernel.h"
 
-namespace planning{
-    class Spline1dKernel{
+namespace planning {
+    class Spline1dKernel {
     public:
         explicit Spline1dKernel(const Spline1d& spline1d);
         Spline1dKernel(const std::vector<double>& x_knots,
@@ -44,8 +44,8 @@ namespace planning{
         // reference line kernel, x_coord in strictly increasing order (for path
         // optimizer)
         bool addSecDerivativeReferenceLineKernelMatrix(const std::vector<double>& x_coord,
-                                                      const std::vector<double>& ref_fx,
-                                                      const double weight);
+                                                       const std::vector<double>& ref_fx,
+                                                       const double weight);
         // distance offset (for speed optimizer, given time optimize the distance can
         // go)
         void AddDistanceOffset(const double weight);
@@ -66,4 +66,4 @@ namespace planning{
     };
 }
 
-#endif //PLANNING_SPLINE_1D_KERNEL_H
+#endif  //PLANNING_SPLINE_1D_KERNEL_H

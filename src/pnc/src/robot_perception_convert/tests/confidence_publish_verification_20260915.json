@@ -1,0 +1,41 @@
+{
+  "date": "2026-09-15",
+  "threshold": 0.25,
+  "behavior": "Call FilterPerceptionByConfidence after validity checks and immediately before publish; preserve scores equal to 0.25; allow fully filtered empty results; retain raw classified history",
+  "production_change": "Replace final assignment of mPerception with confidence-filtered result",
+  "modified_files": [
+    "src/pnc/src/robot_perception_convert/perception_msg_convert.cpp",
+    "src/pnc/src/robot_perception_convert/README.md",
+    "src/pnc/src/robot_perception_convert/tests/publish_integration.cpp",
+    "src/pnc/src/robot_perception_convert/tests/verify_publish.py"
+  ],
+  "checks": {
+    "language": "C++11",
+    "transport": "generated ROS message stubs",
+    "sdk": "/home/mothotob/work/projects/claude-code/qingwei-L4-No2-pudong/src/hdmap/sdk",
+    "cmake_target": "perception_msg_convert",
+    "dynamic_link": "PASS",
+    "integration": "PASS: 3043 filtered perception publish checks",
+    "sanitizers": "PASS: 3043 filtered perception publish checks"
+  },
+  "cppcheck": {
+    "command": [
+      "cppcheck",
+      "--enable=warning,performance,portability",
+      "--std=c++11",
+      "--error-exitcode=1",
+      "--suppress=missingIncludeSystem",
+      "-I",
+      "/tmp/perception_confidence_publish_verify/stubs",
+      "-I",
+      "src/pnc/include",
+      "-I",
+      "src/hdmap/sdk/include",
+      "src/pnc/src/robot_perception_convert/perception_msg_convert.cpp"
+    ],
+    "exit_code": 0
+  },
+  "logs": "/tmp/perception_confidence_publish_verify",
+  "backup": "/home/mothotob/work/projects/claude-code/perception_before_confidence_publish_20260915_144835.tar.gz",
+  "limitation": "ROS transport uses stubs generated from actual message definitions; ROS1 communication and on-vehicle execution have not been verified"
+}

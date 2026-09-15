@@ -51,7 +51,8 @@ class El {
                       strokeRects: [] };
       self2._ctx2d = {
         __calls: calls,
-        clearRect() {}, fillText() {},
+        clearRect() {},
+        fillText(...a) { (calls.texts = calls.texts || []).push(a); },
         fillRect() { calls.fillRect++; },
         beginPath() {}, moveTo() {}, closePath() {},
         lineTo() { calls.lineTo++; },
@@ -208,8 +209,8 @@ async function main() {
     ages: { "/navigation_msg": 0.2, "/perception": 0.1, "/back_left_scan": 8.0 },
     vehicle: { x: 6.7, y: -13.1, yaw: -3.2198, speed: 2.5 },
     obstacles: [
-      { x: 8.8, y: 2.4, l: 4.0, w: 1.0, h: 1.8, yaw: -0.1745, id: 1, vx: 0, vy: 0 },
-      { x: 9.9, y: 3.4, l: 2.0, w: 0.9, h: 1.2, yaw: 0.1, id: 2, vx: 0, vy: 0 }],
+      { x: 8.8, y: 2.4, l: 4.0, w: 1.0, h: 1.8, yaw: -0.1745, id: 1, vx: 0, vy: 0, type: 1, conf: 0.87 },
+      { x: 9.9, y: 3.4, l: 2.0, w: 0.9, h: 1.2, yaw: 0.1, id: 2, vx: 0, vy: 0, type: 9 }],
     paths: { plan: [[0, 0], [1, 1], [2, 2]], refer: [[0, 0], [3, 3]] },
     stop: { x: 10.7, y: -1.5, yaw: 1.57 }, pallet: { x: 9.8, y: -2.4 },
     task: { id: 88, type: 1, work_mode: 1, exec: 1, cloud_proc: 1,
@@ -345,6 +346,41 @@ async function main() {
           near(m0.scale.y, 1.8) && near(m0.scale.z, 1.0),
           JSON.stringify([m0.scale.x, m0.scale.y, m0.scale.z]));
     check("障碍 z 抬高 h/2", near(m0.position.y, 0.9), String(m0.position.y));
+    // 按 type 着色:1=行人橙;其余(9)落默认墨绿
+    check("障碍 type=1 着橙", m0.material.color.c === 0xff8000,
+          String(m0.material.color.c));
+    check("障碍其余 type 着墨绿",
+          obstacleMeshes[1].material.color.c === 0x339999,
+          String(obstacleMeshes[1].material.color.c));
+  }
+  // 置信度文字 sprite:与 mesh 池同步;有 conf 的显示在框上方,无 conf 隐藏
+  const labelSprites = OBJ_SEQ.filter((o) => o.__kind === "sprite");
+  check("置信度文字 sprite 2 个", labelSprites.length === 2,
+        String(labelSprites.length));
+  if (labelSprites.length === 2) {
+    check("置信度文字位于框上方(h+0.3)", near(labelSprites[0].position.y, 2.1),
+          String(labelSprites[0].position.y));
+    check("置信度文字纹理已挂", !!labelSprites[0].material.map &&
+          labelSprites[0].visible === true,
+          String(labelSprites[0].visible));
+    check("无 conf 的文字隐藏",
+          labelSprites[1].visible === false && !labelSprites[1].material.map,
+          String(labelSprites[1].visible));
+    // 白色 + 3 倍字号规格锁(位置不变已由 h+0.3 断言覆盖)
+    const cv0 = labelSprites[0].material.map.cv;
+    const c20 = cv0.getContext();
+    check("置信度文字白色", c20.fillStyle === "#ffffff", String(c20.fillStyle));
+    check("置信度文字 3 倍字号(84px)", cv0._font === "bold 84px monospace",
+          String(cv0._font));
+    check("置信度画布 3 倍(384x144)",
+          cv0.width === 384 && cv0.height === 144,
+          cv0.width + "x" + cv0.height);
+    check("置信度文字内容 0.87",
+          JSON.stringify((c20.__calls.texts || [])[0] || []).indexOf("0.87") >= 0,
+          JSON.stringify((c20.__calls.texts || [])[0] || []));
+    check("置信度 sprite 世界尺寸 3 倍(4.8x1.8)",
+          near(labelSprites[0].scale.x, 4.8) && near(labelSprites[0].scale.y, 1.8),
+          labelSprites[0].scale.x + "x" + labelSprites[0].scale.y);
   }
   check("HUD 速度文本", el("#hSpd")._text.indexOf("2.5") >= 0,
         el("#hSpd")._text);
@@ -486,9 +522,14 @@ async function main() {
   cbLidar.fire("change", { target: cbLidar });
   check("关 lidar 图层 -> 障碍隐藏",
         obstacleMeshes.every((m) => m.visible === false));
+  check("关 lidar 图层 -> 置信度文字隐藏",
+        labelSprites.every((sp) => sp.visible === false));
   cbLidar.checked = true;
   cbLidar.fire("change", { target: cbLidar });
   check("开 lidar 图层 -> 障碍恢复", obstacleMeshes.every((m) => m.visible === true));
+  check("开 lidar 图层 -> 有 conf 文字恢复/无 conf 恒隐",
+        labelSprites[0].visible === true && labelSprites[1].visible === false,
+        String(labelSprites.map((sp) => sp.visible)));
 
   // F9 断网横幅(等下一个 poll 周期的 catch 分支)
   fetchRoutes = {};

@@ -6,7 +6,7 @@
 #include "Eigen/Core"
 #include "Eigen/LU"
 
-namespace planning{
+namespace planning {
     class QpSolver {
     public:
         QpSolver(const Eigen::MatrixXd& kernel_matrix, const Eigen::MatrixXd& offset,
@@ -16,10 +16,14 @@ namespace planning{
                  const Eigen::MatrixXd& affine_equality_boundary);
         virtual ~QpSolver() = default;
 
-        virtual void set_pos_semi_definite_hessian() {}
-        virtual void set_pos_definite_hessian() {}
-        virtual void EnableCholeskyRefactorisation(const int) {}
-        virtual void SetTerminationTolerance(const double) {}
+        virtual void set_pos_semi_definite_hessian() {
+        }
+        virtual void set_pos_definite_hessian() {
+        }
+        virtual void EnableCholeskyRefactorisation(const int) {
+        }
+        virtual void SetTerminationTolerance(const double) {
+        }
         virtual bool Solve() = 0;
 
         const Eigen::MatrixXd& params() const;
@@ -42,4 +46,4 @@ namespace planning{
     };
 }
 
-#endif //PLANNING_QP_SOLVER_H
+#endif  //PLANNING_QP_SOLVER_H

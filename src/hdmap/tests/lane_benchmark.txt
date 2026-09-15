@@ -1,0 +1,18 @@
+2026-09-15：完整 ClassifyPerception 接口基准（包含字段适配、核心判断和返回消息复制）
+环境：x86_64，Intel Core Ultra 5 338H，GCC 13.3，C++11，CMake Release。
+消息头由 src/pnc/tests/planning/generate_stubs.py 从真实 .msg 生成，无 ROS 通信开销。
+命令：src/hdmap/build/hdmap_perception_benchmark src/hdmap/map_processed
+7 条地图、12537 点；每组预热 20 帧后记录 300 帧，定位沿 lane_S2N 变化。
+障碍物分布在自车前方 5~52.5m、横向 -7.6~15.2m，尺寸 4.5x2m，三个朝向。
+消息准备不计入计时；LoadMap 单独计时，不是每帧操作。
+
+load_ms=288.876 lanes=7 segments=12530 cells=1378 vertices=54598 peak_rss_kib=255420
+VmRSS: 255556 kB initial_peak_rss_kib=115572
+objects=1 frames=300 p50_us=2.446 p95_us=4.503 p99_us=5.272 max_us=6.106
+objects=10 frames=300 p50_us=21.485 p95_us=26.638 p99_us=31.299 max_us=31.382
+objects=100 frames=300 p50_us=184.915 p95_us=221.631 p99_us=237.471 max_us=247.894
+objects=300 frames=300 p50_us=525.417 p95_us=597.584 p99_us=640.845 max_us=652.262
+checksum=293359
+
+RSS 为测试进程读到的内存指标，不等于 SDK 独占内存；保留初始化前峰值供对照。
+这是本机实测，不是 Orin 性能结论或任意地图/尺寸/障碍物数量下的最坏耗时保证。

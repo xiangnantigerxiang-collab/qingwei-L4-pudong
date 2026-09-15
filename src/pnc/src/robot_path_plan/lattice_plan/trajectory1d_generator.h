@@ -10,19 +10,19 @@
 #include "common/curve1d/quartic_polynomial_curve1d.h"
 #include "common/curve1d/quintic_polynomial_curve1d.h"
 
-class Trajectory1dGenerator 
-{
+class Trajectory1dGenerator {
 public:
     Trajectory1dGenerator(
         const std::array<double, 3>& lon_init_state,
         const std::array<double, 3>& lat_init_state
         /*std::shared_ptr<PathTimeGraph> ptr_path_time_graph,
-        std::shared_ptr<PredictionQuerier> ptr_prediction_querier*/);
+        std::shared_ptr<PredictionQuerier> ptr_prediction_querier*/
+    );
 
     virtual ~Trajectory1dGenerator() = default;
 
     void GenerateTrajectoryBundles(
-        const /*PlanningTarget& planning_target*/double target_speed,
+        const /*PlanningTarget& planning_target*/ double target_speed,
         std::vector<std::shared_ptr<Curve1d>>* ptr_lon_trajectory_bundle,
         std::vector<std::shared_ptr<Curve1d>>* ptr_lat_trajectory_bundle);
 
@@ -51,12 +51,11 @@ template <>
 inline void Trajectory1dGenerator::GenerateTrajectory1DBundle<4>(
     const std::array<double, 3>& init_state,
     const std::vector<std::pair<std::array<double, 3>, double>>& end_conditions,
-    std::vector<std::shared_ptr<Curve1d>>* ptr_trajectory_bundle) const 
-{
-    ptr_trajectory_bundle->reserve(ptr_trajectory_bundle->size() + 
+    std::vector<std::shared_ptr<Curve1d>>* ptr_trajectory_bundle) const {
+    ptr_trajectory_bundle->reserve(ptr_trajectory_bundle->size() +
                                    end_conditions.size());
 
-    for (const auto& end_condition : end_conditions) {
+    for(const auto& end_condition : end_conditions) {
         auto ptr_trajectory1d = std::make_shared<LatticeTrajectory1d>(
             std::shared_ptr<Curve1d>(new QuarticPolynomialCurve1d(
                 init_state, {end_condition.first[1], end_condition.first[2]},
@@ -72,20 +71,18 @@ template <>
 inline void Trajectory1dGenerator::GenerateTrajectory1DBundle<5>(
     const std::array<double, 3>& init_state,
     const std::vector<std::pair<std::array<double, 3>, double>>& end_conditions,
-    std::vector<std::shared_ptr<Curve1d>>* ptr_trajectory_bundle) const 
-{
+    std::vector<std::shared_ptr<Curve1d>>* ptr_trajectory_bundle) const {
     ptr_trajectory_bundle->reserve(ptr_trajectory_bundle->size() +
                                    end_conditions.size());
 
-    for (const auto& end_condition : end_conditions) {
+    for(const auto& end_condition : end_conditions) {
         auto ptr_trajectory1d = std::make_shared<LatticeTrajectory1d>(
             std::shared_ptr<Curve1d>(new QuinticPolynomialCurve1d(
                 init_state, end_condition.first, end_condition.second)));
-    
+
         ptr_trajectory1d->set_target_position(end_condition.first[0]);
         ptr_trajectory1d->set_target_velocity(end_condition.first[1]);
         ptr_trajectory1d->set_target_time(end_condition.second);
         ptr_trajectory_bundle->push_back(ptr_trajectory1d);
     }
 }
-

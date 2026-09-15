@@ -1,2 +1,0 @@
-==== start stubborn 2026-09-08 13:21:25 pid=22919 ====
-   cmd: bash -c trap '' TERM; while true; do sleep 1; done

@@ -6,10 +6,8 @@
 
 #include "common/pnc_point/speed_point.h"
 
-namespace planning
-{
-    class SpeedData : std::vector<SpeedPoint>
-    {
+namespace planning {
+    class SpeedData : std::vector<SpeedPoint> {
     public:
         SpeedData() = default;
 
@@ -24,7 +22,6 @@ namespace planning
                             SpeedPoint *const speedPoint) const;
 
         double totalTime() const;
-
     };
 
 }  // namespace planning

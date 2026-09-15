@@ -111,6 +111,7 @@ void CanbusComply::VehicleComm()
     std::tm *local_time = std::localtime(&now_time);
 
     if(local_time->tm_hour >= 18 || local_time->tm_hour <= 6) can284[1] += 4;
+    ros::param::set("/canbus/time", local_time->tm_hour);
 
     SendVehicleControlCmd(0x284, can284);
 

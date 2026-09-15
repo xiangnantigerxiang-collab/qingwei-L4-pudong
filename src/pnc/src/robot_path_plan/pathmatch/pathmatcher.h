@@ -6,23 +6,22 @@
 
 using namespace planning;
 
-class PathMatcher
-{
+class PathMatcher {
 public:
     PathMatcher();
     ~PathMatcher();
-    
+
     PathPoint MatchToPath(const std::vector<PathPoint>& reference_line,
                           const double x, const double y);
 
     PathPoint MatchToPath(const std::vector<PathPoint>& reference_line,
                           const double s);
-    
-    PathPoint FindProjectionPoint(const PathPoint& p0, const PathPoint& p1, 
-		                  const double x, const double y); 
-   
+
+    PathPoint FindProjectionPoint(const PathPoint& p0, const PathPoint& p1,
+                                  const double x, const double y);
+
     PathPoint InterpolateUsingLinearApproximation(
-                  const PathPoint &p0, const PathPoint &p1, const double s);
+        const PathPoint& p0, const PathPoint& p1, const double s);
 };
 
-#endif //PATHMATCHER_H
+#endif  //PATHMATCHER_H

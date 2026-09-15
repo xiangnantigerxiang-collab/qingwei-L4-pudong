@@ -1,111 +1,126 @@
 # robot_path_plan 模块说明
 
-该目录实现 `path_plan_node`：10 Hz 接收任务、定位、CAN 和感知数据，生成
-`/refer_path_msg`、`/plan_path_msg` 与 `/path_plan_status`。这里记录现役调用链和文件
-职责，便于后续按业务边界定位修改点。代码风格和改动纪律仍以 `src/pnc/README.md`
-为准。
+`path_plan_node` 每秒执行 10 次规划，接收任务、定位、CAN 和感知输入，发布
+`/refer_path_msg`、`/plan_path_msg`、`/path_plan_status`。编码风格遵循
+[`src/pnc/README.md`](../../README.md)：4 空格、`if(condition) {` 同行大括号、原有命名、中文业务注释。
 
-## 核心文件职责
+## 目录与职责
 
 | 文件 | 职责 |
 |---|---|
-| `path_plan_node.cpp` | ROS 薄入口：回调接线、传感器心跳、10 Hz 调度 |
-| `path_plan_comply.h` | 规划编排接口、输入快照、输出消息与跨周期状态 |
-| `path_plan_comply.cpp` | 几何辅助函数和五个职责分片的唯一编译入口 |
-| `path_plan_task.inc` | 任务接收、CSV 拼接、作业路径、机场停车位 |
-| `path_plan_perception.inc` | CAN/定位/感知输入、坐标转换、障碍距离 |
-| `path_plan_reference.inc` | 周期主流程、20 点参考路径、D/R 挡碰撞判断 |
-| `path_plan_output.inc` | 最终路径、安全覆盖、停车限速、关键点推进、可视化 |
-| `path_plan_experimental.inc` | 休眠 lattice 入口及现役坐标/方向辅助函数 |
-| `adaptiveHook.*` | 挂钩作业的自适应倒车路径 |
-| `collisioncheck/*` | 车辆与障碍物矩形关系计算 |
-| `common/` | 曲线、几何、路径、样条等通用算法 |
-| `lattice/`、`lattice_plan/`、`reference_line/`、`speedplan/` | 已编译但主链未启用的实验规划算法 |
+| `path_plan_node.cpp` | ROS 接线、参数热读、传感器心跳和周期调度 |
+| `path_plan_comply.h` | 输入输出接口、快照、跨帧状态与阶段函数声明 |
+| `path_plan_comply.cpp` | 唯一编译入口，保持 include 依赖顺序 |
+| `path_plan_geometry.inc` | 矩形区域判断、坐标转换、方向与距离辅助 |
+| `path_plan_task.inc` | 初始化、任务接收、任务切换时的历史复位 |
+| `task/global_path.inc` | CSV 拼接、车辆连接段、起止点与进度索引 |
+| `task/operation_path.inc` | 挂钩、入库、装卸路径调度与生成 |
+| `task/airport_stop.inc` | 飞机位配置、占用状态、停车索引 |
+| `task/stop_speed.inc` | 动作/入库/挂钩/普通行驶的停车限速和完成判据 |
+| `path_plan_perception.inc` | 输入快照、感知过滤、前后扫描坐标转换、云端指令 |
+| `path_plan_reference.inc` | 周期任务推进、参考路径编排与状态发布 |
+| `reference/path_generation.inc` | 20 点采样、末端延长、挡位分流、旧轨迹复用 |
+| `reference/collision_safety.inc` | 路径风险筛选、四帧历史、前向过滤、碰撞限速 |
+| `path_plan_output.inc` | 最终速度平滑、安全覆盖、声光参数和消息发布 |
+| `safety/startup_observation.inc` | 周边/T 路口观察、等待区判定 |
+| `path_plan_experimental.inc` | 休眠 lattice/换道入口、旧测试限速；未调用的可视化发布接口于 09-14 由用户删除 |
 
-五个 `.inc` 仍由 `path_plan_comply.cpp` 按原函数顺序包含进同一翻译单元。它们不是独立
-库，不能直接加入 CMake。
+13 个 `.inc` 均通过 `path_plan_comply.cpp` 编译，不能单独加入 CMake。几何辅助在最前，
+原有五个业务分片仍按任务、感知、参考路径、最终输出、实验算法的顺序包含；
+`task/`、`reference/`、`safety/` 由对应业务分片继续包含。
 
-## 运行数据流
+业务状态继续由 `PathPlanComply` 持有，阶段函数通过私有接口组织；此次没有新增持久
+状态、改变成员顺序或引入其他线程。`adaptiveHook.*`、`collisioncheck/`、`common/`
+等专用算法保持独立；`lattice/`、`lattice_plan/`、`reference_line/`、`speedplan/`
+的现有编译关系保持不变。
+
+## 每周期的业务顺序
+
+1. `PathPlanProcess()`：补充作业路径，更新最近点，按任务类型计算停车限速与完成状态。
+2. `PublishReferPath()`：检查任务/路径有效性，采样参考点，按挡位更新参考路径，发布中间结果。
+3. `PublishPlanPath()`：更新观察窗，处理人工/短路径退化，起步判定，复制参考路径，
+   平滑加速，叠加急停/断网，生成声光，处理等待区和云端暂停，发布最终结果。
+4. `PublishPathPlanStatus()`：发布前面阶段更新后的任务和诊断状态。
+
+最终输出阶段的速度和灯光有顺序覆盖关系。`CopyReferencePath()` 仅复制原有六个字段，
+不能改为整包赋值。起步判定写入的 `safety` 随后会被参考路径覆盖，起步未通过时的
+零速由 `ApplyWaitingAreaStop()` 保证。人工/短路径退化仅发布停车路径，不发布声光消息；
+观察窗在这两个早退判断之前仍会更新。
+
+## 任务、路径与停车
+
+`SetTaskPlanData()` 每次收到事件都重载飞机位配置和路径。判断 `task_id` 是否切换后
+才覆盖旧任务：切换调用 `ResetTaskHistory()`，同任务的块推进和重复消息保留历史窗、
+去抖计数和云端暂停。所有情况都保留急停闩锁。
+
+`calcuGlobalPath()` 的阶段顺序为：
 
 ```text
-/task_plan_msg ──CSV/作业路径/停车点──────────────┐
-/navigation_msg ──当前位置、航向、RTK─────────────┤
-/can_msg ──挡位、车速、急停、挂钩反馈────────────┤
-/perception、前后扫描框 ──障碍物与起步观察───────┼─> PathPlanProcess()
-/cloud/msg/command_msg ──停止/暂停/继续───────────┘
-                                                       │
-                                                       ├─> /refer_path_msg
-                                                       ├─> /plan_path_msg
-                                                       └─> /path_plan_status
+LoadTaskPaths → FindTaskStartPoint → ConnectVehicleToPath → FindTaskStopPoint
+     CSV 拼接       寻找起点           生成连接段              寻找停车点
 ```
 
-`path_plan_node` 每周期调用顺序是：
+初始最近点搜索排除最后 10 点，停车点搜索从第 4 点开始，连接段只在距离原路径严格
+介于 1~2.5 m 时生成。周期内 `UpdatePathInfo()` 只向前推进；其上界是会随候选点更新的
+`keyPoint + 80`，不是固定的 80 点范围。
 
-1. `PathPlanProcess()` 推进全局路径关键点并计算停车速度上限；
-2. `PublishReferPath()` 截取前方 20 点，执行 D/R 挡障碍判断；
-3. `PublishPlanPath()` 叠加起步观察、急停、断网、等待区和云端暂停；
-4. `PublishPathPlanStatus()` 发布任务进度与诊断状态。
+`LimitSpeedByDistanceToStop()` 将业务分流到四个规则函数：
 
-后面的步骤可以覆盖前面的 `desireSpeed` 和 `safety`，调用顺序本身就是安全优先级。
+| 函数 | 返回速度与完成判据 |
+|---|---|
+| `UpdateActionTaskStatus()` | 动作任务返回零速，按挂钩状态或无停车点哨兵判断完成 |
+| `LimitParkTaskSpeed()` | 按入库剩余距离限速；越过目标方向或不足 0.2 m 判到位 |
+| `LimitHookTaskSpeed()` | 使用 `center_distance`，保留托盘连接反馈和距离反增迟滞 |
+| `LimitDrivingTaskSpeed()` | 飞机位占用时服从临停线；到最终停车点才结束任务 |
 
-## 任务到路径的主流程
+`distance2Stop` 先记录任务终点距离，飞机位临停和挂钩感知距离随后只更新
+`remain_distance_`。两者数值可能不同，这是保留的既有发布语义。
 
-`SetTaskPlanData()` 收到一条任务事件后：
+## 参考路径与碰撞
 
-1. 重新读取飞机位 YAML；
-2. 判断是否切换了 `task_id`，真实切换时复位跨帧感知窗口和暂停状态；
-3. 按 `pathList` 顺序读取并拼接 CSV；
-4. 从当前定位寻找 `mKeypoint`，必要时生成车辆到原路径的连接段；
-5. 在全局路径上计算 `mStopIndex` 和飞机位临时停车索引。
+`BuildReferencePathPoints()` 向前采样最多 20 点，末尾不足时沿末端航向补点。
+R 挡只检查后向扫描目标到后轴定位点的距离，严格小于 2.5 m 时停车。
 
-周期内 `UpdatePathInfo()` 只在当前关键点之后 80 点内寻找最近点，保证任务进度尽量单调
-向前。`LimitSpeedByDistanceToStop()` 再根据普通行驶、挂钩、倒车入库或动作任务计算速度
-上限和完成状态。
+其他挡位先生成前向路径，再依次执行 `CollectReferenceRiskObjects()` 的矩形比较、
+`UpdateReferenceRiskHistory()` 的历史保留、`FilterForwardRiskObjects()` 的前方
+±90° 过滤，以及 `ApplyReferenceCollisionSpeed()` 的分段限速和三次安全去抖。
 
-## 最终路径的安全覆盖顺序
+路径间距小于 0.1 m 的目标进入风险列表；临时复用 `object.height` 保存间距。
+四帧窗口取最近的非空结果，前向过滤的 `history_risk_vec_filter` 则是每次重建的局部变量。
+各减速阈值按原顺序依次覆盖，不能改成互斥的 `else-if`。
 
-`PublishPlanPath()` 的主要覆盖顺序如下：
+必须区分三个提前结束检查的分支：
 
-1. 人工模式或参考路径不足时发布空路径和 0 速；
-2. 新任务起步执行周边/T 路口观察；
-3. 复制参考路径并对加速指令做低通；
-4. 急停闩锁和断网状态压 0 速；
-5. 等待区遇障碍压 0 速并报警；
-6. 云端暂停再次压 0 速；
-7. 写声光参数并发布 `/plan_path_msg`。
+- 感知目标为空：不推进风险窗，不更新 `distance2Object`。
+- 四帧窗口无风险：写入 `100 + 感知目标数`。
+- 风险目标全部在后方：写入 `200 + 风险目标数`。
 
-修改中间任一条件时，应继续向后检查所有 `mPlanPath.desireSpeed`、
-`mPlanPath.safety` 和 `InitSafetyCheck` 的赋值。
+这三个分支仍发布参考路径，但不执行后续安全计数和 ultra 参数读取。
 
-## 常用业务修改入口
+## 校验与已知问题
 
-- 改任务接收、CSV 拼接或连接段：`path_plan_task.inc`
-- 改挂钩/入库作业路径：`GenerateHookPath`、`GenerateParkPath`
-- 改感知目标过滤和坐标转换：`path_plan_perception.inc`
-- 改 D/R 挡碰撞检测：`PublishReferPath`
-- 改停车距离和任务完成条件：`LimitSpeedByDistanceToStop`
-- 改起步观察、急停、断网和暂停优先级：`PublishPlanPath`
-- 改全局路径进度窗口：`UpdatePathInfo`
-- 调试 lattice 前：先处理 `path_plan_experimental.inc` 中标记的既有缺陷
+2026-09-14 检查了用户的 planning 整理：两组可视化函数与声明同步删除，原调用均为注释；
+`/test_trajs`、`/planning/obstacles` 不再声明，旧 RViz 配置仍留有后者的显示项，但原本也没有
+活动发布。另删除若干调试日志/注释、调整书写格式和订阅声明位置。前后版本的 387 组状态、
+实际发布消息和参数事件一致，未发现该次整理引入业务逻辑错误。随后全包格式统一单独以开工
+快照验证，193 个自有源码文件的代码 token 和预处理指令一致；审查记录见
+[`tests/planning/review_20260914.md`](../../tests/planning/review_20260914.md)。
 
-## 修改时必须保留的既有语义
+可复现的编译/差分测试位于 [`tests/planning`](../../tests/planning/README.md)。测试使用
+真实业务源码、真实 CSV 和几何算法；ROS 通信层由桩代替，robot 消息桩从 `.msg`
+机械生成。它不能替代车载 ROS1 编译及实车/rosbag 验证。
 
-- `.inc` 必须由 `path_plan_comply.cpp` 按当前顺序包含，不能独立编译。
-- `PathPlanProcess`、`PublishReferPath`、`PublishPlanPath` 的调用和赋值顺序不可随意调整。
-- `mKeypoint` 只向前搜索；闭环路径不能改成无界全局最近点。
-- D/R 挡使用不同的障碍物来源和停车规则。
-- `history_risk_vec`、`unsafe_vec`、`history_unsafe` 等跨帧窗口不能改成每帧局部变量。
-- 成员声明顺序和既有标识符不调整；ROS 话题继续使用绝对名。
-- 休眠 lattice、参考线和速度规划虽然主链未调用，仍有部分辅助函数被现役代码使用。
+本次校验确认以下行为已存在于重构前，未改变其业务规则：
 
-## 已知但本轮未修改的问题
+- `/ultra/status/safe` 只在前向碰撞限速末尾读取：空感知、无风险、后向目标和 R 挡
+  都会跳过。若期望 ultra 对全部路径强制停车，现有读取位置不能满足。
+- `handleDrivingPath()` 内装载、卸载、入库分支含同一 `taskType` 同时相等/不等的条件，
+  内层生成代码不可达；挂钩路径仍会周期生成。
+- `LoadPathFile()` 用 `while (!feof)` 且不检查 `fscanf` 返回值；多 CSV 直接拼接时
+  各段 `dist_origin` 不连续。此次只归拢加载代码，没有改变数据解析和里程语义。
+- 飞机位配置为空时，回退对象 `id` 未初始化，用于调试打印时存在未初始化读。
+- `task_id == 4` 仍调用测试分段限速；当前树没有旧文档所称的“该任务清空感知”代码。
+- 现有 `printf` 中仍有格式与参数类型不匹配的告警；休眠算法也保留其原有告警和缺陷。
 
-- `task_id == 4` 会清空感知目标并启用测试限速。
-- `emergencyStop` 是闩锁状态，解除依赖 `/robot/serial/rs232/`。
-- 飞机位配置为空时，回退对象的 `id` 没有初始化；cppcheck 会报
-  `uninitvar/uninitStructMember`，本轮保持既有行为。
-- `handleDrivingPath()` 中除 `ADAPTIVEHOOK` 外的若干内层同值比较条件不可达。
-- `LatticePlan()` 主链处于注释状态，函数内部仍标记“后面的代码有 bug”。
-- 多处场地坐标、车辆尺寸、减速阈值和测试话题仍为硬编码。
-
-这些都可能改变实车业务或安全行为，本轮只记录和解释，没有借整理之机修复。
+修改这些规则时，应另行明确期望行为，并更新相应回归断言，不能把本次的基线等价
+结论当作全部原有业务规则正确的证明。

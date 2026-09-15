@@ -6,10 +6,8 @@
 #include "Eigen/Dense"
 #include <iostream>
 
-namespace planning
-{
-    class AffineConstraint
-    {
+namespace planning {
+    class AffineConstraint {
     public:
         AffineConstraint() = default;
         explicit AffineConstraint(const bool is_equality);
@@ -31,4 +29,4 @@ namespace planning
     };
 }
 
-#endif //PLANNING_AFFINE_CONSTRAINT_H
+#endif  //PLANNING_AFFINE_CONSTRAINT_H

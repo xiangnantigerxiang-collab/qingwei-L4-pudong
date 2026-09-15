@@ -7,10 +7,9 @@
 
 #include "piecewise_jerk_problem.h"
 
-namespace planning
-{
+namespace planning {
 
-/*
+    /*
 * @brief:
 * This class solve the path time optimization problem:
 * s
@@ -27,8 +26,7 @@ namespace planning
 * which makes the line P(start), P0, P(1) ... P(k-1) "smooth".
 */
 
-    class PiecewiseJerkSpeedProblem : public PiecewiseJerkProblem
-    {
+    class PiecewiseJerkSpeedProblem : public PiecewiseJerkProblem {
     public:
         PiecewiseJerkSpeedProblem(const size_t num_of_knots, const double delta_s,
                                   const std::array<double, 3> &x_init);
@@ -57,4 +55,3 @@ namespace planning
     };
 
 }  // namespace
-

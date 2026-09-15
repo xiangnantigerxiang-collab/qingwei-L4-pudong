@@ -3,7 +3,7 @@
 
 namespace planning {
     Spline2dSeg::Spline2dSeg(const uint32_t order)
-            : spline_func_x_(order), spline_func_y_(order) {
+        : spline_func_x_(order), spline_func_y_(order) {
         derivative_x_ = PolynomialXd::DerivedFrom(spline_func_x_);
         derivative_y_ = PolynomialXd::DerivedFrom(spline_func_y_);
         second_derivative_x_ = PolynomialXd::DerivedFrom(derivative_x_);
@@ -14,7 +14,7 @@ namespace planning {
 
     Spline2dSeg::Spline2dSeg(const std::vector<double>& x_param,
                              const std::vector<double>& y_param)
-            : spline_func_x_(x_param), spline_func_y_(y_param) {
+        : spline_func_x_(x_param), spline_func_y_(y_param) {
         derivative_x_ = PolynomialXd::DerivedFrom(spline_func_x_);
         derivative_y_ = PolynomialXd::DerivedFrom(spline_func_y_);
         second_derivative_x_ = PolynomialXd::DerivedFrom(derivative_x_);
@@ -25,7 +25,7 @@ namespace planning {
 
     bool Spline2dSeg::SetParams(const std::vector<double>& x_param,
                                 const std::vector<double>& y_param) {
-        if (x_param.size() != y_param.size()) {
+        if(x_param.size() != y_param.size()) {
             return false;
         }
 
@@ -44,9 +44,13 @@ namespace planning {
         return std::make_pair(spline_func_x_(t), spline_func_y_(t));
     }
 
-    double Spline2dSeg::x(const double t) const { return spline_func_x_(t); }
+    double Spline2dSeg::x(const double t) const {
+        return spline_func_x_(t);
+    }
 
-    double Spline2dSeg::y(const double t) const { return spline_func_y_(t); }
+    double Spline2dSeg::y(const double t) const {
+        return spline_func_y_(t);
+    }
 
     double Spline2dSeg::DerivativeX(const double t) const {
         return derivative_x_(t);
@@ -80,9 +84,13 @@ namespace planning {
         return spline_func_y_;
     }
 
-    const PolynomialXd& Spline2dSeg::DerivativeX() const { return derivative_x_; }
+    const PolynomialXd& Spline2dSeg::DerivativeX() const {
+        return derivative_x_;
+    }
 
-    const PolynomialXd& Spline2dSeg::DerivativeY() const { return derivative_y_; }
+    const PolynomialXd& Spline2dSeg::DerivativeY() const {
+        return derivative_y_;
+    }
 
     const PolynomialXd& Spline2dSeg::SecondDerivativeX() const {
         return second_derivative_x_;

@@ -1,0 +1,59 @@
+{
+  "date": "2026-09-15",
+  "function": "robot::perception FilterPerceptionByConfidence(const robot::perception& tPerception, double tConfidenceThreshold)",
+  "scope": "src/pnc/src/robot_perception_convert",
+  "modified": [
+    "src/pnc/src/robot_perception_convert/perception_msg_convert.h",
+    "src/pnc/src/robot_perception_convert/perception_msg_convert.cpp",
+    "src/pnc/src/robot_perception_convert/README.md",
+    "src/pnc/src/robot_perception_convert/tests/publish_integration.cpp"
+  ],
+  "added": [
+    "src/pnc/src/robot_perception_convert/perception_confidence_filter.h",
+    "src/pnc/src/robot_perception_convert/perception_confidence_filter.inc",
+    "src/pnc/src/robot_perception_convert/tests/confidence_verification_20260915.json"
+  ],
+  "backup": "/home/mothotob/work/projects/claude-code/perception_before_confidence_filter_20260915_143902.tar.gz",
+  "publication_flow": "UNCHANGED: production .cpp and .h each add one include only; no new call in callback",
+  "core_temporal_filter": "UNCHANGED",
+  "checks": {
+    "confidence_filter": 23,
+    "existing_publish_regression": 2976,
+    "total": 2999,
+    "build_and_sanitizers": {
+      "language": "C++11",
+      "transport": "generated ROS message stubs",
+      "sdk": "/home/mothotob/work/projects/claude-code/qingwei-L4-No2-pudong/src/hdmap/sdk",
+      "cmake_target": "perception_msg_convert",
+      "dynamic_link": "PASS",
+      "integration": "PASS: 2999 filtered perception publish checks",
+      "sanitizers": "PASS: 2999 filtered perception publish checks"
+    },
+    "cppcheck": {
+      "command": [
+        "cppcheck",
+        "--enable=warning,performance,portability",
+        "--std=c++11",
+        "--error-exitcode=1",
+        "--suppress=missingIncludeSystem",
+        "-I",
+        "/tmp/perception_confidence_verify/stubs",
+        "-I",
+        "src/pnc/include",
+        "-I",
+        "src/hdmap/sdk/include",
+        "src/pnc/src/robot_perception_convert/perception_msg_convert.cpp"
+      ],
+      "exit_code": 0
+    }
+  },
+  "behavior": [
+    "finite confidence below threshold is removed; equality is retained",
+    "input and object ordering are preserved, including header and polygons",
+    "confidence is not recomputed; finite threshold is compared without clamping or rounding",
+    "nonfinite object confidence is removed; nonfinite threshold throws std::invalid_argument",
+    "no implicit publication, history update or ROS time access"
+  ],
+  "logs": "/tmp/perception_confidence_verify",
+  "limitation": "ROS transport uses stubs generated from actual .msg files; ROS1 communication and on-vehicle execution have not been verified"
+}

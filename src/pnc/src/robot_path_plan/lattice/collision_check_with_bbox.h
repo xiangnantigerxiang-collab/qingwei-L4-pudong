@@ -5,8 +5,7 @@
 #include "planner_utils.h"
 #include "pose2d.h"
 
-struct Obstacle
-{
+struct Obstacle {
     double x;
     double y;
     double heading;
@@ -14,11 +13,10 @@ struct Obstacle
     double length;
     double cth = 1.0;
     double sth = 0.0;
-    std::vector<int> history = {1, 1, 1, 1,1,1,1,1};
+    std::vector<int> history = {1, 1, 1, 1, 1, 1, 1, 1};
     Obstacle() = default;
     Obstacle(double obstacle_cx, double obstacle_cy,
-                       double obstacle_w, double obstacle_l, double obstacle_yaw)
-    {
+             double obstacle_w, double obstacle_l, double obstacle_yaw) {
         x = obstacle_cx;
         y = obstacle_cy;
         width = obstacle_w;
@@ -27,11 +25,9 @@ struct Obstacle
         cth = std::cos(heading);
         sth = std::sin(heading);
     }
-    int historySum()
-    {
+    int historySum() {
         int sum = 0;
-        for (int i = 0; i < history.size(); i++)
-        {
+        for(int i = 0; i < history.size(); i++) {
             sum += history[i];
         }
         return sum;
@@ -40,8 +36,7 @@ struct Obstacle
 typedef std::shared_ptr<Obstacle> ObstaclePtr;
 typedef Obstacle OBB;
 
-class CollisionCheckWithBBox
-{
+class CollisionCheckWithBBox {
 public:
     CollisionCheckWithBBox() = delete;
     ~CollisionCheckWithBBox() = default;
@@ -49,7 +44,9 @@ public:
 
     bool isCollision(const Obstacle &obstacle, const Pose2d &ego_pose,
                      const double &inflation_w = 0.0, const double &inflation_l = 0.0);
-    CarModel getCarModel() { return car_model_; }
+    CarModel getCarModel() {
+        return car_model_;
+    }
 
 private:
     bool isAABBOverlap(const Obstacle &obb1, const Obstacle &obb2);

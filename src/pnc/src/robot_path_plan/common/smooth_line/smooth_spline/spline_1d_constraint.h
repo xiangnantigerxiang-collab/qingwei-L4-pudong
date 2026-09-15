@@ -10,8 +10,8 @@
 #include "spline_1d.h"
 #include "affine_constraint.h"
 
-namespace planning{
-    class Spline1dConstraint{
+namespace planning {
+    class Spline1dConstraint {
     public:
         explicit Spline1dConstraint(const Spline1d& pss);
         Spline1dConstraint(const std::vector<double>& x_knots, const uint32_t order);
@@ -105,8 +105,8 @@ namespace planning{
                             std::vector<double>* const power_x) const;
 
         using AddConstraintInRangeFunc =
-        std::function<bool(const std::vector<double>&, const std::vector<double>&,
-                           const std::vector<double>&)>;
+            std::function<bool(const std::vector<double>&, const std::vector<double>&,
+                               const std::vector<double>&)>;
 
         bool AddConstraintInRange(AddConstraintInRangeFunc func, const double x,
                                   const double val, const double range);
@@ -119,4 +119,4 @@ namespace planning{
     };
 }
 
-#endif //PLANNING_SPLINE_1D_CONSTRAINT_H
+#endif  //PLANNING_SPLINE_1D_CONSTRAINT_H

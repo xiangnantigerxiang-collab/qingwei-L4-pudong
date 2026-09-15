@@ -13,7 +13,7 @@
 
 namespace math {
 
-/**
+    /**
  * @class Box2d
  * @brief Rectangular (undirected) bounding box in 2-D.
  *
@@ -45,7 +45,7 @@ namespace math {
         Box2d(const Vec2d &center, const double heading, const double length,
               const double width);
 
-//        Box2d(const ObjectInformation objectInformation);
+        //        Box2d(const ObjectInformation objectInformation);
 
         /**
          * @brief Constructor which takes the heading-axis and the width of the box
@@ -74,73 +74,97 @@ namespace math {
          * @brief Getter of the center of the box
          * @return The center of the box
          */
-        const Vec2d &center() const { return center_; }
+        const Vec2d &center() const {
+            return center_;
+        }
 
         /**
          * @brief Getter of the x-coordinate of the center of the box
          * @return The x-coordinate of the center of the box
          */
-        double center_x() const { return center_.x(); }
+        double center_x() const {
+            return center_.x();
+        }
 
         /**
          * @brief Getter of the y-coordinate of the center of the box
          * @return The y-coordinate of the center of the box
          */
-        double center_y() const { return center_.y(); }
+        double center_y() const {
+            return center_.y();
+        }
 
         /**
          * @brief Getter of the length
          * @return The length of the heading-axis
          */
-        double length() const { return length_; }
+        double length() const {
+            return length_;
+        }
 
         /**
          * @brief Getter of the width
          * @return The width of the box taken perpendicularly to the heading
          */
-        double width() const { return width_; }
+        double width() const {
+            return width_;
+        }
 
         /**
          * @brief Getter of half the length
          * @return Half the length of the heading-axis
          */
-        double half_length() const { return half_length_; }
+        double half_length() const {
+            return half_length_;
+        }
 
         /**
          * @brief Getter of half the width
          * @return Half the width of the box taken perpendicularly to the heading
          */
-        double half_width() const { return half_width_; }
+        double half_width() const {
+            return half_width_;
+        }
 
         /**
          * @brief Getter of the heading
          * @return The counter-clockwise angle between the x-axis and the heading-axis
          */
-        double heading() const { return heading_; }
+        double heading() const {
+            return heading_;
+        }
 
         /**
          * @brief Getter of the cosine of the heading
          * @return The cosine of the heading
          */
-        double cos_heading() const { return cos_heading_; }
+        double cos_heading() const {
+            return cos_heading_;
+        }
 
         /**
          * @brief Getter of the sine of the heading
          * @return The sine of the heading
          */
-        double sin_heading() const { return sin_heading_; }
+        double sin_heading() const {
+            return sin_heading_;
+        }
 
         /**
          * @brief Getter of the area of the box
          * @return The product of its length and width
          */
-        double area() const { return length_ * width_; }
+        double area() const {
+            return length_ * width_;
+        }
 
         /**
          * @brief Getter of the size of the diagonal of the box
          * @return The diagonal size of the box
          */
-        double diagonal() const { return std::hypot(length_, width_); }
+        double diagonal() const {
+            return std::hypot(length_, width_);
+        }
 
         /**
          * @brief Getter of the corners of the box
@@ -241,14 +265,22 @@ namespace math {
          * @brief Gets a human-readable description of the box
          * @return A debug-string
          */
-//        std::string DebugString() const;
+        //        std::string DebugString() const;
 
         void InitCorners();
 
-        double max_x() const { return max_x_; }
-        double min_x() const { return min_x_; }
-        double max_y() const { return max_y_; }
-        double min_y() const { return min_y_; }
+        double max_x() const {
+            return max_x_;
+        }
+        double min_x() const {
+            return min_x_;
+        }
+        double max_y() const {
+            return max_y_;
+        }
+        double min_y() const {
+            return min_y_;
+        }
 
     private:
         Vec2d center_;
@@ -270,4 +302,4 @@ namespace math {
 
 }  // namespace math
 
-#endif //PLANNING_BOX2D_H
+#endif  //PLANNING_BOX2D_H

@@ -8,9 +8,13 @@ namespace math {
         return Vec2d(cos(angle), sin(angle));
     }
 
-    double Vec2d::Length() const { return std::hypot(x_, y_); }
+    double Vec2d::Length() const {
+        return std::hypot(x_, y_);
+    }
 
-    double Vec2d::LengthSquare() const { return x_ * x_ + y_ * y_; }
+    double Vec2d::LengthSquare() const {
+        return x_ * x_ + y_ * y_;
+    }
 
     double Vec2d::Angle() const {
         double angle = std::atan2(y_, x_);
@@ -21,7 +25,7 @@ namespace math {
 
     void Vec2d::Normalize() {
         const double l = Length();
-        if (l > kMathEpsilon) {
+        if(l > kMathEpsilon) {
             x_ /= l;
             y_ /= l;
         }
@@ -53,11 +57,11 @@ namespace math {
     Vec2d Vec2d::operator+(const Vec2d &other) const {
         return Vec2d(x_ + other.x(), y_ + other.y());
     }
-   
-    Vec2d Vec2d::operator - () const {
-     return Vec2d(-x_, -y_);
+
+    Vec2d Vec2d::operator-() const {
+        return Vec2d(-x_, -y_);
     }
-    
+
     Vec2d Vec2d::operator-(const Vec2d &other) const {
         return Vec2d(x_ - other.x(), y_ - other.y());
     }
@@ -67,7 +71,7 @@ namespace math {
     }
 
     Vec2d Vec2d::operator/(const double ratio) const {
-//        CHECK_GT(std::abs(ratio), kMathEpsilon);
+        //        CHECK_GT(std::abs(ratio), kMathEpsilon);
         return Vec2d(x_ / ratio, y_ / ratio);
     }
 
@@ -90,7 +94,7 @@ namespace math {
     }
 
     Vec2d &Vec2d::operator/=(const double ratio) {
-//        CHECK_GT(std::abs(ratio), kMathEpsilon);
+        //        CHECK_GT(std::abs(ratio), kMathEpsilon);
         x_ /= ratio;
         y_ /= ratio;
         return *this;
@@ -101,20 +105,20 @@ namespace math {
                 std::abs(y_ - other.y()) < kMathEpsilon);
     }
 
-    Vec2d operator*(const double ratio, const Vec2d &vec) { return vec * ratio; }
-
-    void Vec2d::printVec2d() const
-    {
-        printf("x = %f, y = %f\r\n",x_,y_);
+    Vec2d operator*(const double ratio, const Vec2d &vec) {
+        return vec * ratio;
     }
-    
-    Vec2d Vec2d::ort(Vec2d b) const 
-    {
-    Vec2d a(this->x_, this->y_);
-    Vec2d c;
-    // multiply b by the dot product of this and b then divide it by b's length
-    c = a - b * a.InnerProd(b) / b.LengthSquare();
-     return c;
+
+    void Vec2d::printVec2d() const {
+        printf("x = %f, y = %f\r\n", x_, y_);
+    }
+
+    Vec2d Vec2d::ort(Vec2d b) const {
+        Vec2d a(this->x_, this->y_);
+        Vec2d c;
+        // multiply b by the dot product of this and b then divide it by b's length
+        c = a - b * a.InnerProd(b) / b.LengthSquare();
+        return c;
     }
 
 }  // namespace math

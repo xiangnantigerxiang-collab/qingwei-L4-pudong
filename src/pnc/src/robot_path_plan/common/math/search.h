@@ -4,7 +4,7 @@
 
 namespace math {
 
-/**
+    /**
  * @brief Given a unimodal function defined on the interval,
  *        find a value on the interval to minimize the function.
  *        Reference: https://en.wikipedia.org/wiki/Golden-section_search
@@ -14,8 +14,8 @@ namespace math {
  * @param tol The tolerance of error.
  * @return The value that minimize the function fun.
  */
-double GoldenSectionSearch(const std::function<double(double)> &func,
-                           const double lower_bound, const double upper_bound,
-                           const double tol = 1e-6);
+    double GoldenSectionSearch(const std::function<double(double)> &func,
+                               const double lower_bound, const double upper_bound,
+                               const double tol = 1e-6);
 
-} // namespace math
+}  // namespace math

@@ -7,13 +7,11 @@
 #include <set>
 
 std::vector<PathPoint> ToDiscretizedReferenceLine(
-    const std::vector<OriginalInsData> &ref_points)
-{
+    const std::vector<OriginalInsData> &ref_points) {
     double s = 0.0;
     std::vector<PathPoint> path_points;
 
-    for (const auto &ref_point : ref_points)
-    {
+    for(const auto &ref_point : ref_points) {
         PathPoint path_point;
         path_point.setX(ref_point.x);
         path_point.setY(ref_point.y);
@@ -21,8 +19,7 @@ std::vector<PathPoint> ToDiscretizedReferenceLine(
         path_point.setKappa(ref_point.kappa);
         path_point.setDkappa(ref_point.dkappa);
 
-        if (!path_points.empty())
-        {
+        if(!path_points.empty()) {
             double dx = path_point.x() - path_points.back().x();
             double dy = path_point.y() - path_points.back().y();
             s += std::sqrt(dx * dx + dy * dy);
@@ -38,8 +35,7 @@ std::vector<PathPoint> ToDiscretizedReferenceLine(
 void LatticePlanner::ComputeInitFrenetState(const PathPoint &matched_point,
                                             const TrajectoryPoint &cartesian_state,
                                             std::array<double, 3> *ptr_s,
-                                            std::array<double, 3> *ptr_d)
-{
+                                            std::array<double, 3> *ptr_d) {
     cartesianfrenetconverter->cartesian_to_frenet(
         matched_point.s(), matched_point.x(), matched_point.y(),
         matched_point.theta(), matched_point.kappa(), matched_point.dkappa(),
@@ -49,8 +45,7 @@ void LatticePlanner::ComputeInitFrenetState(const PathPoint &matched_point,
         cartesian_state.path_point.kappa(), ptr_s, ptr_d);
 }
 
-std::tuple<std::vector<TrajectoryPoint>, std::vector<std::vector<TrajectoryPoint>>, bool, int> LatticePlanner::GetMinCostPath(const std::vector<std::vector<TrajectoryPoint>> &trajectory, std::tuple<bool, bool, int> &path_status, int vehiclestatus)
-{
+std::tuple<std::vector<TrajectoryPoint>, std::vector<std::vector<TrajectoryPoint>>, bool, int> LatticePlanner::GetMinCostPath(const std::vector<std::vector<TrajectoryPoint>> &trajectory, std::tuple<bool, bool, int> &path_status, int vehiclestatus) {
     int mincost_idex = 0;
     int changepath_idex = 0;
     static int count_last = 5;
@@ -59,19 +54,15 @@ std::tuple<std::vector<TrajectoryPoint>, std::vector<std::vector<TrajectoryPoint
     int collision_number = 0;
     bool all_path_collision = false;
 
-    for (int i = 0; i < trajectory.size(); ++i)
-    {
-        if (trajectory[i].back().safeproperty())
+    for(int i = 0; i < trajectory.size(); ++i) {
+        if(trajectory[i].back().safeproperty())
             collision_number += 1;
     }
     printf("collision_number:%d, trajectory_size:%d\n", collision_number, trajectory.size());
-    if (collision_number >= trajectory.size())
-    {
+    if(collision_number >= trajectory.size()) {
         changepath_idex = 5;
         all_path_collision = true;
-    }
-    else
-    {
+    } else {
         mincost_idex = CalculateMinNumber(trajectory, path_status, count_last, micost_change);
         changepath_idex = CalculateMinNumber(trajectory, path_status, count_last, pathchange);
         count_last = mincost_idex;
@@ -86,8 +77,7 @@ std::tuple<std::vector<TrajectoryPoint>, std::vector<std::vector<TrajectoryPoint
     const TrajectoryPoint &planning_init_point,
     std::vector<OriginalInsData> &reference_line,
     std::vector<sCellMsg> lidarobjs_global,
-    int vehiclestatus)
-{
+    int vehiclestatus) {
     // 1. obtain a reference line and transform it to the PathPoint format.
     auto ptr_reference_line =
         std::make_shared<std::vector<PathPoint>>(ToDiscretizedReferenceLine(reference_line));
@@ -113,8 +103,7 @@ std::tuple<std::vector<TrajectoryPoint>, std::vector<std::vector<TrajectoryPoint
     combined_trajectory = trajectorycombiner->Combine(
         *ptr_reference_line, lon_trajectory1d_bundle, lat_trajectory1d_bundle);
 
-    if (combined_trajectory[0].size() < 1)
-    {
+    if(combined_trajectory[0].size() < 1) {
         std::vector<TrajectoryPoint> empty_path;
         std::vector<std::vector<TrajectoryPoint>> other_paths;
         empty_path.clear();
@@ -137,8 +126,7 @@ std::tuple<std::vector<TrajectoryPoint>, std::vector<std::vector<TrajectoryPoint
 
 int LatticePlanner::CalculateMinNumber(std::vector<std::vector<TrajectoryPoint>> trajectory,
                                        std::tuple<bool, bool, int> &path_status,
-                                       int idex_last, bool changepath)
-{
+                                       int idex_last, bool changepath) {
     double path_cost_min = 2.1e18;
     double path_change_cost = 0.0;
     int path_idex = 0;
@@ -151,23 +139,19 @@ int LatticePlanner::CalculateMinNumber(std::vector<std::vector<TrajectoryPoint>>
     //        int(left_side_pass), int(right_side_pass), path_cost_max_idex);
     left_side_pass = true;
     right_side_pass = false;
-    if (left_side_pass)
-    {
+    if(left_side_pass) {
         idex_begin = 0;
         path_size = path_cost_max_idex;
-    }
-    else if (right_side_pass)
-    {
+    } else if(right_side_pass) {
         idex_begin = path_cost_max_idex;
         path_size = trajectory.size();
     }
 
-    for (int i = idex_begin; i < path_size; ++i)
-    {
-        if (trajectory[i].back().safeproperty())
+    for(int i = idex_begin; i < path_size; ++i) {
+        if(trajectory[i].back().safeproperty())
             continue;
 
-        if (changepath)
+        if(changepath)
             path_change_cost = trajectorycost->PathChangeCost(idex_last, i);
         else
             path_change_cost = 0.0;
@@ -175,8 +159,7 @@ int LatticePlanner::CalculateMinNumber(std::vector<std::vector<TrajectoryPoint>>
         double path_cost_ = trajectory[i].back().cost() + path_change_cost;
         //printf("i:%d, path_cost:%f, path_change_cost:%f\n", i, path_cost_, path_change_cost);
 
-        if (path_cost_ < path_cost_min)
-        {
+        if(path_cost_ < path_cost_min) {
             path_cost_min = path_cost_;
             path_idex = i;
         }

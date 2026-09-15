@@ -12,7 +12,11 @@ find_package(catkin REQUIRED COMPONENTS
   visualization_msgs
   tf
   jsk_recognition_msgs
+  roslib
 )
+
+# hdmap 是独立包，既支持同工作空间 catkin 构建，也支持已安装 SDK 的导出目标。
+find_package(hdmap REQUIRED CONFIG)
 
 # 预编译三方库按架构选择（x86 开发机 / aarch64 车载 Orin）
 if(CMAKE_SYSTEM_PROCESSOR MATCHES "arm|ARM|aarch64|AARCH64")
@@ -150,8 +154,9 @@ target_link_libraries(task_plan_node
 # ============================================================
 add_library(path_plan_comply
   # 主链
-  # path_plan_comply.cpp 已原位包含五个 path_plan_*.inc 职责分片；
-  # .inc 不是独立翻译单元，不要在此重复列出。
+  # path_plan_comply.cpp 原位包含几何辅助与五个业务入口分片；
+  # task/reference/safety 子目录由对应入口继续包含，所有 .inc 均非独立翻译单元。
+  # 不要在此重复列出 .inc，以免破坏静态状态和产生重复定义。
   src/robot_path_plan/path_plan_comply.cpp
   src/robot_path_plan/adaptiveHook.cpp
   src/robot_path_plan/collisioncheck/collision_detection.cpp
@@ -275,8 +280,16 @@ target_link_libraries(navigation_node
 add_executable(perception_msg_convert
   src/robot_perception_convert/perception_msg_convert.cpp
 )
+if(TARGET hdmap::hdmap_server)
+  set(ROBOT_HDMAP_LIBRARY hdmap::hdmap_server)
+else()
+  # 隔离构建时，catkin 的包配置提供传统 include/library 变量。
+  target_include_directories(perception_msg_convert PRIVATE ${hdmap_INCLUDE_DIRS})
+  set(ROBOT_HDMAP_LIBRARY ${hdmap_LIBRARIES})
+endif()
 target_link_libraries(perception_msg_convert
   ${catkin_LIBRARIES}
+  ${ROBOT_HDMAP_LIBRARY}
 )
 
 # 消息生成依赖：所有编译 robot/*.h 的目标都需等待消息头生成，避免并行编译竞态

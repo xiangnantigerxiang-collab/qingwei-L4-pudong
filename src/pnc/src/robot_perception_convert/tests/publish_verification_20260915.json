@@ -1,0 +1,14 @@
+{
+  "language": "C++11",
+  "transport": "generated ROS message stubs",
+  "sdk": "/home/mothotob/work/projects/claude-code/qingwei-L4-No2-pudong/src/hdmap/sdk",
+  "cmake_target": "perception_msg_convert",
+  "dynamic_link": "PASS",
+  "integration": "PASS: 2758 filtered perception publish checks",
+  "sanitizers": "PASS: 2758 filtered perception publish checks",
+  "date": "2026-09-15",
+  "cppcheck": "PASS: warning, performance, portability; C++11",
+  "pipeline": "HDMap classification -> raw history -> FilterPerceptionHistory -> publish",
+  "window": "0 <= age < 2 seconds; timestamp rollback resets history; duplicate timestamp replaces last frame",
+  "backup": "/home/mothotob/work/projects/claude-code/perception_before_filter_publish_20260915_133650.tar.gz"
+}

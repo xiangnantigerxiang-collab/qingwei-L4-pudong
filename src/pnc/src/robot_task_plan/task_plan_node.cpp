@@ -121,7 +121,7 @@ static void HeartBeatToMsg(const HeartBeatOut &in, robot::v2nHeartBeat *m) {
     m->values.speed = in.speed;
     m->values.power = in.power;
     m->values.remainingKeyPoints.clear();
-    for (int i = 0; i < (int)in.remainingKeyPoints.size(); i++) {
+    for(int i = 0; i < (int)in.remainingKeyPoints.size(); i++) {
         robot::v2nKeyPoint kp;
         kp.lat = in.remainingKeyPoints[i].lat;
         kp.lon = in.remainingKeyPoints[i].lon;
@@ -167,49 +167,49 @@ static void RunningFbToMsg(const RunningFbOut &in,
 
 // ---- core 事件 -> ROS 调用, 严格按 core 给出的顺序逐条执行 ----
 static void CoreEventToRos(const TaskPlanEvent &ev) {
-    switch (ev.type) {
-    case TP_PUBLISH_TASK_PLAN: {
-        robot::task_plan_msg m;
-        TaskPlanMsgToMsg(g_core.GetTaskPlanMsg(), &m);
-        g_task_plan_pub.publish(m);
-        break;
-    }
-    case TP_PUBLISH_TASK_STATUS: {
-        robot::TaskStatus m;
-        TaskStatusToMsg(g_core.GetTaskStatus(), &m);
-        g_task_status_pub.publish(m);
-        break;
-    }
-    case TP_PUBLISH_HEARTBEAT: {
-        robot::v2nHeartBeat m;
-        HeartBeatToMsg(g_core.GetHeartBeat(), &m);
-        g_v2n_heartbeat_pub.publish(m);
-        break;
-    }
-    case TP_PUBLISH_RUNNING_FB: {
-        robot::v2nRunningFeedback m;
-        RunningFbToMsg(g_core.GetRunningFb(), &m);
-        g_v2n_running_fb_pub.publish(m);
-        break;
-    }
-    case TP_PUBLISH_COMMAND_FB: {
-        robot::v2nCommandFeedback m;
-        CommandFbToMsg(g_core.GetCommandFb(), &m);
-        g_v2n_command_fb_pub.publish(m);
-        break;
-    }
-    case TP_PARAM_INT:
-        // 心跳传感器兜底用整型字面量(旧实现即 int 重载)
-        ros::param::set(ev.paramKey, ev.paramInt);
-        break;
-    case TP_PARAM_DOUBLE:
-        ros::param::set(ev.paramKey, ev.paramDouble);
-        break;
-    case TP_LOG_INFO:
-        ROS_INFO("%s", ev.text.c_str());
-        break;
-    default:
-        break;
+    switch(ev.type) {
+        case TP_PUBLISH_TASK_PLAN: {
+            robot::task_plan_msg m;
+            TaskPlanMsgToMsg(g_core.GetTaskPlanMsg(), &m);
+            g_task_plan_pub.publish(m);
+            break;
+        }
+        case TP_PUBLISH_TASK_STATUS: {
+            robot::TaskStatus m;
+            TaskStatusToMsg(g_core.GetTaskStatus(), &m);
+            g_task_status_pub.publish(m);
+            break;
+        }
+        case TP_PUBLISH_HEARTBEAT: {
+            robot::v2nHeartBeat m;
+            HeartBeatToMsg(g_core.GetHeartBeat(), &m);
+            g_v2n_heartbeat_pub.publish(m);
+            break;
+        }
+        case TP_PUBLISH_RUNNING_FB: {
+            robot::v2nRunningFeedback m;
+            RunningFbToMsg(g_core.GetRunningFb(), &m);
+            g_v2n_running_fb_pub.publish(m);
+            break;
+        }
+        case TP_PUBLISH_COMMAND_FB: {
+            robot::v2nCommandFeedback m;
+            CommandFbToMsg(g_core.GetCommandFb(), &m);
+            g_v2n_command_fb_pub.publish(m);
+            break;
+        }
+        case TP_PARAM_INT:
+            // 心跳传感器兜底用整型字面量(旧实现即 int 重载)
+            ros::param::set(ev.paramKey, ev.paramInt);
+            break;
+        case TP_PARAM_DOUBLE:
+            ros::param::set(ev.paramKey, ev.paramDouble);
+            break;
+        case TP_LOG_INFO:
+            ROS_INFO("%s", ev.text.c_str());
+            break;
+        default:
+            break;
     }
 }
 
@@ -350,7 +350,7 @@ int main(int argc, char **argv) {
 
     ros::param::set("/cloud/suggestspeed", 100.0);
 
-    while (ros::ok()) {
+    while(ros::ok()) {
         ros::spinOnce();
 
         // 挂钩/托盘位置限值: canbus 启动时发布, 此处每圈热读; 读失败时
@@ -366,13 +366,13 @@ int main(int argc, char **argv) {
                         position_limits.palletPosMax);
         g_core.SetPositionLimits(position_limits);
 
-        if (g_rcv_p_p_flag && g_rcv_can_data) {
+        if(g_rcv_p_p_flag && g_rcv_can_data) {
             g_core.TaskPlanProcess(CoreEventToRos);
         }
 
-        if (g_core.recived_cloud_task ||
-            (g_core.mPathPlanStatus.taskExecuStatus == 2 &&
-             g_core.mExecuteTaskNum != g_core.mCurTaskNum)) {
+        if(g_core.recived_cloud_task ||
+           (g_core.mPathPlanStatus.taskExecuStatus == 2 &&
+            g_core.mExecuteTaskNum != g_core.mCurTaskNum)) {
             float max_vehicle_speed = 0;
             ros::param::get("max_vehicle_speed", max_vehicle_speed);
             g_core.PublishTaskPlanMsg(max_vehicle_speed, CoreEventToRos);

@@ -1,0 +1,60 @@
+{
+  "date": "2026-09-15",
+  "function": "robot::perception FilterPerceptionByConfidence(const robot::perception& tPerception, double tConfidenceThreshold, double tMinWidth, double tMaxWidth, double tMinLength, double tMaxLength)",
+  "compatibility": "Original two-argument and four-argument calls keep minimum-only semantics with unbounded upper limits",
+  "dimension_semantics": {
+    "dx": "横向宽，米",
+    "dy": "纵向长，米",
+    "comparison": "闭区间，任一尺寸越界剔除；上下边界均保留",
+    "validation": "下限须为有限非负数，上限不得小于下限且禁止 NaN；允许正无穷上限；对象尺寸须有限且为正"
+  },
+  "publication_thresholds": {
+    "confidence": 0.25,
+    "width_m": [
+      0.0,
+      "+infinity"
+    ],
+    "length_m": [
+      0.0,
+      "+infinity"
+    ]
+  },
+  "modified_files": [
+    "src/pnc/src/robot_perception_convert/perception_confidence_filter.h",
+    "src/pnc/src/robot_perception_convert/perception_msg_convert.cpp",
+    "src/pnc/src/robot_perception_convert/perception_confidence_filter.inc",
+    "src/pnc/src/robot_perception_convert/README.md",
+    "src/pnc/src/robot_perception_convert/tests/publish_integration.cpp"
+  ],
+  "added_range_checks": 28,
+  "checks": {
+    "language": "C++11",
+    "transport": "generated ROS message stubs",
+    "sdk": "/home/mothotob/work/projects/claude-code/qingwei-L4-No2-pudong/src/hdmap/sdk",
+    "cmake_target": "perception_msg_convert",
+    "dynamic_link": "PASS",
+    "integration": "PASS: 3103 filtered perception publish checks",
+    "sanitizers": "PASS: 3103 filtered perception publish checks"
+  },
+  "cppcheck": {
+    "command": [
+      "cppcheck",
+      "--enable=warning,performance,portability",
+      "--std=c++11",
+      "--error-exitcode=1",
+      "--suppress=missingIncludeSystem",
+      "-I",
+      "/tmp/perception_size_range_verify/stubs",
+      "-I",
+      "src/pnc/include",
+      "-I",
+      "src/hdmap/sdk/include",
+      "src/pnc/src/robot_perception_convert/perception_msg_convert.cpp"
+    ],
+    "exit_code": 0
+  },
+  "temporal_algorithm": "UNCHANGED",
+  "logs": "/tmp/perception_size_range_verify",
+  "backup": "/home/mothotob/work/projects/claude-code/perception_before_size_range_20260915_153546.tar.gz",
+  "limitation": "ROS transport uses stubs generated from actual message definitions; ROS1 communication and on-vehicle execution have not been verified"
+}

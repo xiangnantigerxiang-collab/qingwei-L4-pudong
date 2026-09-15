@@ -12,7 +12,7 @@
 
 namespace math {
 
-/**
+    /**
  * @class Polygon2d
  * @brief The class of polygon in 2-D.
  */
@@ -39,7 +39,9 @@ namespace math {
          * @brief Get the vertices of the polygon.
          * @return The vertices of the polygon.
          */
-        const std::vector<Vec2d> &points() const { return points_; }
+        const std::vector<Vec2d> &points() const {
+            return points_;
+        }
 
         /**
          * @brief Get the edges of the polygon.
@@ -53,19 +55,25 @@ namespace math {
          * @brief Get the number of vertices of the polygon.
          * @return The number of vertices of the polygon.
          */
-        int num_points() const { return num_points_; }
+        int num_points() const {
+            return num_points_;
+        }
 
         /**
          * @brief Check if the polygon is convex.
          * @return Whether the polygon is convex or not.
          */
-        bool is_convex() const { return is_convex_; }
+        bool is_convex() const {
+            return is_convex_;
+        }
 
         /**
          * @brief Get the area of the polygon.
          * @return The area of the polygon.
          */
-        double area() const { return area_; }
+        double area() const {
+            return area_;
+        }
 
         /**
          * @brief Compute the distance from a point to the boundary of the polygon.
@@ -215,7 +223,7 @@ namespace math {
          * @return A group of overlapped line segments.
          */
         std::vector<LineSegment2d> GetAllOverlaps(
-                const LineSegment2d &line_segment) const;
+            const LineSegment2d &line_segment) const;
 
         /**
          * @brief Check if this polygon has overlap with another polygon.
@@ -280,12 +288,20 @@ namespace math {
          *        for debugging purpose.
          * @return Essential information about the polygon for debugging purpose.
          */
-//        std::string DebugString() const;
+        //        std::string DebugString() const;
 
-        double min_x() const { return min_x_; }
-        double max_x() const { return max_x_; }
-        double min_y() const { return min_y_; }
-        double max_y() const { return max_y_; }
+        double min_x() const {
+            return min_x_;
+        }
+        double max_x() const {
+            return max_x_;
+        }
+        double min_y() const {
+            return min_y_;
+        }
+        double max_y() const {
+            return max_y_;
+        }
 
     protected:
         void BuildFromPoints();
@@ -308,4 +324,4 @@ namespace math {
 
 }  // namespace math
 
-#endif //PLANNING_POLYGON2D_H
+#endif  //PLANNING_POLYGON2D_H

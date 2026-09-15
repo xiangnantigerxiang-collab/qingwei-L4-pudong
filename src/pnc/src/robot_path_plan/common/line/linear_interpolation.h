@@ -11,7 +11,7 @@
 
 namespace math {
 
-/**
+    /**
  * @brief Linear interpolation between two points of type T.
  * @param x0 The coordinate of the first point.
  * @param t0 The interpolation parameter of the first point.
@@ -21,19 +21,19 @@ namespace math {
  * @param x The coordinate of the interpolated point.
  * @return Interpolated point.
  */
-template <typename T>
-T lerp(const T &x0, const double t0, const T &x1, const double t1,
-       const double t) {
-  if (std::abs(t1 - t0) <= 1.0e-6) {
-    std::cout << "input time difference is too small";
-    return x0;
-  }
-  const double r = (t - t0) / (t1 - t0);
-  const T x = x0 + r * (x1 - x0);
-  return x;
-}
+    template <typename T>
+    T lerp(const T &x0, const double t0, const T &x1, const double t1,
+           const double t) {
+        if(std::abs(t1 - t0) <= 1.0e-6) {
+            std::cout << "input time difference is too small";
+            return x0;
+        }
+        const double r = (t - t0) / (t1 - t0);
+        const T x = x0 + r * (x1 - x0);
+        return x;
+    }
 
-/**
+    /**
  * @brief Spherical linear interpolation between two angles.
  *        The two angles are within range [-M_PI, M_PI).
  * @param a0 The value of the first angle.
@@ -44,15 +44,15 @@ T lerp(const T &x0, const double t0, const T &x1, const double t1,
  * @param a The value of the spherically interpolated angle.
  * @return Interpolated angle.
  */
-double slerp(const double a0, const double t0, const double a1, const double t1,
-             const double t);
+    double slerp(const double a0, const double t0, const double a1, const double t1,
+                 const double t);
 
-SLPoint InterpolateUsingLinearApproximation(const SLPoint &p0,
-                                            const SLPoint &p1, const double w);
+    SLPoint InterpolateUsingLinearApproximation(const SLPoint &p0,
+                                                const SLPoint &p1, const double w);
 
-planning::PathPoint InterpolateUsingLinearApproximation(const planning::PathPoint &p0,
-                                                        const planning::PathPoint &p1,
-                                                        const double s);
+    planning::PathPoint InterpolateUsingLinearApproximation(const planning::PathPoint &p0,
+                                                            const planning::PathPoint &p1,
+                                                            const double s);
 }  // namespace math
 
 #endif  // MODULES_COMMON_MATH_LINEAR_INTERPOLATION_H_

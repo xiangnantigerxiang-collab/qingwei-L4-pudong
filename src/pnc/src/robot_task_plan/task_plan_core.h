@@ -224,22 +224,22 @@ struct TaskStatusOut {
 
 // ---- 有序事件流(core -> ROS 层) ----
 enum TaskPlanEventType {
-    TP_PUBLISH_TASK_PLAN,   // 发布 /task_plan_msg(取 GetTaskPlanMsg())
-    TP_PUBLISH_TASK_STATUS, // 发布 /cloud/task/task_status(取 GetTaskStatus())
-    TP_PUBLISH_HEARTBEAT,   // 发布 /v2nHeartBeat(取 GetHeartBeat())
-    TP_PUBLISH_RUNNING_FB,  // 发布 /v2nRunningFeedback(取 GetRunningFb())
-    TP_PUBLISH_COMMAND_FB,  // 发布 /v2nCommandFeedback(取 GetCommandFb())
-    TP_PARAM_INT,           // ros::param::set(key, int)——心跳传感器兜底用整型
-    TP_PARAM_DOUBLE,        // ros::param::set(key, double)——指令链路用浮点
-    TP_LOG_INFO             // ROS_INFO(text)
+    TP_PUBLISH_TASK_PLAN,    // 发布 /task_plan_msg(取 GetTaskPlanMsg())
+    TP_PUBLISH_TASK_STATUS,  // 发布 /cloud/task/task_status(取 GetTaskStatus())
+    TP_PUBLISH_HEARTBEAT,    // 发布 /v2nHeartBeat(取 GetHeartBeat())
+    TP_PUBLISH_RUNNING_FB,   // 发布 /v2nRunningFeedback(取 GetRunningFb())
+    TP_PUBLISH_COMMAND_FB,   // 发布 /v2nCommandFeedback(取 GetCommandFb())
+    TP_PARAM_INT,            // ros::param::set(key, int)——心跳传感器兜底用整型
+    TP_PARAM_DOUBLE,         // ros::param::set(key, double)——指令链路用浮点
+    TP_LOG_INFO              // ROS_INFO(text)
 };
 
 struct TaskPlanEvent {
     TaskPlanEventType type = TP_PUBLISH_TASK_PLAN;
-    std::string paramKey;   // TP_PARAM_* 有效
-    int paramInt = 0;       // TP_PARAM_INT 有效
-    double paramDouble = 0; // TP_PARAM_DOUBLE 有效
-    std::string text;       // TP_LOG_INFO 有效
+    std::string paramKey;    // TP_PARAM_* 有效
+    int paramInt = 0;        // TP_PARAM_INT 有效
+    double paramDouble = 0;  // TP_PARAM_DOUBLE 有效
+    std::string text;        // TP_LOG_INFO 有效
 };
 
 // 事件出口: core 每产生一条对外副作用就同步调用一次, ROS 层逐条转换。
@@ -312,11 +312,21 @@ public:
     void clearTaskPool();  // 云端停车指令清空全部任务
 
     // ---- 事件发生时刻的输出快照(ROS 层逐字段拷贝成消息) ----
-    const TaskPlanMsgOut &GetTaskPlanMsg() const { return mTaskPlanData; }
-    const TaskStatusOut &GetTaskStatus() const { return mTaskStatus; }
-    const HeartBeatOut &GetHeartBeat() const { return mHeartBeatData; }
-    const CommandFbOut &GetCommandFb() const { return mCommandFbData; }
-    const RunningFbOut &GetRunningFb() const { return mRunningFbData; }
+    const TaskPlanMsgOut &GetTaskPlanMsg() const {
+        return mTaskPlanData;
+    }
+    const TaskStatusOut &GetTaskStatus() const {
+        return mTaskStatus;
+    }
+    const HeartBeatOut &GetHeartBeat() const {
+        return mHeartBeatData;
+    }
+    const CommandFbOut &GetCommandFb() const {
+        return mCommandFbData;
+    }
+    const RunningFbOut &GetRunningFb() const {
+        return mRunningFbData;
+    }
 
 private:
     void ClearTASKINFO_S(TASKINFO_S &tTaskInfo);
@@ -334,10 +344,10 @@ private:
     void emitParamDouble(TaskPlanSink sink, const char *key, double value);
     void emitLogInfo(TaskPlanSink sink, const char *text);
 
-    int mTimerCount = 0;         // 块推进去抖计数(上限 500)
+    int mTimerCount = 0;  // 块推进去抖计数(上限 500)
     std::vector<TASKINFO_S> mTaskPool;
 
-    TaskInfoIn mTaskInfoMsg;     // 最近一次任务消息(回显 + task1000 伪造基底)
+    TaskInfoIn mTaskInfoMsg;  // 最近一次任务消息(回显 + task1000 伪造基底)
     CanStateIn mCanData;
     PositionLimitsIn mPositionLimits;  // hook/pallet 判定线(默认=config.cfg 默认值)
     NavStateIn mNavData;

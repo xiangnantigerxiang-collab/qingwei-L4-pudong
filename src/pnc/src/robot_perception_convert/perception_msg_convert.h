@@ -20,10 +20,14 @@
 #include "robot/object.h"
 #include "robot/perception.h"
 #include "robot/navigation_msg.h"
+#include "perception_temporal_filter.h"
+#include "perception_confidence_filter.h"
 
 struct Vec2d {
     double x, y;
-    Vec2d(double _x = 0, double _y = 0) : x(_x), y(_y) {}
+    Vec2d(double _x = 0, double _y = 0)
+        : x(_x), y(_y) {
+    }
 };
 
 class PerceptionBoundary {
@@ -37,4 +41,4 @@ public:
     bool IsPointInExclusion(double x, double y) const;
 };
 
-#endif //PERCEPTION_MSG_CONVERT
+#endif  //PERCEPTION_MSG_CONVERT

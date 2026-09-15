@@ -351,24 +351,84 @@ function setPointsBuf(grp, decoded, colorFn, size) {
   }
 }
 
+/* 障碍物按 /perception objs 的 type 区分着色:0(红) 1(橙) 2(黄),
+ * 其余(含字段缺失)保持历史默认墨绿。type 语义由上游定:
+ * hdmap LaneMapServer::ClassifyPerception 车道占用 0-本道/1-左一/
+ * 2-左二/3-左外/4-右外;object.msg 旧注释 0-车/1-行人/2-骑行/3-未知 */
+var OBST_COLOR = { 0: 0xff0000, 1: 0xff8000, 2: 0xffff00 };
+var OBST_COLOR_DEFAULT = 0x339999;
+var OBST_STROKE = { 0: "#ff0000", 1: "#ff8000", 2: "#ffff00" };
+var OBST_FILL = { 0: "rgba(255,0,0,0.35)", 1: "rgba(255,128,0,0.35)",
+  2: "rgba(255,255,0,0.35)" };
+var OBST_STROKE_DEFAULT = "#339999";
+var OBST_FILL_DEFAULT = "rgba(51,153,153,0.35)";
+/* 仅 4 种色,缓存 THREE.Color 供全部障碍材质共享(只读,不被改写) */
+var obstColorCache = {};
+function obstThreeColor(t) {
+  var hex = OBST_COLOR[t] || OBST_COLOR_DEFAULT;
+  if (!obstColorCache[hex]) obstColorCache[hex] = new THREE.Color(hex);
+  return obstColorCache[hex];
+}
+
+/* 置信度文字:白色、3 倍字号(28px->84px,画布同步 3 倍保清晰,sprite
+ * 世界尺寸 4.8x1.8m),悬浮在障碍框正上方(object.msg 的 confidence,
+ * 上游时域滤波重算)。纹理按文本缓存(两位小数有限集合);
+ * 超上限整表重置防膨胀 */
+var obstLabelCache = {};
+function obstLabelText(text) {
+  if (obstLabelCache[text]) return obstLabelCache[text];
+  if (Object.keys(obstLabelCache).length > 64) obstLabelCache = {};
+  var cv = document.createElement("canvas");
+  cv.width = 384; cv.height = 144;
+  var c2 = cv.getContext && cv.getContext("2d");
+  if (!c2) return null;
+  c2.font = "bold 84px monospace";
+  c2.textAlign = "center"; c2.textBaseline = "middle";
+  c2.fillStyle = "#ffffff";
+  c2.fillText(text, 192, 72);
+  var tex = new THREE.CanvasTexture(cv);
+  obstLabelCache[text] = tex;
+  return tex;
+}
+
+var spriteObstacles = [];      /* 置信度文字 sprite 池,与 mesh 池同步增长 */
+
 function syncObstacles(obs) {
-  var i, m;
+  var i, m, sp;
   while (meshObstacles.length < obs.length) {
     m = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1),
       new THREE.MeshBasicMaterial({ color: 0x339999,
         transparent: true, opacity: 0.45 }));
     scene.add(m); meshObstacles.push(m);
+    sp = new THREE.Sprite(new THREE.SpriteMaterial({
+      transparent: true, depthTest: false }));
+    scene.add(sp); spriteObstacles.push(sp);
   }
   for (i = 0; i < meshObstacles.length; i++) {
     m = meshObstacles[i];
+    sp = spriteObstacles[i];
     m.userData.hasData = (i < obs.length);       /* 池化项是否有数据 */
     if (i < obs.length) {
       var o = obs[i];
+      var hex = OBST_COLOR[o.type] || OBST_COLOR_DEFAULT;
       m.visible = (layers._lidarOn !== false);   /* 尊重图层开关 */
+      m.material.color = obstThreeColor(o.type); /* 按 type 着色 */
       m.position.set(o.x, (o.h || 0.5) / 2, -o.y);
       m.scale.set(o.l || 0.5, o.h || 0.5, o.w || 0.5);
       m.rotation.y = o.yaw || 0;
-    } else { m.visible = false; }
+      /* 置信度文字:白色、3 倍字号、框正上方(位置不变);conf 缺失则
+       * 不显示。hasLabel 供 applyLayer 图层开关对称恢复 sprite 可见性 */
+      var txt = (o.conf === undefined || o.conf === null) ? ""
+                                                        : o.conf.toFixed(2);
+      var tex = txt === "" ? null : obstLabelText(txt);
+      sp.userData.hasLabel = !!tex;
+      sp.visible = (layers._lidarOn !== false) && !!tex;
+      if (tex) {
+        sp.material.map = tex;
+        sp.position.set(o.x, (o.h || 0.5) + 0.3, -o.y);
+        sp.scale.set(4.8, 1.8, 1);
+      }
+    } else { m.visible = false; sp.visible = false; }
   }
 }
 
@@ -457,13 +517,13 @@ function render2d() {
     if (ly2d("routing")) { line(s.paths.refer, "#ffff00", 2); }
     if (ly2d("planning")) { line(s.paths.plan, "#00ff00", 2); }
   }
-  /* 障碍物(旋转矩形,屏幕 y 反向 -> 旋转取负) */
+  /* 障碍物(旋转矩形,屏幕 y 反向 -> 旋转取负;按 type 着色) */
   if (s && ly2d("lidar")) {
-    ctx2d.strokeStyle = "#339999";
-    ctx2d.fillStyle = "rgba(51,153,153,0.35)";
     for (var oi = 0; oi < (s.obstacles || []).length; oi++) {
       var o = s.obstacles[oi];
       ctx2d.save();
+      ctx2d.strokeStyle = OBST_STROKE[o.type] || OBST_STROKE_DEFAULT;
+      ctx2d.fillStyle = OBST_FILL[o.type] || OBST_FILL_DEFAULT;
       ctx2d.translate(px(o.x), py(o.y));
       ctx2d.rotate(-o.yaw);
       ctx2d.fillRect(-o.l / 2 * zoom2d, -o.w / 2 * zoom2d,
@@ -471,6 +531,18 @@ function render2d() {
       ctx2d.strokeRect(-o.l / 2 * zoom2d, -o.w / 2 * zoom2d,
                        o.l * zoom2d, o.w * zoom2d);
       ctx2d.restore();
+      /* 置信度文字:白色、3 倍字号(12px->36px),直立不随框旋转,画在
+       * 外接圆上方(位置不变);save/restore 隔离 font/textAlign,
+       * 不污染比例尺等后续绘制 */
+      if (o.conf !== undefined && o.conf !== null) {
+        var rad2 = Math.hypot(o.l || 0.5, o.w || 0.5) / 2 * zoom2d;
+        ctx2d.save();
+        ctx2d.fillStyle = "#ffffff";
+        ctx2d.font = "36px monospace";
+        ctx2d.textAlign = "center";
+        ctx2d.fillText(o.conf.toFixed(2), px(o.x), py(o.y) - rad2 - 8);
+        ctx2d.restore();
+      }
     }
   }
   /* 点云/激光:车体局部坐标 -> 世界(decodeBin 的 three 系 z=-ros_y) */
@@ -734,11 +806,17 @@ function applyLayer(key, on) {
   mark2dDirty();
   var obj = layers[key];
   if (key === "lidar") {
-    /* 开关对称:有数据的池化项跟随开关,空位恒隐藏 */
+    /* 开关对称:有数据的池化项跟随开关,空位恒隐藏;
+     * 置信度文字 sprite 同步恢复(有 hasLabel 的才有文字) */
     layers._lidarOn = on;
     for (var i = 0; i < meshObstacles.length; i++) {
       meshObstacles[i].visible = on &&
         (meshObstacles[i].userData.hasData !== false);
+      if (spriteObstacles[i]) {
+        spriteObstacles[i].visible = on &&
+          (meshObstacles[i].userData.hasData !== false) &&
+          spriteObstacles[i].userData.hasLabel === true;
+      }
     }
     return;
   }
@@ -773,6 +851,7 @@ function syncLidarLayer() {
   if (layers._lidarOn === false) {
     for (var i = 0; i < meshObstacles.length; i++) {
       meshObstacles[i].visible = false;
+      if (spriteObstacles[i]) spriteObstacles[i].visible = false;
     }
   }
 }

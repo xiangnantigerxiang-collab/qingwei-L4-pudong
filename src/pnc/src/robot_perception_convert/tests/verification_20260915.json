@@ -1,0 +1,24 @@
+{
+  "language": "C++11",
+  "transport": "generated ROS message stubs",
+  "test": "PASS: 27149 temporal filter checks",
+  "sanitizers": "PASS: 27149 temporal filter checks",
+  "benchmark": [
+    "BENCH frames=40 objects_per_frame=100 observations=4000 p50_ms=0.2461 p99_ms=0.2644 max_ms=0.3179",
+    "BENCH frames=200 objects_per_frame=100 observations=20000 p50_ms=0.8083 p99_ms=1.2731 max_ms=1.2827",
+    "BENCH frames=40 objects_per_frame=300 observations=12000 p50_ms=0.5033 p99_ms=0.5609 max_ms=0.5702",
+    "BENCH frames=200 objects_per_frame=300 observations=60000 p50_ms=2.4806 p99_ms=2.5786 max_ms=2.7421",
+    "PASS: 440 temporal filter checks"
+  ],
+  "machine": "x86_64",
+  "python": "3.12.3",
+  "date": "2026-09-15",
+  "cpu": "Intel Core Ultra 5 338H",
+  "cppcheck": "PASS: warning, performance, portability; C++11",
+  "publish_regression": "PASS: 71 perception publish integration checks",
+  "node_build_and_dynamic_link": "PASS: actual PNC CMake target, SDK target and catkin legacy export with ROS stubs",
+  "window": "0 <= now - timestamp < 2 seconds",
+  "weight": "exp(-(now - timestamp) / 1.0)",
+  "geometry": "axis-aligned rectangles from x/y/dx/dy",
+  "backup": "/home/mothotob/work/projects/claude-code/perception_convert_before_temporal_filter_20260915_125128.tar.gz"
+}

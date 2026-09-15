@@ -10,7 +10,7 @@ namespace math {
     namespace {
 
         bool IsWithin(double val, double bound1, double bound2) {
-            if (bound1 > bound2) {
+            if(bound1 > bound2) {
                 std::swap(bound1, bound2);
             }
             return val >= bound1 - kMathEpsilon && val <= bound2 + kMathEpsilon;
@@ -18,34 +18,40 @@ namespace math {
 
     }  // namespace
 
-    LineSegment2d::LineSegment2d() { unit_direction_ = Vec2d(1, 0); }
+    LineSegment2d::LineSegment2d() {
+        unit_direction_ = Vec2d(1, 0);
+    }
 
     LineSegment2d::LineSegment2d(const Vec2d &start, const Vec2d &end)
-            : start_(start), end_(end) {
+        : start_(start), end_(end) {
         const double dx = end_.x() - start_.x();
         const double dy = end_.y() - start_.y();
         length_ = hypot(dx, dy);
         unit_direction_ =
-                (length_ <= kMathEpsilon ? Vec2d(0, 0)
-                                         : Vec2d(dx / length_, dy / length_));
+            (length_ <= kMathEpsilon ? Vec2d(0, 0)
+                                     : Vec2d(dx / length_, dy / length_));
         heading_ = unit_direction_.Angle();
     }
 
-    double LineSegment2d::length() const { return length_; }
+    double LineSegment2d::length() const {
+        return length_;
+    }
 
-    double LineSegment2d::length_sqr() const { return length_ * length_; }
+    double LineSegment2d::length_sqr() const {
+        return length_ * length_;
+    }
 
     double LineSegment2d::DistanceTo(const Vec2d &point) const {
-        if (length_ <= kMathEpsilon) {
+        if(length_ <= kMathEpsilon) {
             return point.DistanceTo(start_);
         }
         const double x0 = point.x() - start_.x();
         const double y0 = point.y() - start_.y();
         const double proj = x0 * unit_direction_.x() + y0 * unit_direction_.y();
-        if (proj <= 0.0) {
+        if(proj <= 0.0) {
             return hypot(x0, y0);
         }
-        if (proj >= length_) {
+        if(proj >= length_) {
             return point.DistanceTo(end_);
         }
         return std::abs(x0 * unit_direction_.y() - y0 * unit_direction_.x());
@@ -53,19 +59,19 @@ namespace math {
 
     double LineSegment2d::DistanceTo(const Vec2d &point,
                                      Vec2d *const nearest_pt) const {
-//        CHECK_NOTNULL(nearest_pt);
-        if (length_ <= kMathEpsilon) {
+        //        CHECK_NOTNULL(nearest_pt);
+        if(length_ <= kMathEpsilon) {
             *nearest_pt = start_;
             return point.DistanceTo(start_);
         }
         const double x0 = point.x() - start_.x();
         const double y0 = point.y() - start_.y();
         const double proj = x0 * unit_direction_.x() + y0 * unit_direction_.y();
-        if (proj < 0.0) {
+        if(proj < 0.0) {
             *nearest_pt = start_;
             return hypot(x0, y0);
         }
-        if (proj > length_) {
+        if(proj > length_) {
             *nearest_pt = end_;
             return point.DistanceTo(end_);
         }
@@ -74,16 +80,16 @@ namespace math {
     }
 
     double LineSegment2d::DistanceSquareTo(const Vec2d &point) const {
-        if (length_ <= kMathEpsilon) {
+        if(length_ <= kMathEpsilon) {
             return point.DistanceSquareTo(start_);
         }
         const double x0 = point.x() - start_.x();
         const double y0 = point.y() - start_.y();
         const double proj = x0 * unit_direction_.x() + y0 * unit_direction_.y();
-        if (proj <= 0.0) {
+        if(proj <= 0.0) {
             return Square(x0) + Square(y0);
         }
-        if (proj >= length_) {
+        if(proj >= length_) {
             return point.DistanceSquareTo(end_);
         }
         return Square(x0 * unit_direction_.y() - y0 * unit_direction_.x());
@@ -91,19 +97,19 @@ namespace math {
 
     double LineSegment2d::DistanceSquareTo(const Vec2d &point,
                                            Vec2d *const nearest_pt) const {
-//        CHECK_NOTNULL(nearest_pt);
-        if (length_ <= kMathEpsilon) {
+        //        CHECK_NOTNULL(nearest_pt);
+        if(length_ <= kMathEpsilon) {
             *nearest_pt = start_;
             return point.DistanceSquareTo(start_);
         }
         const double x0 = point.x() - start_.x();
         const double y0 = point.y() - start_.y();
         const double proj = x0 * unit_direction_.x() + y0 * unit_direction_.y();
-        if (proj <= 0.0) {
+        if(proj <= 0.0) {
             *nearest_pt = start_;
             return Square(x0) + Square(y0);
         }
-        if (proj >= length_) {
+        if(proj >= length_) {
             *nearest_pt = end_;
             return point.DistanceSquareTo(end_);
         }
@@ -112,12 +118,12 @@ namespace math {
     }
 
     bool LineSegment2d::IsPointIn(const Vec2d &point) const {
-        if (length_ <= kMathEpsilon) {
+        if(length_ <= kMathEpsilon) {
             return std::abs(point.x() - start_.x()) <= kMathEpsilon &&
                    std::abs(point.y() - start_.y()) <= kMathEpsilon;
         }
         const double prod = CrossProd(point, start_, end_);
-        if (std::abs(prod) > kMathEpsilon) {
+        if(std::abs(prod) > kMathEpsilon) {
             return false;
         }
         return IsWithin(point.x(), start_.x(), end_.x()) &&
@@ -133,33 +139,33 @@ namespace math {
     }
 
     bool LineSegment2d::HasIntersect(const LineSegment2d &other_segment) const {
-//        Vec2d point;
-//        return GetIntersect(other_segment, &point);
-        if (IsPointIn(other_segment.start())) {
+        //        Vec2d point;
+        //        return GetIntersect(other_segment, &point);
+        if(IsPointIn(other_segment.start())) {
             return true;
         }
-        if (IsPointIn(other_segment.end())) {
+        if(IsPointIn(other_segment.end())) {
             return true;
         }
-        if (other_segment.IsPointIn(start_)) {
+        if(other_segment.IsPointIn(start_)) {
             return true;
         }
-        if (other_segment.IsPointIn(end_)) {
+        if(other_segment.IsPointIn(end_)) {
             return true;
         }
-        if (length_ <= kMathEpsilon || other_segment.length() <= kMathEpsilon) {
+        if(length_ <= kMathEpsilon || other_segment.length() <= kMathEpsilon) {
             return false;
         }
         const double cc1 = CrossProd(start_, end_, other_segment.start());
         const double cc2 = CrossProd(start_, end_, other_segment.end());
-        if (cc1 * cc2 >= -kMathEpsilon) {
+        if(cc1 * cc2 >= -kMathEpsilon) {
             return false;
         }
         const double cc3 =
-                CrossProd(other_segment.start(), other_segment.end(), start_);
+            CrossProd(other_segment.start(), other_segment.end(), start_);
         const double cc4 =
-                CrossProd(other_segment.start(), other_segment.end(), end_);
-        if (cc3 * cc4 >= -kMathEpsilon) {
+            CrossProd(other_segment.start(), other_segment.end(), end_);
+        if(cc3 * cc4 >= -kMathEpsilon) {
             return false;
         }
         return true;
@@ -167,36 +173,36 @@ namespace math {
 
     bool LineSegment2d::GetIntersect(const LineSegment2d &other_segment,
                                      Vec2d *const point) const {
-//        CHECK_NOTNULL(point);
-        if (IsPointIn(other_segment.start())) {
+        //        CHECK_NOTNULL(point);
+        if(IsPointIn(other_segment.start())) {
             *point = other_segment.start();
             return true;
         }
-        if (IsPointIn(other_segment.end())) {
+        if(IsPointIn(other_segment.end())) {
             *point = other_segment.end();
             return true;
         }
-        if (other_segment.IsPointIn(start_)) {
+        if(other_segment.IsPointIn(start_)) {
             *point = start_;
             return true;
         }
-        if (other_segment.IsPointIn(end_)) {
+        if(other_segment.IsPointIn(end_)) {
             *point = end_;
             return true;
         }
-        if (length_ <= kMathEpsilon || other_segment.length() <= kMathEpsilon) {
+        if(length_ <= kMathEpsilon || other_segment.length() <= kMathEpsilon) {
             return false;
         }
         const double cc1 = CrossProd(start_, end_, other_segment.start());
         const double cc2 = CrossProd(start_, end_, other_segment.end());
-        if (cc1 * cc2 >= -kMathEpsilon) {
+        if(cc1 * cc2 >= -kMathEpsilon) {
             return false;
         }
         const double cc3 =
-                CrossProd(other_segment.start(), other_segment.end(), start_);
+            CrossProd(other_segment.start(), other_segment.end(), start_);
         const double cc4 =
-                CrossProd(other_segment.start(), other_segment.end(), end_);
-        if (cc3 * cc4 >= -kMathEpsilon) {
+            CrossProd(other_segment.start(), other_segment.end(), end_);
+        if(cc3 * cc4 >= -kMathEpsilon) {
             return false;
         }
         const double ratio = cc4 / (cc4 - cc3);
@@ -205,11 +211,11 @@ namespace math {
         return true;
     }
 
-// return distance with perpendicular foot point.
+    // return distance with perpendicular foot point.
     double LineSegment2d::GetPerpendicularFoot(const Vec2d &point,
                                                Vec2d *const foot_point) const {
-//        CHECK_NOTNULL(foot_point);
-        if (length_ <= kMathEpsilon) {
+        //        CHECK_NOTNULL(foot_point);
+        if(length_ <= kMathEpsilon) {
             *foot_point = start_;
             return point.DistanceTo(start_);
         }
@@ -219,10 +225,10 @@ namespace math {
         *foot_point = start_ + unit_direction_ * proj;
         return std::abs(x0 * unit_direction_.y() - y0 * unit_direction_.x());
     }
-//
-//    std::string LineSegment2d::DebugString() const {
-//        return util::StrCat("segment2d ( start = ", start_.DebugString(), "  end = ",
-//                            end_.DebugString(), " )");
-//    }
+    //
+    //    std::string LineSegment2d::DebugString() const {
+    //        return util::StrCat("segment2d ( start = ", start_.DebugString(), "  end = ",
+    //                            end_.DebugString(), " )");
+    //    }
 
 }  // namespace math

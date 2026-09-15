@@ -7,8 +7,7 @@
 
 // Base type for various types of 1-dimensional curves
 
-class Curve1d 
-{
+class Curve1d {
 public:
     Curve1d() = default;
     virtual ~Curve1d() = default;
@@ -17,5 +16,3 @@ public:
 
     virtual double ParamLength() const = 0;
 };
-
-

@@ -9,37 +9,55 @@ namespace math {
 
     constexpr double kMathEpsilon = 1e-10;
 
-/**
+    /**
  * @class Vec2d
  *
  * @brief Implements a class of 2-dimensional vectors.
  */
     class Vec2d {
     public:
-        Vec2d(const math::Vec2d& vec2d_point) : x_(vec2d_point.x()),y_(vec2d_point.y()){}
+        Vec2d(const math::Vec2d &vec2d_point)
+            : x_(vec2d_point.x()), y_(vec2d_point.y()) {
+        }
         //! Constructor which takes x- and y-coordinates.
-        constexpr Vec2d(const double x, const double y) noexcept : x_(x), y_(y) {}
-        
-        Vec2d(const double x, const double y, const double t) : x_(x), y_(y), theta_(t) {}
+        constexpr Vec2d(const double x, const double y) noexcept
+            : x_(x), y_(y) {
+        }
+
+        Vec2d(const double x, const double y, const double t)
+            : x_(x), y_(y), theta_(t) {
+        }
         //! Constructor returning the zero vector.
-        constexpr Vec2d() noexcept : Vec2d(0, 0) {}
+        constexpr Vec2d() noexcept
+            : Vec2d(0, 0) {
+        }
 
         //! Creates a unit-vector with a given angle to the positive x semi-axis
         static Vec2d CreateUnitVec2d(const double angle);
 
         //! Getter for x component
-        double x() const { return x_; }
+        double x() const {
+            return x_;
+        }
 
         //! Getter for y component
-        double y() const { return y_; }
+        double y() const {
+            return y_;
+        }
 
         //! Setter for x component
-        void set_x(const double x) { x_ = x; }
+        void set_x(const double x) {
+            x_ = x;
+        }
 
         //! Setter for y component
-        void set_y(const double y) { y_ = y; }
+        void set_y(const double y) {
+            y_ = y;
+        }
 
-        void set_theta(const double t) { theta_ = t; }
+        void set_theta(const double t) {
+            theta_ = t;
+        }
 
         //! Gets the length of the vector
         double Length() const;
@@ -75,7 +93,7 @@ namespace math {
         Vec2d operator-(const Vec2d &other) const;
 
         //! a method to negate a vector
-        Vec2d operator - () const;
+        Vec2d operator-() const;
 
         //! Multiplies Vec2d by a scalar
         Vec2d operator*(const double ratio) const;
@@ -100,10 +118,9 @@ namespace math {
 
         //! Returns a human-readable string representing this object
         void printVec2d() const;
-        
+
         //! a method that returns the orthogonal complement of two vectors
         Vec2d ort(Vec2d b) const;
-
 
     protected:
         double x_ = 0.0;
@@ -111,8 +128,8 @@ namespace math {
         double theta_ = 0.0;
     };
 
-//! Multiplies the given Vec2d by a given scalar
+    //! Multiplies the given Vec2d by a given scalar
     Vec2d operator*(const double ratio, const Vec2d &vec);
 
 }  // namespace math
-#endif //PLANNING_VEC2D_H
+#endif  //PLANNING_VEC2D_H

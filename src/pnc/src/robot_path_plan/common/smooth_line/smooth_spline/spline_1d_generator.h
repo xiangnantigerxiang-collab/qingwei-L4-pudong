@@ -12,9 +12,8 @@
 #include "spline_1d_constraint.h"
 #include "spline_1d_kernel.h"
 
-namespace planning{
-    class Spline1dGenerator{
-
+namespace planning {
+    class Spline1dGenerator {
     public:
         Spline1dGenerator(const std::vector<double>& x_knots, const uint32_t order);
 
@@ -45,4 +44,4 @@ namespace planning{
     };
 }
 
-#endif //PLANNING_SPLINE_1D_GENERATOR_H
+#endif  //PLANNING_SPLINE_1D_GENERATOR_H

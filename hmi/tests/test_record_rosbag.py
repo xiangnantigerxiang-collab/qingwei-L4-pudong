@@ -28,8 +28,7 @@ class RecordRosbagTest(unittest.TestCase):
             for component in hmi_config.CONFIG["components"]
         }
         self.assertNotIn("bags", components)
-        # data_logger 已整包删除（09-08），锁死不再回归
-        self.assertNotIn("data_logger", components)
+        self.assertFalse(components["data_logger"]["enabled"])
 
         perception = components["perception_bags"]
         self.assertEqual(perception["title"], "感知数据录制")

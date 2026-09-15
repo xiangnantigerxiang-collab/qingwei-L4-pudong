@@ -10,7 +10,7 @@
 #include "common/smooth_line/smooth_spline/piecewise_linear_kernel.h"
 #include "common/smooth_line/smooth_spline/piecewise_linear_constraint.h"
 
-namespace planning{
+namespace planning {
     class PiecewiseLinearGenerator {
     public:
         // x = f(t)
@@ -26,7 +26,9 @@ namespace planning{
         bool Solve();
 
         // results
-        Eigen::MatrixXd params() const { return qp_solver_->params(); }
+        Eigen::MatrixXd params() const {
+            return qp_solver_->params();
+        }
 
     private:
         const uint32_t num_of_segments_;
@@ -40,4 +42,4 @@ namespace planning{
     };
 }
 
-#endif //PLANNING_PIECEWISE_LINEAR_GENERATOR_H
+#endif  //PLANNING_PIECEWISE_LINEAR_GENERATOR_H

@@ -1,6 +1,6 @@
 # EHB(电子液压制动)状态消息 — 依据 docs/ehb-can.md(ehb-can.xls 保真整理)「发送信号需求」三报文+「接收信号需求」两报文及补充项
 # 方向:EHB 发送三帧(整车接收)+ 整车/VCU(SA=0x58)→EHB 帧六帧(canbus 在 can0 旁听解析,不发送);
-#   RecvCanData 解析入 mEHBMsg,T1 10Hz 发布于 /ehb_msg(/can_msg 09-07 起由 T2 20Hz 发布,两话题相位不锁)
+#   RecvCanData 解析入 mEHBMsg,T1 10Hz 随 /can_msg 同拍发布于 /ehb_msg
 # 位序 Intel(字节1~8,字节内位1~8,位1=最低位,ehb-can.md 2.2 显式整理约定);以下各帧均 DLC=8
 # 发送方向(帧1~3,周期 100ms):0x08FB670E EHB_STORAGE 蓄能(64359-01~20,20 信号)
 #   / 0x08FB680E EHB_AUTOBRAKE 主动制动(64360-1~18,18 信号) / 0x08FB690E EHB_EPB 驻车(64361-1~14,14 信号)

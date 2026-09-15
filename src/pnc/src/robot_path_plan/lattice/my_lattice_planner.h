@@ -19,65 +19,57 @@
 typedef std::array<double, 4> SState;
 typedef std::array<double, 4> LState;
 
-struct SPolyParam
-{
+struct SPolyParam {
     double end_t = 0.0;
     double end_v = 0.0;
     std::array<double, 6> params;
 };
 
-struct LPolyParam
-{
+struct LPolyParam {
     double end_s = 0.0;
     double end_l = 0.0;
     std::array<double, 6> params;
 };
 
-enum class State
-{
+enum class State {
     CRUISE,
     STOP,
     STOP_AHEAD_OBSTACLE,
     AVOID_OBSTACLE
 };
 
-struct FrenetPoint
-{
+struct FrenetPoint {
     double s = 0.0;
-    double ds_t = 0.0;  // ds/dt 一阶导
-    double d2s_t = 0.0; // d2s/dt 二阶导
+    double ds_t = 0.0;   // ds/dt 一阶导
+    double d2s_t = 0.0;  // d2s/dt 二阶导
 
     double l = 0.0;
-    double dl_s = 0.0;  // dl/ds 一阶导
-    double d2l_s = 0.0; // d2l/ds    二阶导
+    double dl_s = 0.0;   // dl/ds 一阶导
+    double d2l_s = 0.0;  // d2l/ds    二阶导
 
-    void printSelf()
-    {
+    void printSelf() {
         printf("s:%f ds_t:%f d2s_t:%f l:%f dl_s:%f d2l_s:%f\n", s, ds_t, d2s_t, l, dl_s, d2l_s);
     }
 };
 
 typedef std::vector<FrenetPoint> FrenetPath;
 
-struct Path2d
-{
-    double cost = 0.0;               // 总代价
-    double lat_diff_ref_cost = 0.0;  // 与参考线横向偏移代价
-    double lat_diff_last_cost = 0.0; // 与上一帧路径横向偏移代价
-    double travelled_cost = 0.0;     // t时间内行驶的距离代价
-    double smooth_cost = 0.0;        // 平滑代价
-    double destination_cost = 0.0;   // 终点代价
-    double obstacle_dist_cost = 0.0; // 障碍物距离代价
+struct Path2d {
+    double cost = 0.0;                // 总代价
+    double lat_diff_ref_cost = 0.0;   // 与参考线横向偏移代价
+    double lat_diff_last_cost = 0.0;  // 与上一帧路径横向偏移代价
+    double travelled_cost = 0.0;      // t时间内行驶的距离代价
+    double smooth_cost = 0.0;         // 平滑代价
+    double destination_cost = 0.0;    // 终点代价
+    double obstacle_dist_cost = 0.0;  // 障碍物距离代价
     std::vector<Pose2d> poses;
-    void sumCost()
-    {
+    void sumCost() {
         cost = lat_diff_ref_cost + lat_diff_last_cost + smooth_cost +
                travelled_cost + destination_cost + obstacle_dist_cost;
     }
 };
 
-class MyLatticePlanner
-{
+class MyLatticePlanner {
 public:
     MyLatticePlanner() = delete;
     MyLatticePlanner(CollisionCheckWithBBoxSPtr &collision_check);

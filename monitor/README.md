@@ -27,6 +27,8 @@ bash monitor/monitor.sh                # 0.0.0.0:8081 + dashboard 8082 同进程
 ## 与 simview 语义对照（差异即约定）
 
 - yaw=(90°−heading) 一致；障碍 dx/dy 互换一致（半透明+抬 h/2 为有意改进）；路径 x/y 不等长整帧丢弃一致；停车点 stopAngle 用于朝向（C++ 恒指东，增强）；托盘不含 C++ 死偏移 hook_xg−2.8
+- **障碍物按 `/perception` objs 的 type 着色（3D CUBE 与降级 2D 同规则）**：0=红 / 1=橙 / 2=黄 / 其余（含字段缺失）墨绿 `0x339999`（历史默认色）。type 语义由上游决定：hdmap `LaneMapServer::ClassifyPerception`（09-15）车道占用 0-本道/1-左一/2-左二/3-左外/4-右外（外道落墨绿）；object.msg 旧注释为 0-车/1-行人/2-骑行/3-未知——两套语义下本配色均成立
+- **置信度文字（09-15，同日改白色 3 倍字号）**：`object.msg` 的 `confidence`（上游时域滤波重算）以**白色文字、3 倍字号**悬浮显示在障碍框正上方——3D 为 canvas 纹理 Sprite（84px 字号/384×144 画布/世界尺寸 4.8×1.8m，按文本有限缓存，随 lidar 图层开关显隐），降级 2D 为 36px 直立 fillText（不随框旋转）；conf 缺失则不显示
 - 地图：map/ 下全部 .csv 按名排序全画；rosparam /robot/mapfile 指单文件时只画该张
 - 2D 补盲按通道左蓝右绿（intensity 未参与着色）；不订阅 /planning/obstacles（死话题）
 

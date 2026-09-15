@@ -1,33 +1,34 @@
 
 #include "common/polynomial_xd/polynomial_xd.h"
 
-namespace planning
-{
+namespace planning {
     PolynomialXd::PolynomialXd(const std::uint32_t order)
-            : params_(order + 1, 0.0) {
-
+        : params_(order + 1, 0.0) {
     }
 
     PolynomialXd::PolynomialXd(const std::vector<double>& params)
-            : params_(params) {
-
+        : params_(params) {
     }
 
-    std::uint32_t PolynomialXd::order() const { return params_.size() - 1; }
+    std::uint32_t PolynomialXd::order() const {
+        return params_.size() - 1;
+    }
 
     void PolynomialXd::SetParams(const std::vector<double>& params) {
         params_ = params;
     }
 
-    const std::vector<double>& PolynomialXd::params() const { return params_; }
+    const std::vector<double>& PolynomialXd::params() const {
+        return params_;
+    }
 
     PolynomialXd PolynomialXd::DerivedFrom(const PolynomialXd& base) {
         std::vector<double> params;
-        if (base.order() <= 0) {
+        if(base.order() <= 0) {
             params.clear();
         } else {
             params.resize(base.params().size() - 1);
-            for (std::uint32_t i = 1; i < base.order() + 1; ++i) {
+            for(std::uint32_t i = 1; i < base.order() + 1; ++i) {
                 params[i - 1] = base[i] * i;
             }
         }
@@ -39,7 +40,7 @@ namespace planning
         std::vector<double> params;
         params.resize(base.params().size() + 1);
         params[0] = intercept;
-        for (std::uint32_t i = 0; i < base.params().size(); ++i) {
+        for(std::uint32_t i = 0; i < base.params().size(); ++i) {
             params[i + 1] = base[i] / (i + 1);
         }
         return PolynomialXd(params);
@@ -47,7 +48,7 @@ namespace planning
 
     double PolynomialXd::operator()(const double value) const {
         double result = 0.0;
-        for (auto rit = params_.rbegin(); rit != params_.rend(); ++rit) {
+        for(auto rit = params_.rbegin(); rit != params_.rend(); ++rit) {
             result *= value;
             result += (*rit);
         }
@@ -55,7 +56,7 @@ namespace planning
     }
 
     double PolynomialXd::operator[](const std::uint32_t index) const {
-        if (index >= params_.size()) {
+        if(index >= params_.size()) {
             return 0.0;
         } else {
             return params_[index];

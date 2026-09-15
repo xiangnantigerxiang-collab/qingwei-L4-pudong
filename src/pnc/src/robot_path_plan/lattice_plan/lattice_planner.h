@@ -13,14 +13,13 @@
 #include "common/math/cartesian_frenet_conversion.h"
 #include "../pathmatch/pathmatcher.h"
 #include "common/struct_type.h"
-#include "common/config/vehicle_param_config/vehicle_param_config.h" 
-#include "../collisioncheck/collision_detection.h" 
+#include "common/config/vehicle_param_config/vehicle_param_config.h"
+#include "../collisioncheck/collision_detection.h"
 #include "../pathdecision/path_decision.h"
 
-class LatticePlanner 
-{ 
+class LatticePlanner {
 public:
-    std::tuple<std::vector<TrajectoryPoint>,std::vector<std::vector<TrajectoryPoint>>,bool,int> PlanOnReferenceLine(
+    std::tuple<std::vector<TrajectoryPoint>, std::vector<std::vector<TrajectoryPoint>>, bool, int> PlanOnReferenceLine(
         const TrajectoryPoint& planning_init_point,
         std::vector<OriginalInsData>& reference_line,
         std::vector<sCellMsg> lidarobjs_global,
@@ -35,20 +34,19 @@ private:
                                 std::array<double, 3>* ptr_s,
                                 std::array<double, 3>* ptr_d);
 
-    std::tuple<std::vector<TrajectoryPoint>,std::vector<std::vector<TrajectoryPoint>>,bool,int> GetMinCostPath(
-        const std::vector<std::vector<TrajectoryPoint>> &trajectory,
-        std::tuple<bool,bool,int> &path_status,
+    std::tuple<std::vector<TrajectoryPoint>, std::vector<std::vector<TrajectoryPoint>>, bool, int> GetMinCostPath(
+        const std::vector<std::vector<TrajectoryPoint>>& trajectory,
+        std::tuple<bool, bool, int>& path_status,
         int vehiclestatus);
 
     int CalculateMinNumber(std::vector<std::vector<TrajectoryPoint>> trajectory,
-                           std::tuple<bool,bool,int> &path_status,
-                           int idex_last,bool changepath);
-  
-    double speed_limit = 30.0/3.6;
-    CartesianFrenetConverter *cartesianfrenetconverter;
-    PathMatcher *pathmatcher;
-    TrajectoryCombiner *trajectorycombiner;
-    VehicleParamConfig vehicle_param;
-    std::unique_ptr<TrajectoryCost> trajectorycost; 
-};
+                           std::tuple<bool, bool, int>& path_status,
+                           int idex_last, bool changepath);
 
+    double speed_limit = 30.0 / 3.6;
+    CartesianFrenetConverter* cartesianfrenetconverter;
+    PathMatcher* pathmatcher;
+    TrajectoryCombiner* trajectorycombiner;
+    VehicleParamConfig vehicle_param;
+    std::unique_ptr<TrajectoryCost> trajectorycost;
+};

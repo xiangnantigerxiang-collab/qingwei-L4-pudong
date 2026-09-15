@@ -15,11 +15,11 @@ void TaskPlanCore::SetRemoteSignal(const RemoteSignalIn &remote_signal) {
 void TaskPlanCore::SetCanData(const CanStateIn &can_data) {
     mCanData = can_data;
 
-    if (mTaskPool.size() == 0)
+    if(mTaskPool.size() == 0)
         return;
 
     // 自动模式下每帧都从任务池重新武装任务列表(切回自动即恢复任务)
-    if (can_data.controlPanelState == 1)
+    if(can_data.controlPanelState == 1)
         mTaskList = mTaskPool;
 }
 
@@ -46,9 +46,9 @@ void TaskPlanCore::SetTaskInfo(const TaskInfoIn &task_info,
     // 每条 running_msg 都携带新目标点, 恒视为"有变化")
     bool task_running = (int)mTaskList.size() > 0 &&
                         mCurTaskNum < (int)mTaskList.size();
-    if (task_running) {
-        if (task_info.task_id == mTaskInfoMsg.task_id &&
-            task_info.task_id != 1000) {
+    if(task_running) {
+        if(task_info.task_id == mTaskInfoMsg.task_id &&
+           task_info.task_id != 1000) {
             // 无变化且仍在执行: 忽略, 不打断当前任务
             printf("任务未变化且正在执行, 忽略: id:%lld\n",
                    (long long)task_info.task_id);
@@ -78,7 +78,7 @@ void TaskPlanCore::SetTaskInfo(const TaskInfoIn &task_info,
         std::string file = "task" + cs_task_id + ".yaml";
 
         mTaskPool = ParseTaskFile(file, task_info.task_id, task_file_dir);
-        if (mTaskPool.empty()) {
+        if(mTaskPool.empty()) {
             // 任务文件缺失/损坏被拒: 上报失败终态, 不让云端无限等待
             printf("任务文件被拒, 上报失败: id:%lld\n",
                    (long long)task_info.task_id);
@@ -93,7 +93,7 @@ void TaskPlanCore::SetTaskInfo(const TaskInfoIn &task_info,
             return;
         }
         printf("mTaskPool.size() = %d\n", (int)mTaskPool.size());
-        for (int i = 0; i < (int)mTaskPool.size(); i++) {
+        for(int i = 0; i < (int)mTaskPool.size(); i++) {
             TASKINFO_S task_info = mTaskPool[i];
             printf("i:%d, type:%d, id:%lld action:%d, stopX,:%.1f stopY:%.1f, desireSpeed:%.1f\n",
                    i, task_info.tTaskType,
@@ -107,7 +107,7 @@ void TaskPlanCore::SetTaskInfo(const TaskInfoIn &task_info,
         mTaskList = mTaskPool;
     }
 
-    if (task_info.task_id == 1000) { // follow cloud command
+    if(task_info.task_id == 1000) {  // follow cloud command
         mTaskStatus.procedure = 1;
         mTaskInfoMsg = task_info;
 
@@ -118,7 +118,7 @@ void TaskPlanCore::SetTaskInfo(const TaskInfoIn &task_info,
 
         // 空任务文件守卫(文件缺失/坏 yaml 被拒后 mTaskPool 为空,
         // 原 mTaskPool[0] 直接越界写是 UB)
-        if (mTaskPool.size() > 0) {
+        if(mTaskPool.size() > 0) {
             mTaskPool[0].tXAxis = RunningtXAxis;
             mTaskPool[0].tYAxis = RunningtYAxis;
             mTaskPool[0].tAngle = RunningtAngle;
@@ -160,7 +160,7 @@ void TaskPlanCore::InitParameter(const char *config_file) {
 }
 
 void TaskPlanCore::TaskPlanProcess(TaskPlanSink sink) {
-    if (mCanData.controlPanelState == 0) {
+    if(mCanData.controlPanelState == 0) {
         mTaskPlanData.workMode = MANUALCONTROLMODE;
         // 手动模式不 return(原 return 被注释): 状态机在手动模式下
         // 照常推进——原行为
@@ -175,7 +175,7 @@ void TaskPlanCore::PublishTaskPlanMsg(float max_vehicle_speed,
                                       TaskPlanSink sink) {
     int size = (int)mTaskList.size();
 
-    if (size != 0 && mCurTaskNum < size) {
+    if(size != 0 && mCurTaskNum < size) {
         TASKINFO_S task_info = mTaskList.at(mCurTaskNum);
         mTaskPlanData.taskType = task_info.tTaskType;
         mTaskPlanData.pathList = task_info.tPathList;
@@ -183,7 +183,7 @@ void TaskPlanCore::PublishTaskPlanMsg(float max_vehicle_speed,
         mTaskPlanData.pathY.clear();
         mTaskPlanData.pathAngle.clear();
 
-        if (max_vehicle_speed > task_info.tSpeed) {
+        if(max_vehicle_speed > task_info.tSpeed) {
             mTaskPlanData.desireSpeed = task_info.tSpeed;
         } else {
             mTaskPlanData.desireSpeed = max_vehicle_speed;
@@ -208,7 +208,7 @@ void TaskPlanCore::PublishTaskPlanMsg(float max_vehicle_speed,
         mTaskPlanData.desireSpeed = 0;
         mTaskPlanData.desireGear = GEAR_N;
     }
-    if (mCurTaskNum >= size) {
+    if(mCurTaskNum >= size) {
         printf("-----当前任务块已完成------\n");
         mTaskPlanData.desireSpeed = 0;
         mTaskPlanData.desireGear = GEAR_N;
@@ -249,7 +249,7 @@ std::vector<TASKINFO_S> TaskPlanCore::ParseTaskFile(
         task_node = YAML::LoadFile(task_file.c_str());
         task_num = task_node["task_sum"].as<int>();
 
-        for (int i = 0; i < task_num; ++i) {
+        for(int i = 0; i < task_num; ++i) {
             ClearTASKINFO_S(task_info);
             std::string key = "task" + std::to_string(i) + "_task_type";
             task_info.tTaskType = (uint8_t)task_node[key].as<int>();
@@ -271,7 +271,7 @@ std::vector<TASKINFO_S> TaskPlanCore::ParseTaskFile(
             task_info.task_id = task_id;
             rtn_task.push_back(task_info);
         }
-    } catch (const std::exception &e) {
+    } catch(const std::exception &e) {
         // 任务文件缺失/字段坏: 告警并拒绝该任务(返回空表), 不让节点崩溃
         printf("任务文件加载失败, 拒绝该任务: %s (%s)\n",
                task_file.c_str(), e.what());
@@ -285,33 +285,33 @@ std::vector<TASKINFO_S> TaskPlanCore::ParseTaskFile(
 bool TaskPlanCore::OperationStateJudge(TASKINFO_S tTask) {
     bool rtn_value = 0;
 
-    switch (tTask.tSubAction) {
-    case NO_OPERATION:
-        rtn_value = 1;
-        break;
-    case HOOKOPERATION:
-        // canbus 状态机判"销至顶端"(驱动入 min±10 带 1 秒)→任务完成
-        if (mCanData.hookStatus == ACTUATOR_UP_END &&
-            mPathPlanStatus.taskExecuStatus == TASKFINISHED)
+    switch(tTask.tSubAction) {
+        case NO_OPERATION:
             rtn_value = 1;
-        break;
-    case DECOUPLING:
-        // canbus 状态机判"销至底端"(驱动入 max±10 带 1 秒)→任务完成
-        if (mCanData.hookStatus == ACTUATOR_DOWN_END &&
-            mPathPlanStatus.taskExecuStatus == TASKFINISHED)
+            break;
+        case HOOKOPERATION:
+            // canbus 状态机判"销至顶端"(驱动入 min±10 带 1 秒)→任务完成
+            if(mCanData.hookStatus == ACTUATOR_UP_END &&
+               mPathPlanStatus.taskExecuStatus == TASKFINISHED)
+                rtn_value = 1;
+            break;
+        case DECOUPLING:
+            // canbus 状态机判"销至底端"(驱动入 max±10 带 1 秒)→任务完成
+            if(mCanData.hookStatus == ACTUATOR_DOWN_END &&
+               mPathPlanStatus.taskExecuStatus == TASKFINISHED)
+                rtn_value = 1;
+            // if (mCanData.linkPallet == 1)
+            //     rtn_value = true;
+            break;
+        case UNLOAD_LOWER:
             rtn_value = 1;
-        // if (mCanData.linkPallet == 1)
-        //     rtn_value = true;
-        break;
-    case UNLOAD_LOWER:
-        rtn_value = 1;
-        break;
-    case WAITING:
-        if (mRemoteSignal.isfull == 1)
-            rtn_value = 1;
-        break;
-    default:
-        break;
+            break;
+        case WAITING:
+            if(mRemoteSignal.isfull == 1)
+                rtn_value = 1;
+            break;
+        default:
+            break;
     }
 
     return rtn_value;
@@ -319,7 +319,7 @@ bool TaskPlanCore::OperationStateJudge(TASKINFO_S tTask) {
 
 bool TaskPlanCore::JudgeArrivedDestination(TASKINFO_S tTask) {
     // printf("executestatus: %d\n", mPathPlanStatus.taskExecuStatus);
-    if (mPathPlanStatus.taskExecuStatus != TASKFINISHED)
+    if(mPathPlanStatus.taskExecuStatus != TASKFINISHED)
         return 0;
 
     return 1;
@@ -332,10 +332,10 @@ void TaskPlanCore::TaskManage(int &tCurTaskNum,
     uint8_t task_type = 0;
     TASKINFO_S task_info;
 
-    if (mTimerCount > 500)
+    if(mTimerCount > 500)
         mTimerCount = 500;
 
-    if (0 == size || tCurTaskNum >= size) { // 任务列表为空
+    if(0 == size || tCurTaskNum >= size) {  // 任务列表为空
         mTaskPlanData.desireSpeed = 0;
         return;
     }
@@ -346,9 +346,9 @@ void TaskPlanCore::TaskManage(int &tCurTaskNum,
 
     // action name && action finished
 
-    if (task_type == DOACTION) { // 执行动作的任务
+    if(task_type == DOACTION) {  // 执行动作的任务
         int state = OperationStateJudge(tTaskList.at(tCurTaskNum));
-        if (state == 1 && (mTimerCount++ > 50)) {
+        if(state == 1 && (mTimerCount++ > 50)) {
             mTimerCount = 0;
             tCurTaskNum++;
         }
@@ -361,9 +361,9 @@ void TaskPlanCore::TaskManage(int &tCurTaskNum,
         // ADAPTIVEBACK = 5,
         // DOACTION = 6,
         // ADAPTIVEPARK = 7,
-        if (task_type >= TRACKPATH && task_type <= ADAPTIVEPARK) {
-            int state = JudgeArrivedDestination(tTaskList.at(tCurTaskNum)); // 检查是否达到终点
-            if (state == 1 && (mTimerCount++ > 20)) {
+        if(task_type >= TRACKPATH && task_type <= ADAPTIVEPARK) {
+            int state = JudgeArrivedDestination(tTaskList.at(tCurTaskNum));  // 检查是否达到终点
+            if(state == 1 && (mTimerCount++ > 20)) {
                 mTimerCount = 0;
                 tCurTaskNum++;
             }
@@ -377,7 +377,7 @@ void TaskPlanCore::TaskManage(int &tCurTaskNum,
     }
 
     // 全部任务块完成时才置"已完成"(原 == size-1 会在进入末块时就提前上报)
-    if (tCurTaskNum >= size) {
+    if(tCurTaskNum >= size) {
         mTaskStatus.procedure = 2;
     }
 }
@@ -413,7 +413,7 @@ void TaskPlanCore::OnCommandMsg(const CommandIn &cmd, TaskPlanSink sink) {
     double speed = 100.0;
 
     mCommandFbData.ready = 1;
-    mCommandFbData.commandState = cmd.commandState; // 0停车 1暂停2继续
+    mCommandFbData.commandState = cmd.commandState;  // 0停车 1暂停2继续
     mCommandFbData.commandID = cmd.commandID;
     mCommandFbData.limit = cmd.limit;
     mCommandFbData.speedCommand = cmd.speedCommand;
@@ -422,12 +422,12 @@ void TaskPlanCore::OnCommandMsg(const CommandIn &cmd, TaskPlanSink sink) {
 
     // speed = msg->speedCommand;
     int commandState = cmd.commandState;
-    if (commandState == 0) { // 停车
+    if(commandState == 0) {  // 停车
         speed = 0.0;
         clearTaskPool();
-    } else if (commandState == 1) { // 暂停
+    } else if(commandState == 1) {  // 暂停
         speed = 0.0;
-    } else if (commandState == 2) { // 继续
+    } else if(commandState == 2) {  // 继续
         // do noting;
     }
 
@@ -442,10 +442,10 @@ void TaskPlanCore::RunHeartBeat(const HeartBeatInputs &in, TaskPlanSink sink) {
     int minute = in.minute;
     int second = in.second;
 
-    hour += 8; // set timezone to beijing
-    hour %= 24; // 回卷(仅保证 hour 字段合法, 跨日不进位日期)
+    hour += 8;   // set timezone to beijing
+    hour %= 24;  // 回卷(仅保证 hour 字段合法, 跨日不进位日期)
 
-    if (second != mHbSecondLast) {
+    if(second != mHbSecondLast) {
         mHbCount = 0;
         mHbSecondLast = second;
     } else {
@@ -454,23 +454,23 @@ void TaskPlanCore::RunHeartBeat(const HeartBeatInputs &in, TaskPlanSink sink) {
 
     std::string ts = std::to_string(year);
 
-    if (month < 10)
+    if(month < 10)
         ts += "0";
     ts += std::to_string(month);
 
-    if (day < 10)
+    if(day < 10)
         ts += "0";
     ts += std::to_string(day);
 
-    if (hour < 10)
+    if(hour < 10)
         ts += "0";
     ts += std::to_string(hour);
 
-    if (minute < 10)
+    if(minute < 10)
         ts += "0";
     ts += std::to_string(minute);
 
-    if (second < 10)
+    if(second < 10)
         ts += "0";
     ts += std::to_string(second);
 
@@ -496,11 +496,11 @@ void TaskPlanCore::RunHeartBeat(const HeartBeatInputs &in, TaskPlanSink sink) {
     KP.heading = mNavData.heading;
     HB.remainingKeyPoints.push_back(KP);
     HB.drivingState = 0;
-    if (HB.speed > 0.1)
+    if(HB.speed > 0.1)
         HB.drivingState = 3;
-    if (acc > 0.02)
+    if(acc > 0.02)
         HB.drivingState = 2;
-    if (acc < -0.02)
+    if(acc < -0.02)
         HB.drivingState = 1;
 
     int sensorstate = in.sensorstate;
@@ -512,14 +512,14 @@ void TaskPlanCore::RunHeartBeat(const HeartBeatInputs &in, TaskPlanSink sink) {
     // 2-挂钩异常/1-脱钩告警): 4(up end=挂牢)/3(down end=脱开)直传,
     // 1(block=堵转)报 2, 其余 0(原 /canbus/hookstate param 已随状态机下线)
     int hookstate = 0;
-    if (mCanData.hookStatus == ACTUATOR_UP_END ||
-        mCanData.hookStatus == ACTUATOR_DOWN_END) {
+    if(mCanData.hookStatus == ACTUATOR_UP_END ||
+       mCanData.hookStatus == ACTUATOR_DOWN_END) {
         hookstate = mCanData.hookStatus;
-    } else if (mCanData.hookStatus == ACTUATOR_BLOCK) {
+    } else if(mCanData.hookStatus == ACTUATOR_BLOCK) {
         hookstate = 2;  // 堵转按"挂钩异常"上报
     }
     HB.vehicleState = 0;
-    if (mCanData.faultCode.size() > 0) {
+    if(mCanData.faultCode.size() > 0) {
         HB.vehicleState = mCanData.faultCode[0];
     }
 
@@ -530,7 +530,7 @@ void TaskPlanCore::RunHeartBeat(const HeartBeatInputs &in, TaskPlanSink sink) {
 
     emitPublish(sink, TP_PUBLISH_HEARTBEAT);
 
-    if (sensorstate > 0)
+    if(sensorstate > 0)
         emitParamInt(sink, "/cloud/suggestspeed", 0);
 
     // running feedback
@@ -556,7 +556,7 @@ void TaskPlanCore::RunHeartBeat(const HeartBeatInputs &in, TaskPlanSink sink) {
 
 // ---- 事件发射 ----
 void TaskPlanCore::emitPublish(TaskPlanSink sink, TaskPlanEventType type) {
-    if (!sink)
+    if(!sink)
         return;
     TaskPlanEvent ev;
     ev.type = type;
@@ -565,7 +565,7 @@ void TaskPlanCore::emitPublish(TaskPlanSink sink, TaskPlanEventType type) {
 
 void TaskPlanCore::emitParamInt(TaskPlanSink sink, const char *key,
                                 int value) {
-    if (!sink)
+    if(!sink)
         return;
     TaskPlanEvent ev;
     ev.type = TP_PARAM_INT;
@@ -576,7 +576,7 @@ void TaskPlanCore::emitParamInt(TaskPlanSink sink, const char *key,
 
 void TaskPlanCore::emitParamDouble(TaskPlanSink sink, const char *key,
                                    double value) {
-    if (!sink)
+    if(!sink)
         return;
     TaskPlanEvent ev;
     ev.type = TP_PARAM_DOUBLE;
@@ -586,7 +586,7 @@ void TaskPlanCore::emitParamDouble(TaskPlanSink sink, const char *key,
 }
 
 void TaskPlanCore::emitLogInfo(TaskPlanSink sink, const char *text) {
-    if (!sink)
+    if(!sink)
         return;
     TaskPlanEvent ev;
     ev.type = TP_LOG_INFO;

@@ -8,19 +8,17 @@
 #include "affine_constraint.h"
 #include "common/surface/vec2d.h"
 
-namespace planning
-{
-    class Spline2dConstraint
-    {
+namespace planning {
+    class Spline2dConstraint {
     public:
         Spline2dConstraint() = default;
         Spline2dConstraint(const std::vector<double>& t_knots, const uint32_t order);
 
         bool Add2dBoundary(
-                const std::vector<double>& t_coord, const std::vector<double>& angle,
-                const std::vector<math::Vec2d>& ref_point,
-                const std::vector<double>& longitudinal_bound,
-                const std::vector<double>& lateral_bound);
+            const std::vector<double>& t_coord, const std::vector<double>& angle,
+            const std::vector<math::Vec2d>& ref_point,
+            const std::vector<double>& longitudinal_bound,
+            const std::vector<double>& lateral_bound);
 
         bool AddPointAngleConstraint(const double t,
                                      const double angle);
@@ -48,7 +46,7 @@ namespace planning
         std::vector<double> PolyCoef(const double t) const;
 
         std::vector<double> AffineDerivativeCoef(
-                const double angle, const double t) const;
+            const double angle, const double t) const;
 
         std::vector<double> AffineDerivativeCoef(const double t) const;
 
@@ -75,4 +73,4 @@ namespace planning
     };
 }
 
-#endif //PLANNING_SPLINE_2D_CONSTRAINT_H
+#endif  //PLANNING_SPLINE_2D_CONSTRAINT_H

@@ -176,6 +176,8 @@ def t02_conversions():
           abs(o["yaw"] - math.radians(-10.0)) < 1e-3, str(o["yaw"]))
     check("障碍坐标减 origin",
           abs(o["x"] - (58.0 - d["origin"][0])) < 0.02)
+    check("障碍 type 透传(供前端着色)", o["type"] == 0, str(o))
+    check("障碍 confidence 透传", o["conf"] == 0.87, str(o))
 
     check("refer 路径 2 点", d["paths"]["refer"] is not None and
           len(d["paths"]["refer"]) == 2)

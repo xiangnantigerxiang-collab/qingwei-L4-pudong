@@ -4,9 +4,9 @@
 
 #include "common/polynomial_xd/polynomial_xd.h"
 
-namespace planning{
+namespace planning {
 
-    class Spline1dSeg{
+    class Spline1dSeg {
     public:
         // order represents the highest order.
         explicit Spline1dSeg(const uint32_t order);
@@ -34,4 +34,4 @@ namespace planning{
     };
 }
 
-#endif //PLANNING_SPLINE_1D_SEG_H
+#endif  //PLANNING_SPLINE_1D_SEG_H

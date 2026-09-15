@@ -10,7 +10,7 @@
 
 namespace math {
 
-/**
+    /**
  * @class AABox2d
  * @brief Implements a class of (undirected) axes-aligned bounding boxes in 2-D.
  * This class is referential-agnostic.
@@ -48,77 +48,101 @@ namespace math {
          * @brief Getter of center_
          * @return Center of the box
          */
-        const Vec2d &center() const { return center_; }
+        const Vec2d &center() const {
+            return center_;
+        }
 
         /**
         * @brief Getter of x-component of center_
         * @return x-component of the center of the box
         */
-        double center_x() const { return center_.x(); }
+        double center_x() const {
+            return center_.x();
+        }
 
         /**
         * @brief Getter of y-component of center_
         * @return y-component of the center of the box
         */
-        double center_y() const { return center_.y(); }
+        double center_y() const {
+            return center_.y();
+        }
 
         /**
         * @brief Getter of length_
         * @return The length of the box
         */
-        double length() const { return length_; }
+        double length() const {
+            return length_;
+        }
 
         /**
         * @brief Getter of width_
         * @return The width of the box
         */
-        double width() const { return width_; }
+        double width() const {
+            return width_;
+        }
 
         /**
         * @brief Getter of half_length_
         * @return Half of the length of the box
         */
-        double half_length() const { return half_length_; }
+        double half_length() const {
+            return half_length_;
+        }
 
         /**
         * @brief Getter of half_width_
         * @return Half of the width of the box
         */
-        double half_width() const { return half_width_; }
+        double half_width() const {
+            return half_width_;
+        }
 
         /**
         * @brief Getter of length_*width_
         * @return The area of the box
         */
-        double area() const { return length_ * width_; }
+        double area() const {
+            return length_ * width_;
+        }
 
         /**
         * @brief Returns the minimum x-coordinate of the box
         *
         * @return x-coordinate
         */
-        double min_x() const { return center_.x() - half_length_; }
+        double min_x() const {
+            return center_.x() - half_length_;
+        }
 
         /**
         * @brief Returns the maximum x-coordinate of the box
         *
         * @return x-coordinate
         */
-        double max_x() const { return center_.x() + half_length_; }
+        double max_x() const {
+            return center_.x() + half_length_;
+        }
 
         /**
         * @brief Returns the minimum y-coordinate of the box
         *
         * @return y-coordinate
         */
-        double min_y() const { return center_.y() - half_width_; }
+        double min_y() const {
+            return center_.y() - half_width_;
+        }
 
         /**
         * @brief Returns the maximum y-coordinate of the box
         *
         * @return y-coordinate
         */
-        double max_y() const { return center_.y() + half_width_; }
+        double max_y() const {
+            return center_.y() + half_width_;
+        }
 
         /**
         * @brief Gets all corners in counter clockwise order.
@@ -188,7 +212,7 @@ namespace math {
         *
         * @return A string
         */
-//        std::string DebugString() const;
+        //        std::string DebugString() const;
 
     private:
         Vec2d center_;
@@ -199,4 +223,4 @@ namespace math {
     };
 
 }  // namespace math
-#endif //PLANNING_AABOX_2D_H
+#endif  //PLANNING_AABOX_2D_H

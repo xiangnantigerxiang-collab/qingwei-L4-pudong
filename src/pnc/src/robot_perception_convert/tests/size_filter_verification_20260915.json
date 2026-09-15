@@ -1,0 +1,54 @@
+{
+  "date": "2026-09-15",
+  "function": "robot::perception FilterPerceptionByConfidence(const robot::perception& tPerception, double tConfidenceThreshold, double tMinWidth = 0.0, double tMinLength = 0.0)",
+  "dimension_semantics": {
+    "dx": "横向宽，米",
+    "dy": "纵向长，米",
+    "comparison": "最小尺寸下限，任一不足下限剔除；相等保留",
+    "invalid_dimensions": "非正或非有限尺寸剔除",
+    "invalid_minimums": "非有限或负下限抛出 std::invalid_argument"
+  },
+  "publication_thresholds": {
+    "confidence": 0.25,
+    "minimum_width_m": 0.0,
+    "minimum_length_m": 0.0
+  },
+  "modified_files": [
+    "src/pnc/src/robot_perception_convert/perception_confidence_filter.h",
+    "src/pnc/src/robot_perception_convert/perception_msg_convert.cpp",
+    "src/pnc/src/robot_perception_convert/perception_confidence_filter.inc",
+    "src/pnc/src/robot_perception_convert/README.md",
+    "src/pnc/src/robot_perception_convert/tests/publish_integration.cpp"
+  ],
+  "size_checks": 32,
+  "checks": {
+    "language": "C++11",
+    "transport": "generated ROS message stubs",
+    "sdk": "/home/mothotob/work/projects/claude-code/qingwei-L4-No2-pudong/src/hdmap/sdk",
+    "cmake_target": "perception_msg_convert",
+    "dynamic_link": "PASS",
+    "integration": "PASS: 3075 filtered perception publish checks",
+    "sanitizers": "PASS: 3075 filtered perception publish checks"
+  },
+  "cppcheck": {
+    "command": [
+      "cppcheck",
+      "--enable=warning,performance,portability",
+      "--std=c++11",
+      "--error-exitcode=1",
+      "--suppress=missingIncludeSystem",
+      "-I",
+      "/tmp/perception_size_verify/stubs",
+      "-I",
+      "src/pnc/include",
+      "-I",
+      "src/hdmap/sdk/include",
+      "src/pnc/src/robot_perception_convert/perception_msg_convert.cpp"
+    ],
+    "exit_code": 0
+  },
+  "temporal_algorithm": "UNCHANGED",
+  "logs": "/tmp/perception_size_verify",
+  "backup": "/home/mothotob/work/projects/claude-code/perception_before_size_filter_20260915_152528.tar.gz",
+  "limitation": "ROS transport uses stubs generated from actual message definitions; ROS1 communication and on-vehicle execution have not been verified"
+}

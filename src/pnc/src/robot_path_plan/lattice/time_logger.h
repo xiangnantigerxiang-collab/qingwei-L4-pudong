@@ -2,17 +2,14 @@
 #define TIME_LOGGER_H
 #include <chrono>
 
-class TimeLogger
-{
+class TimeLogger {
 public:
     TimeLogger() = default;
     ~TimeLogger() = default;
-    void start()
-    {
+    void start() {
         start_ = std::chrono::high_resolution_clock::now();
     }
-    double duration()
-    {
+    double duration() {
         auto end = std::chrono::high_resolution_clock::now();
         double esplase = std::chrono::duration<double, std::ratio<1, 1000>>(end - start_).count();
         return esplase;

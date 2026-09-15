@@ -14,19 +14,18 @@
 #include "common/struct_type.h"
 #include "common/config/dp_poly_path_config.h"
 
-class CollisionCheck 
-{
+class CollisionCheck {
 public:
     CollisionCheck() = default;
 
     explicit CollisionCheck(
-                 const std::vector<std::vector<TrajectoryPoint>> &trajectorypoint,
-                 const VehicleParamConfig &vehicle_param,
-                 std::vector<sCellMsg> lidarobjs_global);
+        const std::vector<std::vector<TrajectoryPoint>> &trajectorypoint,
+        const VehicleParamConfig &vehicle_param,
+        std::vector<sCellMsg> lidarobjs_global);
 
     std::vector<std::vector<TrajectoryPoint>> Collisionproperty();
 
-    std::tuple<double,bool> CollisionCost(
+    std::tuple<double, bool> CollisionCost(
         const std::vector<TrajectoryPoint> &trajectory, int path_id);
 
     std::vector<Point> GetRect(Point p);
@@ -37,7 +36,7 @@ public:
 private:
     void BuildObstacleBox(std::vector<sCellMsg> lidarobjs_global);
     void GetObstacleCentral(std::vector<sCellMsg> lidarobjs_global);
-    bool InCollision(const std::vector<TrajectoryPoint>& trajectory);
+    bool InCollision(const std::vector<TrajectoryPoint> &trajectory);
 
     std::vector<Box2d> obstacle_bound_rectangles_;
     std::vector<std::vector<TrajectoryPoint>> trajectorypoint_;
@@ -47,4 +46,4 @@ private:
     std::vector<sCellMsg> obstacle;
 };
 
-#endif //_COLLISIONDETECTION
+#endif  //_COLLISIONDETECTION

@@ -101,10 +101,9 @@ CONFIG = {
             "cwd": "$ROOT",
             "setup": ["$ROOT/devel/setup.bash"],
             "health": [
-                # /can_msg 由 canbus T2(20Hz)发布(09-07 晚用户自 T1 移回,恢复基线编排);
-                # min_hz=20 → 有效门槛 16Hz(0.8 容差)。发布频率若再调整必须同步本值
-                # ——09-07 实车"CAN 总线启动超时"即阈值与实际频率漂移所致(workflow 09-07 日志)
-                {"topic": "/can_msg", "min_hz": 20},
+                # /can_msg 自 2026-09-07 起由 canbus T1(10Hz)发布(状态机+数据同拍,
+                # 用户调整);min_hz=10 → 有效门槛 8Hz(0.8 容差),勿改回 20
+                {"topic": "/can_msg", "min_hz": 10},
                 {"topic": "/can_recv", "min_hz": 20},
             ],
             "start_timeout": 30,
@@ -230,6 +229,19 @@ CONFIG = {
             # fms_agent.launch 实际 6 个 /cloud 前缀节点,阈值 5 允许坏 1 个
             "health": [{"type": "nodes", "pattern": "/cloud", "min": 5}],
             "stop_pat": "fms_agent.launch",
+        },
+        {
+            "name": "data_logger",
+            "title": "行车记录",
+            "group": 4,
+            "cmd": ["roslaunch", "data_logger", "data_logger.launch"],
+            "cwd": "$ROOT",
+            "setup": ["$ROOT/devel/setup.bash"],
+            "health": [],   # 纯订阅落盘,无发布话题,仅进程存活监控
+            "start_timeout": 30,
+            "stop_pat": "data_logger.launch",
+            # 行车记录只允许按需手动启动，不参与一键启动。
+            "enabled": False,
         },
         {
             "name": "monitor",

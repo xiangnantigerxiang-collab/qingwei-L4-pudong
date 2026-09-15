@@ -20,17 +20,17 @@ using namespace planning;
 #define kCurvatureDefault -1
 
 //path param
-#define kSpdMax_Forward 10.0/3.6
-#define kSpdMin_Forward 2.0/3.6
-#define kSpdMax_Reverse 2.0/3.6
-#define kSpdMin_Reverse 1.5/3.6
+#define kSpdMax_Forward 10.0 / 3.6
+#define kSpdMin_Forward 2.0 / 3.6
+#define kSpdMax_Reverse 2.0 / 3.6
+#define kSpdMin_Reverse 1.5 / 3.6
 #define kStop 0.0
 
 //tunnel param
-#define kSpdMax_T1 4.0/3.6
-#define kSpdMin_T1 2.8/3.6
-#define kSpdMax_T2 3.5/3.6
-#define kSpdMin_T2 2.8/3.6
+#define kSpdMax_T1 4.0 / 3.6
+#define kSpdMin_T1 2.8 / 3.6
+#define kSpdMax_T2 3.5 / 3.6
+#define kSpdMin_T2 2.8 / 3.6
 
 // cruv range
 #define Cur2Speed_0 0.025
@@ -41,56 +41,55 @@ using namespace planning;
 #define kPassWidthLower 0.7
 #define kPassWidthUpper 2.1
 
-#define max_motion(a,b) (((a) > (b))?(a) : (b))
-#define min_motion(a,b) (((a) < (b))?(a) : (b))
+#define max_motion(a, b) (((a) > (b)) ? (a) : (b))
+#define min_motion(a, b) (((a) < (b)) ? (a) : (b))
 
-class Speed_Planning
-{
+class Speed_Planning {
 public:
-    Speed_Planning() = default; 
+    Speed_Planning() = default;
     explicit Speed_Planning(
-                 std::vector<OriginalInsData> *path,
-                 double speed,std::vector<sCellMsg> lidarobjs_global);
-   
+        std::vector<OriginalInsData> *path,
+        double speed, std::vector<sCellMsg> lidarobjs_global);
+
     float SpeedCalculateInGuidePth(std::vector<OriginalInsData> *path);
 
 private:
     void FreeDrivingInPath(
-             std::vector<OriginalInsData> *path, 
-             int road_direction_);
+        std::vector<OriginalInsData> *path,
+        int road_direction_);
 
     double SpeedValue(
-               double datamax, double datamin, 
-               double datak, double param);
+        double datamax, double datamin,
+        double datak, double param);
 
     void VelocityGenerationBasedTrafficFlow(
-             std::vector<OriginalInsData> *path, 
-             std::vector<sObjPosInfo> &ObjSelected);
+        std::vector<OriginalInsData> *path,
+        std::vector<sObjPosInfo> &ObjSelected);
 
     void ObstaclesProcess();
 
     void CollectObjs(std::vector<OriginalInsData> *path);
 
     int CollectObj(
-            const int& PosIdMax, const double& PathEndLength,
-            sObjPosInfo& obstacle, std::vector<OriginalInsData> *path);
+        const int &PosIdMax, const double &PathEndLength,
+        sObjPosInfo &obstacle, std::vector<OriginalInsData> *path);
 
     void GetPosOfObsInFrenet(
-             sObjPosInfo& obstacle_, std::vector<OriginalInsData> *path);
+        sObjPosInfo &obstacle_, std::vector<OriginalInsData> *path);
 
     void SmoothingVelocity(std::vector<OriginalInsData> *path);
 
     void ObjBesideProcess(
-             double objLength, double objDist, int posid,
-             bool isObjStatic, std::vector<OriginalInsData> *path, 
-      	     bool isObjNearPlan,float speed_obj);
-    
+        double objLength, double objDist, int posid,
+        bool isObjStatic, std::vector<OriginalInsData> *path,
+        bool isObjNearPlan, float speed_obj);
+
     sObjPos CalcuObjPos(
-                double x, double y, std::vector<OriginalInsData> *path);
+        double x, double y, std::vector<OriginalInsData> *path);
 
     float CrossSpeedCalculation(
-              double objDist, float speedBase, float objSpeed);
-    
+        double objDist, float speedBase, float objSpeed);
+
     std::vector<OriginalInsData> *planpath_;
     double speed_;
     std::vector<sCellMsg> lidarobjs_global_;
@@ -126,10 +125,10 @@ private:
 
     int spd_down_i_;
 
-    const float parking_spd_ = 3.0/3.6;
+    const float parking_spd_ = 3.0 / 3.6;
     const float start_acc_ = 0.2;
     const float acel_min_ = -5.0;
     const float acel_max_ = 1.0;
 };
 
-#endif //IMC_CTRL_H
+#endif  //IMC_CTRL_H

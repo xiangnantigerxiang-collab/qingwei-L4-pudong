@@ -10,7 +10,7 @@
 
 namespace planning {
 
-/*
+    /*
 * @brief:
 * This class solve an optimization problem:
 * x
@@ -27,8 +27,7 @@ namespace planning {
 * which makes the line P(start), P0, P(1) ... P(k-1) "smooth".
 */
 
-    class PiecewiseJerkProblem
-    {
+    class PiecewiseJerkProblem {
     public:
         PiecewiseJerkProblem(const size_t num_of_knots, const double delta_s,
                              const std::array<double, 3> &x_init);
@@ -48,40 +47,33 @@ namespace planning {
         void set_ddx_bounds(const double ddx_lower_bound,
                             const double ddx_upper_bound);
 
-        void set_dddx_bound(const double dddx_bound)
-        {
+        void set_dddx_bound(const double dddx_bound) {
             set_dddx_bound(-dddx_bound, dddx_bound);
         }
 
         void set_dddx_bound(const double dddx_lower_bound,
-                            const double dddx_upper_bound)
-        {
+                            const double dddx_upper_bound) {
             dddx_bound_.first = dddx_lower_bound;
             dddx_bound_.second = dddx_upper_bound;
         }
 
-        void set_weight_x(const double weight_x)
-        {
+        void set_weight_x(const double weight_x) {
             weight_x_ = weight_x;
         }
 
-        void set_weight_dx(const double weight_dx)
-        {
+        void set_weight_dx(const double weight_dx) {
             weight_dx_ = weight_dx;
         }
 
-        void set_weight_ddx(const double weight_ddx)
-        {
+        void set_weight_ddx(const double weight_ddx) {
             weight_ddx_ = weight_ddx;
         }
 
-        void set_weight_dddx(const double weight_dddx)
-        {
+        void set_weight_dddx(const double weight_dddx) {
             weight_dddx_ = weight_dddx;
         }
 
-        void set_scale_factor(const std::array<double, 3> &scale_factor)
-        {
+        void set_scale_factor(const std::array<double, 3> &scale_factor) {
             scale_factor_ = scale_factor;
         }
 
@@ -92,18 +84,15 @@ namespace planning {
 
         virtual bool Optimize(const int max_iter = 4000);
 
-        const std::vector<double> &opt_x() const
-        {
+        const std::vector<double> &opt_x() const {
             return x_;
         }
 
-        const std::vector<double> &opt_dx() const
-        {
+        const std::vector<double> &opt_dx() const {
             return dx_;
         }
 
-        const std::vector<double> &opt_ddx() const
-        {
+        const std::vector<double> &opt_ddx() const {
             return ddx_;
         }
 
@@ -128,8 +117,7 @@ namespace planning {
         void FreeData(OSQPData *data);
 
         template <typename T>
-        T *CopyData(const std::vector<T> &vec)
-        {
+        T *CopyData(const std::vector<T> &vec) {
             T *data = new T[vec.size()];
             memcpy(data, vec.data(), sizeof(T) * vec.size());
             return data;
@@ -168,4 +156,3 @@ namespace planning {
     };
 
 }  // namespace
-

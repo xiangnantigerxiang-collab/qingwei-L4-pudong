@@ -48,4 +48,4 @@ namespace planning {
     };
 
 }
-#endif //PLANNING_SPLINE_2D_SEG_H
+#endif  //PLANNING_SPLINE_2D_SEG_H

@@ -22,27 +22,26 @@
 
 using namespace math;
 
-class TrajectoryCombiner 
-{
+class TrajectoryCombiner {
 public:
     std::vector<std::vector<TrajectoryPoint>> Combine(
         const std::vector<PathPoint>& reference_line,
-        const std::vector<std::shared_ptr<Curve1d>>& lon_trajectory_total, 
+        const std::vector<std::shared_ptr<Curve1d>>& lon_trajectory_total,
         const std::vector<std::shared_ptr<Curve1d>>& lat_trajectory_total);
-    
+
     struct DPRoadGraphNode {
         SDPoint sd_point;
         double total_cost;
     };
 
-    double UpdateNode(TrajectoryCost *trajectory_cost, 
-                      DPRoadGraphNode *cur_node,
+    double UpdateNode(TrajectoryCost* trajectory_cost,
+                      DPRoadGraphNode* cur_node,
                       const std::vector<PathPoint>& reference_line);
 
     std::vector<std::vector<TrajectoryPoint>> FrenetPathToCartesianPath(
-        const std::vector<std::vector<DPRoadGraphNode>> &graph_nodes,
+        const std::vector<std::vector<DPRoadGraphNode>>& graph_nodes,
         const std::vector<PathPoint>& reference_line);
-   
-    CartesianFrenetConverter *cartesianfrenetconverter;
-    PathMatcher *pathmatcher;    
+
+    CartesianFrenetConverter* cartesianfrenetconverter;
+    PathMatcher* pathmatcher;
 };

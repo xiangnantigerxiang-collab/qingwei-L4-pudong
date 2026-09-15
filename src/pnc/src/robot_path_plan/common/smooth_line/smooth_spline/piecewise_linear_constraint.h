@@ -7,7 +7,7 @@
 #include "Eigen/Core"
 #include "Eigen/Dense"
 
-namespace planning{
+namespace planning {
     class PiecewiseLinearConstraint {
     public:
         PiecewiseLinearConstraint(const uint32_t dimension,
@@ -55,4 +55,4 @@ namespace planning{
     };
 }
 
-#endif //PLANNING_PIECEWISE_LINEAR_CONSTRAINT_H
+#endif  //PLANNING_PIECEWISE_LINEAR_CONSTRAINT_H

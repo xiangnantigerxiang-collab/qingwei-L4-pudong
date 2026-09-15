@@ -4,8 +4,7 @@
 
 #include "common/pnc_point/map_point.h"
 
-namespace planning
-{
+namespace planning {
     // 当前引导线左边marking类型 */
     // 0 Not investigated 10 Single Dashed
     // 12 Short Thick Dashed
@@ -17,15 +16,13 @@ namespace planning
     // 32 Turn variable lane marking
     // 33 Single thick solid
     // 99 Virtual Marking
-    struct LinkLaneSegment
-    {
+    struct LinkLaneSegment {
         long long absLinkId;
         int laneId;
         int leftMarkingType;
         int rightMarkingType;
 
-        LinkLaneSegment()
-        {
+        LinkLaneSegment() {
             absLinkId = -1;
             laneId = -1;
             leftMarkingType = 20;
@@ -33,50 +30,44 @@ namespace planning
         }
 
         LinkLaneSegment(const long long linkId,
-                        const int lane)
-        {
-            absLinkId =linkId;
+                        const int lane) {
+            absLinkId = linkId;
             laneId = lane;
         }
 
         LinkLaneSegment(const long long linkId,
-                        const int lane,const int leftType,
-                        const int rightType)
-        {
-            absLinkId =linkId;
+                        const int lane, const int leftType,
+                        const int rightType) {
+            absLinkId = linkId;
             laneId = lane;
             leftMarkingType = leftType;
             rightMarkingType = rightType;
         }
 
-        void print() const
-        {
-            printf("linkId = %lld, laneId = %d\r\n",absLinkId, laneId);
+        void print() const {
+            printf("linkId = %lld, laneId = %d\r\n", absLinkId, laneId);
         }
 
-        bool operator==(const LinkLaneSegment &other) const
-        {
+        bool operator==(const LinkLaneSegment &other) const {
             return (absLinkId == other.absLinkId && laneId == other.laneId);
         }
 
-        bool operator!=(const LinkLaneSegment &other) const
-        {
+        bool operator!=(const LinkLaneSegment &other) const {
             return !(absLinkId == other.absLinkId && laneId == other.laneId);
         }
     };
 
-    class ReferencePoint
-    {
+    class ReferencePoint {
     public:
         ReferencePoint() = default;
 
         ReferencePoint(const had_map::MapPoint &point_info, const double &left_width,
                        const double &rightWidth, const double &maxSpeed,
-                       const double &minSpeed,const long long linkId, const int laneId,
-                       const int leftMarkingType, const  int rightMarkingType);
+                       const double &minSpeed, const long long linkId, const int laneId,
+                       const int leftMarkingType, const int rightMarkingType);
 
-//        ReferencePoint(const had_map::MapPoint &point_info, const double kappa,
-//                      const double dkappa);
+        //        ReferencePoint(const had_map::MapPoint &point_info, const double kappa,
+        //                      const double dkappa);
 
         ReferencePoint(const had_map::MapPoint &point_info, const double &kappa,
                        const double &dkappa, const double &xds,
@@ -88,39 +79,39 @@ namespace planning
                        const double &dkappa, const double &xds,
                        const double &yds, const double &xsenconds,
                        const double &ysenconds, const double &left_width,
-                       const double &right_width,const double &limit_max_speed,
-                       const double &limit_min_speed,const LinkLaneSegment &linkLaneSegment1);
+                       const double &right_width, const double &limit_max_speed,
+                       const double &limit_min_speed, const LinkLaneSegment &linkLaneSegment1);
 
-        ReferencePoint(const had_map::MapPoint &point_info,const double &left_width,
+        ReferencePoint(const had_map::MapPoint &point_info, const double &left_width,
                        const double &right_width);
 
-        double xds()const;
+        double xds() const;
 
-        double yds()const;
+        double yds() const;
 
-        double xsenconds()const;
+        double xsenconds() const;
 
-        double ysenconds()const;
+        double ysenconds() const;
 
         void setKappa(const double k);
 
-        double kappa()const;
+        double kappa() const;
 
         void setDkappa(const double dkappa);
 
-        double dkappa()const;
+        double dkappa() const;
 
         const had_map::MapPoint &pointInfo() const;
 
         had_map::MapPoint &mutablePointInfo();
 
-        double leftWidth()const;
+        double leftWidth() const;
 
-        double rightWidth()const;
+        double rightWidth() const;
 
-        double limitMaxSpeed()const;
+        double limitMaxSpeed() const;
 
-        double limitMinSpeed()const;
+        double limitMinSpeed() const;
 
         const LinkLaneSegment &linkLaneSegment() const;
 
@@ -139,9 +130,9 @@ namespace planning
 
         double m_yseconds = 0;
 
-        double m_leftWidth = 0;           //dis from point to left boundary
+        double m_leftWidth = 0;  //dis from point to left boundary
 
-        double m_rightWidth = 0;          //dis from point to right boundary
+        double m_rightWidth = 0;  //dis from point to right boundary
 
         double m_limitMaxSpeed = 120.0;
 
@@ -149,6 +140,6 @@ namespace planning
 
         LinkLaneSegment m_linkLaneSegment;
     };
-} //namespace planning
+}  //namespace planning
 
-#endif //PLANNING_REFERENCE_POINT_H
+#endif  //PLANNING_REFERENCE_POINT_H

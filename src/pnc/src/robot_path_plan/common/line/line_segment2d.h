@@ -9,7 +9,7 @@
 
 namespace math {
 
-/**
+    /**
  * @class LineSegment2d
  * @brief Line segment in 2-D.
  */
@@ -31,43 +31,57 @@ namespace math {
          * @brief Get the start point.
          * @return The start point of the line segment.
          */
-        const Vec2d &start() const { return start_; }
+        const Vec2d &start() const {
+            return start_;
+        }
 
         /**
          * @brief Get the end point.
          * @return The end point of the line segment.
          */
-        const Vec2d &end() const { return end_; }
+        const Vec2d &end() const {
+            return end_;
+        }
 
         /**
          * @brief Get the unit direction from the start point to the end point.
          * @return The start point of the line segment.
          */
-        const Vec2d &unit_direction() const { return unit_direction_; }
+        const Vec2d &unit_direction() const {
+            return unit_direction_;
+        }
 
         /**
          * @brief Get the center of the line segment.
          * @return The center of the line segment.
          */
-        Vec2d center() const { return (start_ + end_) / 2.0; }
+        Vec2d center() const {
+            return (start_ + end_) / 2.0;
+        }
 
         /**
          * @brief Get the heading of the line segment.
          * @return The heading, which is the angle between unit direction and x-axis.
          */
-        double heading() const { return heading_; }
+        double heading() const {
+            return heading_;
+        }
 
         /**
          * @brief Get the cosine of the heading.
          * @return The cosine of the heading.
          */
-        double cos_heading() const { return unit_direction_.x(); }
+        double cos_heading() const {
+            return unit_direction_.x();
+        }
 
         /**
          * @brief Get the sine of the heading.
          * @return The sine of the heading.
          */
-        double sin_heading() const { return unit_direction_.y(); }
+        double sin_heading() const {
+            return unit_direction_.y();
+        }
 
         /**
          * @brief Get the length of the line segment.
@@ -182,7 +196,7 @@ namespace math {
          * @brief Get the debug string including the essential information.
          * @return Information of the line segment for debugging.
          */
-//        std::string DebugString() const;
+        //        std::string DebugString() const;
 
     private:
         Vec2d start_;
@@ -194,4 +208,4 @@ namespace math {
 
 }  // namespace math
 
-#endif //PLANNING_LINE_SEGMENT2D_H
+#endif  //PLANNING_LINE_SEGMENT2D_H

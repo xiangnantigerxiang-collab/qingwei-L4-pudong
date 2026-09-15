@@ -6,10 +6,8 @@
 
 #include "common/pnc_point/path_point.h"
 
-namespace planning
-{
-    class DiscretizedPath : public std::vector<PathPoint>
-    {
+namespace planning {
+    class DiscretizedPath : public std::vector<PathPoint> {
     public:
         DiscretizedPath() = default;
 
@@ -23,10 +21,9 @@ namespace planning
 
     protected:
         std::vector<PathPoint>::const_iterator QueryLowerBound(
-                const double path_s) const;
+            const double path_s) const;
         std::vector<PathPoint>::const_iterator QueryUpperBound(
-                const double path_s) const;
+            const double path_s) const;
     };
 
 }  // namespace planning
-

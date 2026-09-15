@@ -8,8 +8,7 @@
 #include "robot/task_plan_msg.h"
 #include "robot/can_comm_msg.h"
 
-class CanCommComply
-{
+class CanCommComply {
 public:
     CanCommComply();
     ~CanCommComply();

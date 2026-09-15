@@ -43,7 +43,7 @@ monitor 3D 报 "error creating webgl context" 会自动降级 2D（不阻断）�
 ## 组件配置（hmi_config.py，纯数据+中文注释）
 
 - netcheck 默认 disabled，启用改 `enabled: True`
-- 感知/规控数据录制固定不参与一键启动，卡片手动
+- data_logger（行车记录）与感知/规控数据录制均固定不参与一键启动，卡片手动
 - 录制两组各读 `record_rostopic_list.md` 对应分组开关（见下节）
 - monitor（8081）默认启用，卡片可启停；健康=存活即绿，ROS 状态看其页面右上
 - 新增组件照抄一条，`group` 决定启动顺序；健康检查四种：话题频率(默认)/采样型/master 探活/节点数(fms)

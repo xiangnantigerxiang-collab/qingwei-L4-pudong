@@ -1,16 +1,16 @@
 
 #include "common/smooth_line/smooth_spline/spline_1d.h"
 
-namespace planning{
+namespace planning {
     Spline1d::Spline1d(const std::vector<double>& x_knots, const uint32_t order)
-            : x_knots_(x_knots), spline_order_(order) {
-        for (uint32_t i = 1; i < x_knots_.size(); ++i) {
+        : x_knots_(x_knots), spline_order_(order) {
+        for(uint32_t i = 1; i < x_knots_.size(); ++i) {
             splines_.emplace_back(spline_order_);
         }
     }
 
     double Spline1d::operator()(const double x) const {
-        if (splines_.size() == 0) {
+        if(splines_.size() == 0) {
             return 0.0;
         }
         uint32_t index = FindIndex(x);
@@ -19,7 +19,7 @@ namespace planning{
 
     double Spline1d::Derivative(const double x) const {
         // zero order spline
-        if (splines_.size() == 0) {
+        if(splines_.size() == 0) {
             return 0.0;
         }
         uint32_t index = FindIndex(x);
@@ -27,7 +27,7 @@ namespace planning{
     }
 
     double Spline1d::SecondOrderDerivative(const double x) const {
-        if (splines_.size() == 0) {
+        if(splines_.size() == 0) {
             return 0.0;
         }
         uint32_t index = FindIndex(x);
@@ -35,7 +35,7 @@ namespace planning{
     }
 
     double Spline1d::ThirdOrderDerivative(const double x) const {
-        if (splines_.size() == 0) {
+        if(splines_.size() == 0) {
             return 0.0;
         }
         uint32_t index = FindIndex(x);
@@ -46,13 +46,13 @@ namespace planning{
                                  const uint32_t order) {
         const uint32_t num_params = order + 1;
         // check if the parameter size fit
-        if (x_knots_.size() * num_params !=
-            num_params + static_cast<uint32_t>(param_matrix.rows())) {
+        if(x_knots_.size() * num_params !=
+           num_params + static_cast<uint32_t>(param_matrix.rows())) {
             return false;
         }
-        for (uint32_t i = 0; i < splines_.size(); ++i) {
+        for(uint32_t i = 0; i < splines_.size(); ++i) {
             std::vector<double> spline_piece(num_params, 0.0);
-            for (uint32_t j = 0; j < num_params; ++j) {
+            for(uint32_t j = 0; j < num_params; ++j) {
                 spline_piece[j] = param_matrix(i * num_params + j, 0);
             }
             splines_[i].SetParams(spline_piece);
@@ -61,14 +61,18 @@ namespace planning{
         return true;
     }
 
-    const std::vector<double>& Spline1d::x_knots() const { return x_knots_; }
+    const std::vector<double>& Spline1d::x_knots() const {
+        return x_knots_;
+    }
 
-    uint32_t Spline1d::spline_order() const { return spline_order_; }
+    uint32_t Spline1d::spline_order() const {
+        return spline_order_;
+    }
 
     uint32_t Spline1d::FindIndex(const double x) const {
         auto upper_bound = std::upper_bound(x_knots_.begin() + 1, x_knots_.end(), x);
         const uint32_t dis = std::distance(x_knots_.begin(), upper_bound);
-        if (dis < x_knots_.size()) {
+        if(dis < x_knots_.size()) {
             return dis - 1;
         } else {
             return x_knots_.size() - 2;
