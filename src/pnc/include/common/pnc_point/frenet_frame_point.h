@@ -3,44 +3,38 @@
 #ifndef PLANNING_FRENET_FRAME_POINT_H
 #define PLANNING_FRENET_FRAME_POINT_H
 
-namespace planning
-{
-    class FrenetFramePoint
-    {
+namespace planning {
+    class FrenetFramePoint {
     public:
-        double s()const {
+        double s() const {
             return m_s;
         }
 
-        double l()const{
+        double l() const {
             return m_l;
         }
 
-        double dl()const{
+        double dl() const {
             return m_dl;
         }
 
-        double ddl()const{
+        double ddl() const {
             return m_ddl;
         }
 
-        void setS(double s)
-        {
+        void setS(double s) {
             m_s = s;
         }
 
-        void setL(double l)
-        {
+        void setL(double l) {
             m_l = l;
         }
 
-        void setDl(double dl)
-        {
+        void setDl(double dl) {
             m_dl = dl;
         }
 
-        void setDdl(double ddl)
-        {
+        void setDdl(double ddl) {
             m_ddl = ddl;
         }
 
@@ -52,4 +46,4 @@ namespace planning
     };
 }
 
-#endif //PLANNING_FRENET_FRAME_POINT_H
+#endif  //PLANNING_FRENET_FRAME_POINT_H

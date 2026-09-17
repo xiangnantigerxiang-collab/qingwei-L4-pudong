@@ -28,7 +28,8 @@ bash monitor/monitor.sh                # 0.0.0.0:8081 + dashboard 8082 同进程
 
 - yaw=(90°−heading) 一致；障碍 dx/dy 互换一致（半透明+抬 h/2 为有意改进）；路径 x/y 不等长整帧丢弃一致；停车点 stopAngle 用于朝向（C++ 恒指东，增强）；托盘不含 C++ 死偏移 hook_xg−2.8
 - **障碍物按 `/perception` objs 的 type 着色（3D CUBE 与降级 2D 同规则）**：0=红 / 1=橙 / 2=黄 / 其余（含字段缺失）墨绿 `0x339999`（历史默认色）。type 语义由上游决定：hdmap `LaneMapServer::ClassifyPerception`（09-15）车道占用 0-本道/1-左一/2-左二/3-左外/4-右外（外道落墨绿）；object.msg 旧注释为 0-车/1-行人/2-骑行/3-未知——两套语义下本配色均成立
-- **置信度文字（09-15，同日改白色 3 倍字号）**：`object.msg` 的 `confidence`（上游时域滤波重算）以**白色文字、3 倍字号**悬浮显示在障碍框正上方——3D 为 canvas 纹理 Sprite（84px 字号/384×144 画布/世界尺寸 4.8×1.8m，按文本有限缓存，随 lidar 图层开关显隐），降级 2D 为 36px 直立 fillText（不随框旋转）；conf 缺失则不显示
+- **置信度文字（09-16 字号减半）**：`object.msg` 的 `confidence` 以白色文字显示在框上方，保留目前减半后的显示尺寸和 `h+0.3` 锚点；缺失时不显示。3D 与运动信息共用字形纹理和一个绘制批次，2D 降级为 18px 直立文字。
+- **障碍运动信息（09-16）**：在 confidence 上方从上到下显示 `id`、`speed`、`heading` 三行白字，只保留数值和单位（如 `42` / `5.00 m/s` / `36.87°`）。`speed=hypot(vx,vy)`，单位 m/s；heading 显示上游方位角，单位度。速度和航向保留两位小数，与 confidence 字号一致。3D 字形为 42px，按原来半字号的世界尺寸显示，行距仍为 0.9m；偏移在相机平面内计算，俯视/环视均保持直立和上下顺序。2D 字号为 18px，行距为 22px；随 lidar 图层显隐，confidence 缺失仍显示运动信息。
 - 地图：map/ 下全部 .csv 按名排序全画；rosparam /robot/mapfile 指单文件时只画该张
 - 2D 补盲按通道左蓝右绿（intensity 未参与着色）；不订阅 /planning/obstacles（死话题）
 
@@ -39,6 +40,8 @@ lakibeam 两路 frame_id 同为 `laser` 且工程内无 tf → 服务端外参�
 ## CPU/带宽（monitor_config.py 的 CLOUD 段）
 
 4 路 PointCloud2 typed 订阅空转 12-40MB/s 是 CPU 大头，故：活动门控（30s 无浏览器拉取自动退订）/每路 1s 解析（parse_interval）/解包前 stride 预抽稀（默认 2）/0.2m 体素每路上限 8000 点。总 ≈380KB/帧@1Hz。占用偏高→调大 stride/parse_interval 或调粗 voxel；实测 `top`+hmi 面板 CPU。
+
+09-16 实车卡顿排查后，障碍四行文字改为**单张静态字形纹理、单个批量绘制对象**。数值变化仅更新复用的顶点和 UV 缓冲，不再按障碍重画 canvas 或上传整张纹理。100 个障碍的本机浏览器对照：文字 RGBA 像素数据量由约 74.9MiB 降到约 0.90MiB，文字绘制调用由 200 次降至 1 次；纹理大小不随障碍数量增长。数字、单位、白色/描边、字号及位置保持现有要求。测试场景不含地图/点云，浏览器使用 SwiftShader；此结果说明资源开销下降，不代表 Orin 实测帧率或整车控制时延。纯前端更新，部署后强制刷新页面以替换缓存。记录见 [performance_verification_20260916.json](tests/performance_verification_20260916.json)。
 
 ## 设计否决（勿重提）
 
@@ -67,11 +70,11 @@ ROS(x东,y北,z上)→THREE(x右,y上,z南)：`three=(x_ros, z_ros, −y_ros)`�
 ## 测试（开发机；车载不部署 tests/）
 
 ```bash
-python3 tests/test_full.py      # 72 项伪 ROS 全栈
+python3 tests/test_full.py      # 74 项伪 ROS 全栈
 python3 tests/test_dashboard.py # 110 项仪表板（解析对齐/枚举译码及顺序锁/瘦身契约三态/单字段降级/GBK/端口语义/占用守卫/全栈）
 node tests/frontend_dash_test.js # 51 项仪表板前端无头（瓦片渲染/故障三态+闪烁/降级 sections=null/ros off 态/总断连全灭）
 python3 tests/edge_test.py      # 28 项边界值
-node tests/frontend_test.js     # 62 项前端无头（DOM+THREE/2D Canvas 桩）
+node tests/frontend_test.js     # 91 项前端检查，含字形/UV 还原、100 障碍纹理复用、图层与 2D 降级
 python3 tests/chaos_test.py     # 11 项混沌/浸泡（约 2 分钟）
 python3 tests/fuzz_proto.py     # 协议双解码对账 fuzz（50 轮）
 bash monitor.sh                 # 起服务（8081+8082），无 ROS 环境横幅

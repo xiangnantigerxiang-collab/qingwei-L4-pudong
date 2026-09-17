@@ -178,6 +178,9 @@ def t02_conversions():
           abs(o["x"] - (58.0 - d["origin"][0])) < 0.02)
     check("障碍 type 透传(供前端着色)", o["type"] == 0, str(o))
     check("障碍 confidence 透传", o["conf"] == 0.87, str(o))
+    check("障碍标签 heading 保留原始角度", o["heading"] == 100.0, str(o))
+    check("障碍标签 id/vx/vy 透传",
+          o["id"] == 1 and o["vx"] == 0.0 and o["vy"] == 0.0, str(o))
 
     check("refer 路径 2 点", d["paths"]["refer"] is not None and
           len(d["paths"]["refer"]) == 2)
@@ -254,6 +257,40 @@ def t02b_statusbar():
     check("exec=0 透传(无任务)", d0["task"]["exec"] == 0)
     check("procedure=0 透传(不被吞成-1)",
           d0["task"]["cloud_proc"] == 0, str(d0["task"].get("cloud_proc")))
+    write_control(rates={})
+
+
+def t02c_gantry():
+    """闸机口:三态快照映射(active/open)与 bool 化。"""
+    print("== t02c 闸机口 ==")
+    write_control(rates={"/gantry_state": 10})
+    ok = wait_for("gantry 数据到位",
+                  lambda: snap().get("gantry") is not None)
+    if not ok:
+        return
+    d = snap()
+    g = d["gantry"]
+    # 默认字段 active=True/open=False -> 原样透传且为 bool
+    check("关闭态: active/open 透传", g["active"] is True
+          and g["open"] is False, str(g))
+    check("数据龄含 /gantry_state", "/gantry_state" in d["ages"],
+          str([k for k in d["ages"] if "gantry" in k]))
+    # 开启态
+    write_control(rates={"/gantry_state": 10},
+                  fields={"/gantry_state": {"active": True,
+                                            "gantry_open": True}})
+    wait_for("开启态到位", lambda: snap()["gantry"]["open"] is True)
+    check("开启态: open 透传", snap()["gantry"]["open"] is True)
+    # 无效态(active=false)。注:mock 的 build_msg 把 DEFAULT_FIELDS 合并
+    # 在 override 之下,无法构造"属性真缺失"的消息——getattr 默认值分支
+    # 不在此覆盖(真实 catkin 类恒有全字段,该分支仅防御旧定义混部)
+    write_control(rates={"/gantry_state": 10},
+                  fields={"/gantry_state": {"active": False}})
+    wait_for("无效态到位", lambda: snap()["gantry"]["active"] is False)
+    d2 = snap()
+    check("无效态: active=False 且 open=False 透传",
+          d2["gantry"]["active"] is False and
+          d2["gantry"]["open"] is False, str(d2["gantry"]))
     write_control(rates={})
 
 
@@ -518,7 +555,8 @@ def t11_nan_safety():
     check("NaN 字段归 0", d["vehicle"]["x"] == 0.0 and
           d["vehicle"]["speed"] == 0.0, str(d["vehicle"]))
     check("障碍 NaN 归 0", d["obstacles"][0]["x"] == 0.0 and
-          d["obstacles"][0]["yaw"] == 0.0)
+          d["obstacles"][0]["yaw"] == 0.0 and
+          d["obstacles"][0]["heading"] == 0.0)
     # scan intensity NaN/Inf 不崩
     write_control(rates={"/back_left_scan": 5},
                   fields={"/back_left_scan": {"__scan__": {
@@ -574,7 +612,7 @@ def main():
                       timeout=15)
         if up:
             for fn in (t01_static, t02_conversions, t02b_statusbar,
-                       t03_scan,
+                       t02c_gantry, t03_scan,
                        t04_cloud_variants, t05_byte_lock, t06_ages,
                        t07_concurrent, t08_rss, t10_master_restart,
                        t11_nan_safety, t09_py38):

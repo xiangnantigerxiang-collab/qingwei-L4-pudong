@@ -1,0 +1,61 @@
+# ============ gantry_detect 闸机口识别参数 ============
+
+# ---- 话题(按现场实际修改) ----
+localization_topic: /localization
+left_cloud_topic: /rslidar_points_front             # 左侧后雷达点云 sensor_msgs/PointCloud2
+right_cloud_topic: /rslidar_points_mid            # 右侧后雷达点云 sensor_msgs/PointCloud2
+state_topic: /gantry_state
+merged_cloud_topic: /gantry_detect/cloud_merged
+filtered_cloud_topic: /gantry_detect/cloud_filtered
+markers_topic: /gantry_detect/markers
+
+# ---- 坐标系 ----
+merged_frame: rslidar        # 两路点云统一到该系(建议与 rviz Fixed Frame 一致, 常用 robot/laser)
+world_frame: rslidar           # 定位与触发区域所在的世界坐标系
+
+# ---- 左右雷达安装补偿(tf 缺失/不准时手动微调; 平移单位 m, 偏航单位 deg) ----
+left_offset_x: 0.0
+left_offset_y: 0.0
+left_offset_yaw: 0.0
+right_offset_x: 0.0
+right_offset_y: 0.0
+right_offset_yaw: 0.0
+
+# ---- 强度过滤(闸机口为高反目标) ----
+intensity_min: 50
+intensity_max: 255
+
+# ---- 空间裁剪(车体系内检测带, 根据雷达朝向调整 x 正负/范围) ----
+enable_crop: true
+crop_x_min: 0.0
+crop_x_max: 10.3
+crop_y_min: -5.0
+crop_y_max: 5.0
+crop_z_min: -0.2
+crop_z_max: 10.4
+
+# ---- 聚类 ----
+cluster_tolerance: 0.1
+min_cluster_pts: 1000
+max_cluster_pts: 20000
+select_mode: 1          # 0=取距车最近的高反目标 1=取点数最多的高反目标
+target_dist_max: 0.0    # 仅接受该距离(米)以内的目标, 0=不限
+
+# ---- 触发区域(世界系矩形, 车辆进入该区域才开始检测闸机口) ----
+enable_roi: true
+roi_x_min: 75.5
+roi_x_max: 108
+roi_y_min: -416
+roi_y_max: -385
+
+# ---- 状态判定 ----
+target_means_closed: true   # true=检测到高反目标表示闸机口关闭(闸杆放下); 现场相反则改 false
+confirm_frames: 3           # 去抖: 连续 N 帧判定一致才切换输出状态
+
+# ---- 轨迹可视化(csv: x,y 两列, 单位米, 坐标系与 merged_frame 一致, 即 rslidar) ----
+trajectory_csv: ""          # csv 文件路径, 留空则不加载不显示(原 zyd 机器路径已清)
+
+# ---- 可视化开关 ----
+publish_merged_cloud: true
+publish_filtered_cloud: true
+publish_markers: true

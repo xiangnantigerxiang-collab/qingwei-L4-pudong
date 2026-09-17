@@ -268,6 +268,8 @@ void ControlComply::FenceAlarm() {
 // ---------------------------------------------------------------------------
 
 void ControlComply::VehicleControl() {
+    if(mGear != GEAR_D) ResetLaunchSpeed();
+
     if(fabs(mSpeed) < 0.1 && mPathsafety) {
         printf("mPathsafety:%d\n", mPathsafety);
         mControlData.desireSpeed = 0;
@@ -275,6 +277,7 @@ void ControlComply::VehicleControl() {
         mControlData.throttlePercent = 0;
         mControlData.brakePercent = 100;
         mControlData.wheelAngle = 0;
+        ResetLaunchSpeed();
         return;
     }
 
@@ -287,6 +290,7 @@ void ControlComply::VehicleControl() {
         mControlData.throttlePercent = 0;
         mControlData.brakePercent = 80;
         mControlData.wheelAngle = 0;
+        ResetLaunchSpeed();
         return;
     }
 
@@ -298,6 +302,7 @@ void ControlComply::VehicleControl() {
         mControlData.throttlePercent = 0;
         mControlData.brakePercent = 30;
         mControlData.wheelAngle = 0;
+        ResetLaunchSpeed();
         return;
     }
 
@@ -309,6 +314,7 @@ void ControlComply::VehicleControl() {
         mControlData.throttlePercent = 0;
         mControlData.brakePercent = 50;
         mControlData.wheelAngle = 0;
+        ResetLaunchSpeed();
         return;
     }
     if(mPathList.empty()) {
@@ -318,6 +324,7 @@ void ControlComply::VehicleControl() {
         mControlData.throttlePercent = 0;
         mControlData.brakePercent = 50;
         mControlData.wheelAngle = 0;
+        ResetLaunchSpeed();
         return;
     }
     // 这里计算了距离车辆最近点的曲率和横向误差赋值给了mControlData
@@ -356,6 +363,7 @@ void ControlComply::VehicleControl() {
     if(mPathid == 5 && mPathsafety) {
         mControlData.throttlePercent = 0;
         mControlData.brakePercent = 100;
+        ResetLaunchSpeed();
     } else {
         // 横向控制，输出转向角
         if(mGear == GEAR_R) {
@@ -416,8 +424,16 @@ void ControlComply::VehicleControl() {
         }
 
         printf("speed_cmd: %f, speed_now: %f\n", speed_cmd, speed_now);
+        if(mGear == GEAR_D) {
+            // 底层是速度环,保留速度到油门的标定比例。原 5% 保底先作为
+            // 目标速度下限,再走速度斜坡,避免起步直接跳到 5%。
+            if(speed_cmd - speed_now > 0.05 && speed_cmd * 18.0 < 5.0) {
+                speed_cmd = 5.0 / 18.0;
+            }
+            speed_cmd = SmoothLaunchSpeed(speed_cmd);
+        }
         mControlData.throttlePercent = speed_cmd * 18.0;
-        if(speed_cmd - speed_now > 0.05) {
+        if(mGear != GEAR_D && speed_cmd - speed_now > 0.05) {
             mControlData.throttlePercent =
                 mControlData.throttlePercent < 5 ? 5 : mControlData.throttlePercent;
         }
@@ -426,6 +442,7 @@ void ControlComply::VehicleControl() {
             printf("冲出电子围栏, 停车\n");
             mControlData.brakePercent = 70.0;
             mControlData.throttlePercent = 0;
+            ResetLaunchSpeed();
         }
         // 冲出跑道
         if(mControlData.biaDistance > 5.5 ||
@@ -433,6 +450,7 @@ void ControlComply::VehicleControl() {
             printf("横向偏差 > 2.5m, 停车\n");
             mControlData.brakePercent = 70;
             mControlData.throttlePercent = 0;
+            ResetLaunchSpeed();
         }
 
         std::cout << "act = " << FenceWarning << " brake = "
@@ -447,6 +465,32 @@ void ControlComply::VehicleControl() {
             if(mControlData.throttlePercent > 45) mControlData.throttlePercent = 45;
         }
     }
+}
+
+double ControlComply::SmoothLaunchSpeed(double speed_cmd) {
+    if(speed_cmd <= 0.0) {
+        ResetLaunchSpeed();
+        return 0.0;
+    }
+
+    double slope = 0.3;  // 速度给定上升斜率(m/s^2),20Hz 下每周期增加 0.015m/s
+    ros::param::get("/robot/control/launch_speed_slope", slope);
+    if(!std::isfinite(slope) || slope <= 0.0) slope = 0.3;
+
+    if(!mLaunchSpeedInitialized) {
+        // 行驶中首次接入控制时从当前车速衔接;明确停车后由 Reset 从零起步。
+        mLaunchSpeedCmd = std::isfinite(mVehicleSpeed)
+            ? std::max(0.0, static_cast<double>(mVehicleSpeed)) : 0.0;
+        mLaunchSpeedInitialized = true;
+    }
+    // 只限制上升。下降立即跟随,小数状态一直保留到最后的消息赋值。
+    mLaunchSpeedCmd = std::min(speed_cmd, mLaunchSpeedCmd + slope * 0.05);
+    return mLaunchSpeedCmd;
+}
+
+void ControlComply::ResetLaunchSpeed() {
+    mLaunchSpeedCmd = 0.0;
+    mLaunchSpeedInitialized = true;
 }
 
 // ---------------------------------------------------------------------------

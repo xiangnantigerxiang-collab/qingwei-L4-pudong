@@ -55,6 +55,7 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);
 #hud .k{color:var(--dim)} #hud .v{text-align:right}
 .stale{color:var(--stale);text-decoration:line-through dotted}
 .v.bad{color:var(--bad);font-weight:600}
+.v.ok{color:var(--ok);font-weight:600}
 #vehBox{margin-bottom:6px;padding-bottom:6px;border-bottom:1px dashed var(--line)}
 
 /* 横幅 */
@@ -110,6 +111,7 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);
   <div id="planBox">
     <div class="row"><span class="k">期望速度</span><span class="v" id="hDesire">--</span></div>
     <div class="row"><span class="k">安全</span><span class="v" id="hSafety">--</span></div>
+    <div class="row"><span class="k">闸机</span><span class="v" id="hGantry">--</span></div>
   </div>
   <h2>控制 (control)</h2>
   <div id="ctrlBox">
@@ -213,6 +215,7 @@ var renderer, scene, camera, controls;
 var grpVehicle, grpScan, grpCloud;            // scan/cloud 挂车辆组(车体系)
 var meshObstacles = [], linePlan, lineRefer, mapGroup = null;
 var meshStop, meshPallet, grid, layers = {};
+var meshGantry = null, gantryClosed = false;
 
 function buildScene() {
   var view = document.getElementById("view");
@@ -275,6 +278,17 @@ function buildScene() {
     new THREE.SphereGeometry(0.4, 12, 12),
     new THREE.MeshBasicMaterial({ color: 0xff0000 }));
   meshPallet.visible = false; scene.add(meshPallet);
+
+  /* 闸机关闭提示箱:横在车前的红色箱体,近端面距车 2m。尺寸语义:长 3m
+   * 为横向跨度(拦住车道,垂直于行进方向)、宽 1m 为纵向厚度、高 2m——
+   * 即 BoxGeometry(x=1 沿车头, y=2, z=3 横向)。tick 随车更新;独立于
+   * /perception 障碍池,不挂感知图层开关——由 /gantry_state 三态直接
+   * 驱动(关闭=显示,开启/无效=隐藏)。 */
+  meshGantry = new THREE.Mesh(
+    new THREE.BoxGeometry(1, 2, 3),
+    new THREE.MeshBasicMaterial({ color: 0xff0000,
+      transparent: true, opacity: 0.55 }));
+  meshGantry.visible = false; scene.add(meshGantry);
 
   mapGroup = new THREE.Group(); scene.add(mapGroup);
   var reg = { vehicle: grpVehicle, lidar: null, routing: lineRefer,
@@ -370,66 +384,162 @@ function obstThreeColor(t) {
   return obstColorCache[hex];
 }
 
-/* 置信度文字:白色、3 倍字号(28px->84px,画布同步 3 倍保清晰,sprite
- * 世界尺寸 4.8x1.8m),悬浮在障碍框正上方(object.msg 的 confidence,
- * 上游时域滤波重算)。纹理按文本缓存(两位小数有限集合);
- * 超上限整表重置防膨胀 */
-var obstLabelCache = {};
-function obstLabelText(text) {
-  if (obstLabelCache[text]) return obstLabelCache[text];
-  if (Object.keys(obstLabelCache).length > 64) obstLabelCache = {};
-  var cv = document.createElement("canvas");
-  cv.width = 384; cv.height = 144;
-  var c2 = cv.getContext && cv.getContext("2d");
-  if (!c2) return null;
-  c2.font = "bold 84px monospace";
-  c2.textAlign = "center"; c2.textBaseline = "middle";
-  c2.fillStyle = "#ffffff";
-  c2.fillText(text, 192, 72);
-  var tex = new THREE.CanvasTexture(cv);
-  obstLabelCache[text] = tex;
-  return tex;
+/* 四行文字共用一张字形纹理和一个批次。数值变化只更新顶点/UV,
+ * 避免每个障碍创建大画布、上传纹理并增加独立绘制调用。 */
+var OBST_LABEL_FONT = "bold 42px monospace";
+var OBST_LABEL_SCALE = 0.5;
+var obstLabelAtlas = null, obstLabelBatch = null;
+
+function obstMotionLines(o) {
+  var speed = (typeof o.vx === "number" && isFinite(o.vx) &&
+               typeof o.vy === "number" && isFinite(o.vy))
+    ? Math.hypot(o.vx, o.vy).toFixed(2) + " m/s" : "--";
+  var heading = (typeof o.heading === "number" && isFinite(o.heading))
+    ? o.heading.toFixed(2) + "°" : "--";
+  return [o.id === undefined || o.id === null ? "--" : String(o.id),
+          speed, heading];
 }
 
-var spriteObstacles = [];      /* 置信度文字 sprite 池,与 mesh 池同步增长 */
+function buildObstacleLabelBatch() {
+  var cv = document.createElement("canvas");
+  var c2 = cv.getContext && cv.getContext("2d");
+  if (!c2) return false;
+  c2.font = OBST_LABEL_FONT;
+  var chars = "", i, columns = 16, rowHeight = 72;
+  /* ASCII 与度符号覆盖数值、单位和缺失标记;异常字符串回退问号。 */
+  for (i = 32; i <= 126; i++) chars += String.fromCharCode(i);
+  chars += "°";
+  var advance = c2.measureText("0").width;
+  var cellWidth = Math.ceil(advance) + 8;
+  cv.width = cellWidth * columns;
+  cv.height = rowHeight * Math.ceil(chars.length / columns);
+  c2.font = OBST_LABEL_FONT;
+  c2.textAlign = "center"; c2.textBaseline = "middle";
+  c2.lineWidth = 5; c2.strokeStyle = "#101418"; c2.fillStyle = "#ffffff";
+  var glyphs = {};
+  for (i = 0; i < chars.length; i++) {
+    var x = i % columns * cellWidth, y = Math.floor(i / columns) * rowHeight;
+    c2.strokeText(chars[i], x + cellWidth / 2, y + rowHeight / 2);
+    c2.fillText(chars[i], x + cellWidth / 2, y + rowHeight / 2);
+    glyphs[chars[i]] = [x / cv.width, 1 - (y + rowHeight) / cv.height,
+                       (x + cellWidth) / cv.width, 1 - y / cv.height];
+  }
+  var tex = new THREE.CanvasTexture(cv);
+  tex.generateMipmaps = false; tex.minFilter = THREE.LinearFilter;
+  obstLabelAtlas = { glyphs: glyphs, advance: advance,
+                     width: cellWidth, height: rowHeight };
+  var geom = new THREE.BufferGeometry();
+  var mat = new THREE.ShaderMaterial({
+    uniforms: { labelMap: { value: tex } },
+    transparent: true, depthTest: false, depthWrite: false,
+    vertexShader: [
+      "attribute vec2 labelOffset;",
+      "varying vec2 labelUv;",
+      "void main() {",
+      "  labelUv = uv;",
+      "  vec4 anchor = modelViewMatrix * vec4(position, 1.0);",
+      "  anchor.xy += labelOffset;",
+      "  gl_Position = projectionMatrix * anchor;",
+      "}"
+    ].join("\n"),
+    fragmentShader: [
+      "uniform sampler2D labelMap;",
+      "varying vec2 labelUv;",
+      "void main() {",
+      "  vec4 color = texture2D(labelMap, labelUv);",
+      "  if (color.a < 0.01) discard;",
+      "  gl_FragColor = color;",
+      "}"
+    ].join("\n")
+  });
+  obstLabelBatch = new THREE.Mesh(geom, mat);
+  obstLabelBatch.userData.capacity = 0;
+  obstLabelBatch.userData.isObstacleLabel = true;
+  /* 偏移在相机平面上完成,俯视和环视都直立;锚点包围球不含文字偏移。 */
+  obstLabelBatch.frustumCulled = false;
+  obstLabelBatch.renderOrder = 1;
+  scene.add(obstLabelBatch);
+  return true;
+}
+
+function syncObstacleLabels(obs) {
+  if (!obstLabelBatch && (!obs.length || !buildObstacleLabelBatch())) return;
+  var rows = [], count = 0, i, r, j;
+  for (i = 0; i < obs.length; i++) {
+    var lines = obstMotionLines(obs[i]);
+    lines.push(obs[i].conf === undefined || obs[i].conf === null ? ""
+                                                               : obs[i].conf.toFixed(2));
+    rows.push(lines);
+    for (r = 0; r < lines.length; r++) count += lines[r].length;
+  }
+  var geom = obstLabelBatch.geometry, data = obstLabelBatch.userData;
+  var vertices = count * 6;
+  if (vertices > data.capacity) {
+    data.capacity = Math.max(vertices, data.capacity * 2, 384);
+    /* 非索引三角形兼容 WebGL1;容量按峰值复用,刷新不创建画布或材质。 */
+    data.positions = new THREE.BufferAttribute(new Float32Array(data.capacity * 3), 3);
+    data.offsets = new THREE.BufferAttribute(new Float32Array(data.capacity * 2), 2);
+    data.uvs = new THREE.BufferAttribute(new Float32Array(data.capacity * 2), 2);
+    geom.dispose();
+    geom.setAttribute("position", data.positions);
+    geom.setAttribute("labelOffset", data.offsets);
+    geom.setAttribute("uv", data.uvs);
+  }
+  var atlas = obstLabelAtlas, unit = OBST_LABEL_SCALE / 40, index = 0;
+  var quadX = [0, 1, 1, 0, 1, 0], quadY = [0, 0, 1, 0, 1, 1];
+  for (i = 0; i < obs.length; i++) {
+    var o = obs[i];
+    for (r = 0; r < rows[i].length; r++) {
+      var text = rows[i][r];
+      for (j = 0; j < text.length; j++) {
+        var uv = atlas.glyphs[text[j]] || atlas.glyphs["?"];
+        var centerX = (j - (text.length - 1) / 2) * atlas.advance;
+        /* confidence 基线保持在 h+0.3;其上三行依次为 heading/speed/id。 */
+        var centerY = (3 - r) * atlas.height;
+        for (var k = 0; k < 6; k++, index++) {
+          data.positions.array[index * 3] = o.x;
+          data.positions.array[index * 3 + 1] = (o.h || 0.5) + 0.3;
+          data.positions.array[index * 3 + 2] = -o.y;
+          data.offsets.array[index * 2] = (centerX + (quadX[k] - 0.5) * atlas.width) * unit;
+          data.offsets.array[index * 2 + 1] = (centerY + (quadY[k] - 0.5) * atlas.height) * unit;
+          data.uvs.array[index * 2] = uv[quadX[k] * 2];
+          data.uvs.array[index * 2 + 1] = uv[1 + quadY[k] * 2];
+        }
+      }
+    }
+  }
+  if (vertices) {
+    data.positions.needsUpdate = true;
+    data.offsets.needsUpdate = true;
+    data.uvs.needsUpdate = true;
+  }
+  geom.setDrawRange(0, vertices);
+  obstLabelBatch.visible = layers._lidarOn !== false && vertices > 0;
+}
 
 function syncObstacles(obs) {
-  var i, m, sp;
+  var i, m;
   while (meshObstacles.length < obs.length) {
     m = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1),
       new THREE.MeshBasicMaterial({ color: 0x339999,
         transparent: true, opacity: 0.45 }));
     scene.add(m); meshObstacles.push(m);
-    sp = new THREE.Sprite(new THREE.SpriteMaterial({
-      transparent: true, depthTest: false }));
-    scene.add(sp); spriteObstacles.push(sp);
   }
   for (i = 0; i < meshObstacles.length; i++) {
     m = meshObstacles[i];
-    sp = spriteObstacles[i];
-    m.userData.hasData = (i < obs.length);       /* 池化项是否有数据 */
+    m.userData.hasData = (i < obs.length);
     if (i < obs.length) {
       var o = obs[i];
-      var hex = OBST_COLOR[o.type] || OBST_COLOR_DEFAULT;
-      m.visible = (layers._lidarOn !== false);   /* 尊重图层开关 */
-      m.material.color = obstThreeColor(o.type); /* 按 type 着色 */
+      m.visible = layers._lidarOn !== false;
+      m.material.color = obstThreeColor(o.type);
       m.position.set(o.x, (o.h || 0.5) / 2, -o.y);
       m.scale.set(o.l || 0.5, o.h || 0.5, o.w || 0.5);
       m.rotation.y = o.yaw || 0;
-      /* 置信度文字:白色、3 倍字号、框正上方(位置不变);conf 缺失则
-       * 不显示。hasLabel 供 applyLayer 图层开关对称恢复 sprite 可见性 */
-      var txt = (o.conf === undefined || o.conf === null) ? ""
-                                                        : o.conf.toFixed(2);
-      var tex = txt === "" ? null : obstLabelText(txt);
-      sp.userData.hasLabel = !!tex;
-      sp.visible = (layers._lidarOn !== false) && !!tex;
-      if (tex) {
-        sp.material.map = tex;
-        sp.position.set(o.x, (o.h || 0.5) + 0.3, -o.y);
-        sp.scale.set(4.8, 1.8, 1);
-      }
-    } else { m.visible = false; sp.visible = false; }
+    } else {
+      m.visible = false;
+    }
   }
+  syncObstacleLabels(obs);
 }
 
 /* =====================================================================
@@ -531,18 +641,27 @@ function render2d() {
       ctx2d.strokeRect(-o.l / 2 * zoom2d, -o.w / 2 * zoom2d,
                        o.l * zoom2d, o.w * zoom2d);
       ctx2d.restore();
-      /* 置信度文字:白色、3 倍字号(12px->36px),直立不随框旋转,画在
-       * 外接圆上方(位置不变);save/restore 隔离 font/textAlign,
-       * 不污染比例尺等后续绘制 */
+      /* 置信度文字:白色、字号减半(36px->18px),直立不随框旋转,画在
+       * 外接圆上方(位置不变);深色描边保证压白线可读;save/restore
+       * 隔离 font/textAlign/lineWidth,不污染比例尺等后续绘制 */
+      var rad2 = Math.hypot(o.l || 0.5, o.w || 0.5) / 2 * zoom2d;
+      var labelY = py(o.y) - rad2 - 8;
+      ctx2d.save();
+      ctx2d.font = (36 * OBST_LABEL_SCALE) + "px monospace";
+      ctx2d.textAlign = "center";
+      ctx2d.lineWidth = 6 * OBST_LABEL_SCALE; ctx2d.strokeStyle = "#101418";
+      ctx2d.fillStyle = "#ffffff";
       if (o.conf !== undefined && o.conf !== null) {
-        var rad2 = Math.hypot(o.l || 0.5, o.w || 0.5) / 2 * zoom2d;
-        ctx2d.save();
-        ctx2d.fillStyle = "#ffffff";
-        ctx2d.font = "36px monospace";
-        ctx2d.textAlign = "center";
-        ctx2d.fillText(o.conf.toFixed(2), px(o.x), py(o.y) - rad2 - 8);
-        ctx2d.restore();
+        ctx2d.strokeText(o.conf.toFixed(2), px(o.x), labelY);
+        ctx2d.fillText(o.conf.toFixed(2), px(o.x), labelY);
       }
+      var lines = obstMotionLines(o);
+      for (var li = 0; li < lines.length; li++) {
+        var lineY = labelY - (lines.length - li) * 44 * OBST_LABEL_SCALE;
+        ctx2d.strokeText(lines[li], px(o.x), lineY);
+        ctx2d.fillText(lines[li], px(o.x), lineY);
+      }
+      ctx2d.restore();
     }
   }
   /* 点云/激光:车体局部坐标 -> 世界(decodeBin 的 three 系 z=-ros_y) */
@@ -583,6 +702,21 @@ function render2d() {
     ctx2d.restore();
     ctx2d.fillStyle = "#ff0000";
     ctx2d.fillRect(px(v.x) - 2, py(v.y) - 2, 4, 4);
+  }
+  /* 闸机关闭:近端面距车 2m,长 3m 横向拦路、宽 1m 纵向
+   * (俯视,与 3D 提示箱同口径;局部 x=沿车头 1m,y=横向 3m) */
+  if (s && s.vehicle && gantryClosed) {
+    var g2x = s.vehicle.x + Math.cos(s.vehicle.yaw) * 2.5;
+    var g2y = s.vehicle.y + Math.sin(s.vehicle.yaw) * 2.5;
+    ctx2d.save();
+    ctx2d.translate(px(g2x), py(g2y));
+    ctx2d.rotate(-s.vehicle.yaw);
+    ctx2d.fillStyle = "rgba(239,83,80,0.4)";
+    ctx2d.strokeStyle = "#ef5350";
+    ctx2d.lineWidth = 2;
+    ctx2d.fillRect(-0.5 * zoom2d, -1.5 * zoom2d, 1 * zoom2d, 3 * zoom2d);
+    ctx2d.strokeRect(-0.5 * zoom2d, -1.5 * zoom2d, 1 * zoom2d, 3 * zoom2d);
+    ctx2d.restore();
   }
   /* 停车点 / 托盘 */
   if (s && s.stop && ly2d("stoppose")) {
@@ -639,6 +773,16 @@ function tick(now) {
     grpCloud.position.copy(grpVehicle.position);
     grpCloud.rotation.y = grpVehicle.rotation.y;
     lastPose = p;
+  }
+  /* 闸机关闭箱随外推位姿平滑:中心=车辆参考点前向 2.5m(近端面 2m+半厚
+   * 0.5m),朝向=车头(箱体 x 沿车头=1m 厚,z 横向=3m 跨度);scene 系
+   * (x, y_up, -y_ros) 与障碍物同口径;无定位(p 为空)时隐藏 */
+  meshGantry.visible = gantryClosed && !!p;
+  if (meshGantry.visible) {
+    var gbx = p.x + Math.cos(p.yaw) * 2.5;
+    var gby = p.y + Math.sin(p.yaw) * 2.5;
+    meshGantry.position.set(gbx, 1.0, -gby);
+    meshGantry.rotation.y = p.yaw;
   }
   if (camMode === "follow" && lastPose) {
     /* 只跟 target 并保留用户视距:每帧覆写 camera.position 会与
@@ -806,17 +950,12 @@ function applyLayer(key, on) {
   mark2dDirty();
   var obj = layers[key];
   if (key === "lidar") {
-    /* 开关对称:有数据的池化项跟随开关,空位恒隐藏;
-     * 置信度文字 sprite 同步恢复(有 hasLabel 的才有文字) */
     layers._lidarOn = on;
     for (var i = 0; i < meshObstacles.length; i++) {
-      meshObstacles[i].visible = on &&
-        (meshObstacles[i].userData.hasData !== false);
-      if (spriteObstacles[i]) {
-        spriteObstacles[i].visible = on &&
-          (meshObstacles[i].userData.hasData !== false) &&
-          spriteObstacles[i].userData.hasLabel === true;
-      }
+      meshObstacles[i].visible = on && meshObstacles[i].userData.hasData !== false;
+    }
+    if (obstLabelBatch) {
+      obstLabelBatch.visible = on && obstLabelBatch.geometry.drawRange.count > 0;
     }
     return;
   }
@@ -849,9 +988,9 @@ function applyLayerDefaults() {
  * 尊重 _lidarOn,此定时器只是双保险,保持轻量) */
 function syncLidarLayer() {
   if (layers._lidarOn === false) {
+    if (obstLabelBatch) obstLabelBatch.visible = false;
     for (var i = 0; i < meshObstacles.length; i++) {
       meshObstacles[i].visible = false;
-      if (spriteObstacles[i]) spriteObstacles[i].visible = false;
     }
   }
 }
@@ -878,9 +1017,10 @@ function renderHud(d) {
     if (dM0) { dM0.className = "dot bad"; }
     setV("hSpd", "--", true); setV("hPos", "--", true); setV("hYaw", "--", true);
     var resetIds = ["hTaskId", "hTaskExec", "hTaskCloud", "hDesire",
-                    "hSafety", "hSteer", "hPedal", "hGearMode", "hEbat",
-                    "hCanFb", "hCanVeh", "hCanLink", "hCanBtn", "hCanEps",
-                    "hCanPos"];
+                    "hSafety", "hGantry", "hSteer", "hPedal", "hGearMode",
+                    "hEbat", "hCanFb", "hCanVeh", "hCanLink", "hCanBtn",
+                    "hCanEps", "hCanPos"];
+    gantryClosed = false;   /* 断连时同步隐藏 3D/2D 提示箱 */
     for (var ri = 0; ri < resetIds.length; ri++) {
       setV(resetIds[ri], "--", true);
     }
@@ -949,6 +1089,26 @@ function renderHud(d) {
       elS.className = "v" +
         ((planAge != null && planAge > 5) ? " stale" : "") +
         (d.plan.safety ? " bad" : "");
+    }
+  }
+  /* 闸机口(gantry_detect):active&&open=开启(绿)/active&&!open=关闭(红)
+   * /active=false=无效(默认色);数据缺失或 >5s 陈旧显示 "--" 灰化。
+   * gantryClosed 同时驱动中央 3D/2D 的车辆前方红色提示箱 */
+  var elG = document.getElementById("hGantry");
+  if (elG) {
+    if (d.gantry) {
+      var gAge = d.ages ? d.ages["/gantry_state"] : null;
+      var gStale = gAge == null || gAge > 5;
+      elG.textContent = gStale ? "--" :
+        (d.gantry.active ? (d.gantry.open ? "开启" : "关闭") : "无效");
+      elG.className = "v" + (gStale ? " stale" : "") +
+        (gStale ? "" :
+          (d.gantry.active ? (d.gantry.open ? " ok" : " bad") : ""));
+      gantryClosed = !gStale && d.gantry.active && !d.gantry.open;
+    } else {
+      elG.textContent = "--";
+      elG.className = "v";
+      gantryClosed = false;
     }
   }
   if (d.control) {

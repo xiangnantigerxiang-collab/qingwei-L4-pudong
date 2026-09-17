@@ -3,9 +3,9 @@
 	<param name="path_dir" value="$(find robot)/path/"/>
 	<param name="bypass_enable" value="true"/>
 	<param name="/robot/planning/pallettype" type="int" value="0"/>
+    <rosparam command="load" file="$(find robot)/param/perception_safety.yaml"/>
 	<node pkg="robot" type="path_plan_node" name="path_plan_node" output="screen"/>
 </launch>
-
 
 
 

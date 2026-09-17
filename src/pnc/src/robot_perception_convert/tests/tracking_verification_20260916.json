@@ -1,0 +1,102 @@
+{
+  "date": "2026-09-16",
+  "scope": "src/pnc/src/robot_perception_convert only",
+  "algorithm": "Constant-velocity Kalman prediction/correction with global Hungarian one-to-one assignment in map coordinates",
+  "output": {
+    "id": "Positive int16, 1..32767; skip occupied IDs when wrapping; expire after two seconds without a real observation",
+    "vx_vy": "Absolute map x/y velocity, metres per second; initialize to zero until at least two observations spanning 0.2 seconds",
+    "heading": "normalize_degrees(atan2(vx, vy) * 180 / pi), north zero, clockwise, [0,360)",
+    "zero_velocity_heading": "Hold previous valid course; new track falls back to normalized ego heading minus local marker yaw in degrees",
+    "geometry": "Published x/y/dx/dy remain latest real observations; predicted position is used only for association; lane type uses independent world corners",
+    "missing_observations": "Keep last constant-velocity estimate, lower weighted confidence, never feed predicted targets into raw history"
+  },
+  "defaults": {
+    "track_lifetime_s": 2.0,
+    "minimum_velocity_span_s": 0.2,
+    "stationary_speed_mps": 0.2,
+    "position_variance_m2": 0.04,
+    "initial_velocity_variance_m2_per_s2": 100.0,
+    "white_acceleration_intensity_m2_per_s3": 4.0,
+    "association_maximum_speed_mps": 30.0
+  },
+  "confidence": "Preserve two-second exponentially weighted occurrence ratio including empty frames, grouped by tracker ID; retain original geometry-only filter as a compatibility API",
+  "transaction": "Update a tracker copy; commit only after successful temporal filtering, lane classification and publication validation. Duplicate timestamps restore pre-frame motion state, preserve birth IDs from old detections, and keep the ID allocator progressing.",
+  "preserved_publication_rules": {
+    "current_lane_min_overlap_ratio": 0.2,
+    "confidence_minimum": 0.15,
+    "width_m": [
+      0,
+      4
+    ],
+    "length_m": [
+      0,
+      15
+    ]
+  },
+  "checks": {
+    "tracker": {
+      "language": "C++11",
+      "transport": "stubs generated from actual ROS messages",
+      "test": "PASS: 3909 tracking and velocity checks",
+      "sanitizers": "PASS: 3909 tracking and velocity checks",
+      "benchmark": [
+        "tracking objects=100 p50_ms=0.1489 p99_ms=0.1653 max_ms=0.1675",
+        "tracking objects=300 p50_ms=0.9365 p99_ms=0.9893 max_ms=1.1932"
+      ]
+    },
+    "actual_node": {
+      "language": "C++11",
+      "transport": "generated ROS message stubs",
+      "sdk": "/home/mothotob/work/projects/claude-code/qingwei-L4-No2-pudong/src/hdmap/sdk",
+      "cmake_target": "perception_msg_convert",
+      "dynamic_link": "PASS",
+      "integration": "PASS: 4366 filtered perception publish checks",
+      "sanitizers": "PASS: 4366 filtered perception publish checks"
+    },
+    "cppcheck": {
+      "exit_code": 0,
+      "enable": "warning,performance,portability",
+      "language": "C++11",
+      "log": "/tmp/perception_tracking_verify_20260916/cppcheck.log"
+    }
+  },
+  "coverage": [
+    "Cardinal/diagonal heading, constant velocity, first observations, jitter, stopping and identities across multiple confidence windows",
+    "Crossing targets, changing array order, missing detections, predicted reacquisition and outlier isolation",
+    "Hungarian assignments versus exhaustive minimum-cost search on 300 deterministic random matrices",
+    "ID wrap, reset, exact expiry, duplicate timestamps, reordered/deleted/new births, motion rollback after failed callbacks",
+    "Ego translation/rotation compensation; course independent of box geometry and preserved 20 percent lane threshold",
+    "Nonuniform sample times and float32 large-map coordinates, ID-keyed confidence, duplicate-ID rejection and existing publication safety regressions"
+  ],
+  "scope_check": {
+    "modified_files": [
+      "src/pnc/src/robot_perception_convert/README.md",
+      "src/pnc/src/robot_perception_convert/perception_lane_classification.inc",
+      "src/pnc/src/robot_perception_convert/perception_msg_convert.cpp",
+      "src/pnc/src/robot_perception_convert/perception_temporal_filter.h",
+      "src/pnc/src/robot_perception_convert/perception_temporal_filter.inc",
+      "src/pnc/src/robot_perception_convert/tests/publish_integration.cpp",
+      "src/pnc/src/robot_perception_convert/tests/verify_publish.py"
+    ],
+    "added_files": [
+      "src/pnc/src/robot_perception_convert/perception_object_tracker.h",
+      "src/pnc/src/robot_perception_convert/perception_object_tracker.inc",
+      "src/pnc/src/robot_perception_convert/tests/tracking_test.cpp",
+      "src/pnc/src/robot_perception_convert/tests/verify_tracking.py",
+      "src/pnc/src/robot_perception_convert/tests/tracking_verification_20260916.json"
+    ],
+    "outside_module": []
+  },
+  "backup": "/home/mothotob/work/projects/claude-code/perception_before_tracking_20260916_171349.tar.gz",
+  "logs": [
+    "/tmp/perception_tracking_verify_20260916",
+    "/tmp/perception_motion_unit_verify_20260916"
+  ],
+  "limitations": [
+    "ROS message/transport stubs with real message definitions and existing real HDMap SDK; no ROS1 transport, Orin build or vehicle test",
+    "Receipt timestamps and current localization retain upstream latency/alignment errors; model/noise/deadband defaults need vehicle calibration",
+    "Existing float32 positions have approximately 0.25 m spacing at 4 million m map coordinates, causing short-term velocity quantization noise",
+    "Position and size alone cannot guarantee identities under complete overlap or long occlusion; IDs do not survive process restart",
+    "Benchmark covers tracker state copy, association, prediction and correction on this host, not the complete ROS callback"
+  ]
+}

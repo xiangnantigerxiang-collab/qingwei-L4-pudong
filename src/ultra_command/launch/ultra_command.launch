@@ -1,5 +1,6 @@
 <launch>
 	<!-- 监控矩形 csv 依赖全局参数 path_dir(robot_path_plan.launch 设置),
 	     须与 pnc 栈同一 master 启动; 参数缺失时节点每周期重试加载 -->
-	<node pkg="ultra_command" type="ultra_command_node" name="ultra_command_node" output="screen"/>
+	<node pkg="ultra_command" type="ultra_command_node" name="ultra_command_node"
+	      output="screen" respawn="true" respawn_delay="1.0"/>
 </launch>

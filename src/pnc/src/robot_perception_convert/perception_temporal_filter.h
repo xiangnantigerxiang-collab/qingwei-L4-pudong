@@ -13,4 +13,8 @@
 // 按用户约定，仅用 x/y/dx/dy 构造地图轴对齐矩形；非法框抛出 std::invalid_argument。
 robot::perception FilterPerceptionHistory(const std::vector<std::pair<robot::perception, double>>& tHistory);
 
+// 已跟踪输入专用：按稳定正 ID 累计同样的两秒加权置信度，不再按旧位置重新分配身份。
+// 同帧重复 ID 或非正 ID 为输入错误；输出 id/vx/vy/heading 取最新真实观测。
+robot::perception FilterTrackedPerceptionHistory(const std::vector<std::pair<robot::perception, double>>& tHistory);
+
 #endif  // PERCEPTION_TEMPORAL_FILTER_H

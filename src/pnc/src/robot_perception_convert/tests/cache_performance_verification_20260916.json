@@ -1,0 +1,1058 @@
+{
+  "environment": "x86_64, C++11 -O2, generated ROS message stubs, real HDMap SDK/maps; not Orin",
+  "rounds": 3,
+  "tracking": {
+    "before": [
+      [
+        {
+          "objects": 100,
+          "new_percent": 0,
+          "p50_ms": 0.0956,
+          "p99_ms": 0.1004,
+          "max_ms": 0.1172
+        },
+        {
+          "objects": 100,
+          "new_percent": 50,
+          "p50_ms": 0.2553,
+          "p99_ms": 0.3031,
+          "max_ms": 0.3808
+        },
+        {
+          "objects": 300,
+          "new_percent": 0,
+          "p50_ms": 0.4706,
+          "p99_ms": 0.487,
+          "max_ms": 0.4886
+        },
+        {
+          "objects": 300,
+          "new_percent": 50,
+          "p50_ms": 2.0439,
+          "p99_ms": 2.3968,
+          "max_ms": 2.4031
+        }
+      ],
+      [
+        {
+          "objects": 100,
+          "new_percent": 0,
+          "p50_ms": 0.0961,
+          "p99_ms": 0.0994,
+          "max_ms": 0.1039
+        },
+        {
+          "objects": 100,
+          "new_percent": 50,
+          "p50_ms": 0.2587,
+          "p99_ms": 0.4212,
+          "max_ms": 0.5164
+        },
+        {
+          "objects": 300,
+          "new_percent": 0,
+          "p50_ms": 0.4679,
+          "p99_ms": 0.4906,
+          "max_ms": 0.5165
+        },
+        {
+          "objects": 300,
+          "new_percent": 50,
+          "p50_ms": 2.0523,
+          "p99_ms": 2.3996,
+          "max_ms": 2.5626
+        }
+      ],
+      [
+        {
+          "objects": 100,
+          "new_percent": 0,
+          "p50_ms": 0.0972,
+          "p99_ms": 0.1018,
+          "max_ms": 0.1023
+        },
+        {
+          "objects": 100,
+          "new_percent": 50,
+          "p50_ms": 0.2533,
+          "p99_ms": 0.3837,
+          "max_ms": 0.4082
+        },
+        {
+          "objects": 300,
+          "new_percent": 0,
+          "p50_ms": 0.4657,
+          "p99_ms": 0.4864,
+          "max_ms": 0.4864
+        },
+        {
+          "objects": 300,
+          "new_percent": 50,
+          "p50_ms": 2.0229,
+          "p99_ms": 2.3501,
+          "max_ms": 2.403
+        }
+      ]
+    ],
+    "after": [
+      [
+        {
+          "objects": 100,
+          "new_percent": 0,
+          "p50_ms": 0.013,
+          "p99_ms": 0.0224,
+          "max_ms": 0.0229
+        },
+        {
+          "objects": 100,
+          "new_percent": 50,
+          "p50_ms": 0.0602,
+          "p99_ms": 0.1319,
+          "max_ms": 0.1913
+        },
+        {
+          "objects": 300,
+          "new_percent": 0,
+          "p50_ms": 0.04,
+          "p99_ms": 0.0455,
+          "max_ms": 0.0456
+        },
+        {
+          "objects": 300,
+          "new_percent": 50,
+          "p50_ms": 0.1463,
+          "p99_ms": 0.4559,
+          "max_ms": 0.4613
+        }
+      ],
+      [
+        {
+          "objects": 100,
+          "new_percent": 0,
+          "p50_ms": 0.0131,
+          "p99_ms": 0.0226,
+          "max_ms": 0.027
+        },
+        {
+          "objects": 100,
+          "new_percent": 50,
+          "p50_ms": 0.059,
+          "p99_ms": 0.132,
+          "max_ms": 0.1937
+        },
+        {
+          "objects": 300,
+          "new_percent": 0,
+          "p50_ms": 0.04,
+          "p99_ms": 0.0467,
+          "max_ms": 0.057
+        },
+        {
+          "objects": 300,
+          "new_percent": 50,
+          "p50_ms": 0.1456,
+          "p99_ms": 0.4756,
+          "max_ms": 0.5005
+        }
+      ],
+      [
+        {
+          "objects": 100,
+          "new_percent": 0,
+          "p50_ms": 0.0131,
+          "p99_ms": 0.0228,
+          "max_ms": 0.023
+        },
+        {
+          "objects": 100,
+          "new_percent": 50,
+          "p50_ms": 0.059,
+          "p99_ms": 0.1286,
+          "max_ms": 0.19
+        },
+        {
+          "objects": 300,
+          "new_percent": 0,
+          "p50_ms": 0.0402,
+          "p99_ms": 0.0425,
+          "max_ms": 0.0434
+        },
+        {
+          "objects": 300,
+          "new_percent": 50,
+          "p50_ms": 0.1471,
+          "p99_ms": 0.4573,
+          "max_ms": 0.8811
+        }
+      ]
+    ]
+  },
+  "callback": {
+    "before": [
+      [
+        {
+          "objects": 20,
+          "hz": 20,
+          "churn": 0,
+          "p50_ms": 0.056756,
+          "p99_ms": 0.062927,
+          "max_ms": 0.064156,
+          "output": "20..20",
+          "first_type": 4,
+          "checksum": 8592568600123056497,
+          "phase_avg_ms": {
+            "raw_lane": 0.0216268,
+            "tracking": 0.00519971,
+            "history": 0.0041681,
+            "filtered_lane": 0.0214203
+          }
+        },
+        {
+          "objects": 100,
+          "hz": 20,
+          "churn": 0,
+          "p50_ms": 0.249519,
+          "p99_ms": 0.262101,
+          "max_ms": 0.262713,
+          "output": "100..100",
+          "first_type": 4,
+          "checksum": 16339365662132361128,
+          "phase_avg_ms": {
+            "raw_lane": 0.0685778,
+            "tracking": 0.0703591,
+            "history": 0.0198178,
+            "filtered_lane": 0.0688597
+          }
+        },
+        {
+          "objects": 300,
+          "hz": 20,
+          "churn": 0,
+          "p50_ms": 0.960259,
+          "p99_ms": 0.983325,
+          "max_ms": 0.995886,
+          "output": "300..300",
+          "first_type": 4,
+          "checksum": 16149351355334441658,
+          "phase_avg_ms": {
+            "raw_lane": 0.173848,
+            "tracking": 0.485466,
+            "history": 0.0602766,
+            "filtered_lane": 0.178234
+          }
+        },
+        {
+          "objects": 100,
+          "hz": 100,
+          "churn": 0,
+          "p50_ms": 0.307574,
+          "p99_ms": 0.331106,
+          "max_ms": 0.333089,
+          "output": "100..100",
+          "first_type": 4,
+          "checksum": 8045189026354202435,
+          "phase_avg_ms": {
+            "raw_lane": 0.0686841,
+            "tracking": 0.0690938,
+            "history": 0.0787181,
+            "filtered_lane": 0.0687
+          }
+        },
+        {
+          "objects": 100,
+          "hz": 20,
+          "churn": 1,
+          "p50_ms": 0.930877,
+          "p99_ms": 0.972975,
+          "max_ms": 0.973816,
+          "output": "50..50",
+          "first_type": 4,
+          "checksum": 13308686896191463937,
+          "phase_avg_ms": {
+            "raw_lane": 0.0446047,
+            "tracking": 0.253086,
+            "history": 0.107118,
+            "filtered_lane": 0.466021
+          }
+        },
+        {
+          "objects": 300,
+          "hz": 20,
+          "churn": 1,
+          "p50_ms": 4.07495,
+          "p99_ms": 4.21706,
+          "max_ms": 4.24666,
+          "output": "150..150",
+          "first_type": 4,
+          "checksum": 3330078276200870411,
+          "phase_avg_ms": {
+            "raw_lane": 0.117906,
+            "tracking": 2.09569,
+            "history": 0.290675,
+            "filtered_lane": 1.36975
+          }
+        }
+      ],
+      [
+        {
+          "objects": 20,
+          "hz": 20,
+          "churn": 0,
+          "p50_ms": 0.056472,
+          "p99_ms": 0.064231,
+          "max_ms": 0.06461,
+          "output": "20..20",
+          "first_type": 4,
+          "checksum": 8592568600123056497,
+          "phase_avg_ms": {
+            "raw_lane": 0.0216225,
+            "tracking": 0.00519928,
+            "history": 0.00420495,
+            "filtered_lane": 0.0213951
+          }
+        },
+        {
+          "objects": 100,
+          "hz": 20,
+          "churn": 0,
+          "p50_ms": 0.243256,
+          "p99_ms": 0.260602,
+          "max_ms": 0.262014,
+          "output": "100..100",
+          "first_type": 4,
+          "checksum": 16339365662132361128,
+          "phase_avg_ms": {
+            "raw_lane": 0.0683386,
+            "tracking": 0.06951,
+            "history": 0.0193396,
+            "filtered_lane": 0.0684836
+          }
+        },
+        {
+          "objects": 300,
+          "hz": 20,
+          "churn": 0,
+          "p50_ms": 0.943763,
+          "p99_ms": 0.971514,
+          "max_ms": 0.974489,
+          "output": "300..300",
+          "first_type": 4,
+          "checksum": 16149351355334441658,
+          "phase_avg_ms": {
+            "raw_lane": 0.175296,
+            "tracking": 0.477361,
+            "history": 0.0603676,
+            "filtered_lane": 0.178767
+          }
+        },
+        {
+          "objects": 100,
+          "hz": 100,
+          "churn": 0,
+          "p50_ms": 0.302365,
+          "p99_ms": 0.327923,
+          "max_ms": 0.332652,
+          "output": "100..100",
+          "first_type": 4,
+          "checksum": 8045189026354202435,
+          "phase_avg_ms": {
+            "raw_lane": 0.0679364,
+            "tracking": 0.0685784,
+            "history": 0.0799372,
+            "filtered_lane": 0.0681808
+          }
+        },
+        {
+          "objects": 100,
+          "hz": 20,
+          "churn": 1,
+          "p50_ms": 0.911338,
+          "p99_ms": 0.948378,
+          "max_ms": 0.956343,
+          "output": "50..50",
+          "first_type": 4,
+          "checksum": 13308686896191463937,
+          "phase_avg_ms": {
+            "raw_lane": 0.0443478,
+            "tracking": 0.246393,
+            "history": 0.105933,
+            "filtered_lane": 0.458761
+          }
+        },
+        {
+          "objects": 300,
+          "hz": 20,
+          "churn": 1,
+          "p50_ms": 4.01389,
+          "p99_ms": 4.1364,
+          "max_ms": 4.13819,
+          "output": "150..150",
+          "first_type": 4,
+          "checksum": 3330078276200870411,
+          "phase_avg_ms": {
+            "raw_lane": 0.119117,
+            "tracking": 2.0433,
+            "history": 0.29283,
+            "filtered_lane": 1.36166
+          }
+        }
+      ],
+      [
+        {
+          "objects": 20,
+          "hz": 20,
+          "churn": 0,
+          "p50_ms": 0.056877,
+          "p99_ms": 0.063418,
+          "max_ms": 0.06366,
+          "output": "20..20",
+          "first_type": 4,
+          "checksum": 8592568600123056497,
+          "phase_avg_ms": {
+            "raw_lane": 0.0217927,
+            "tracking": 0.00527501,
+            "history": 0.00421264,
+            "filtered_lane": 0.0215014
+          }
+        },
+        {
+          "objects": 100,
+          "hz": 20,
+          "churn": 0,
+          "p50_ms": 0.246063,
+          "p99_ms": 0.261561,
+          "max_ms": 0.270906,
+          "output": "100..100",
+          "first_type": 4,
+          "checksum": 16339365662132361128,
+          "phase_avg_ms": {
+            "raw_lane": 0.0692511,
+            "tracking": 0.069723,
+            "history": 0.0194373,
+            "filtered_lane": 0.0695247
+          }
+        },
+        {
+          "objects": 300,
+          "hz": 20,
+          "churn": 0,
+          "p50_ms": 0.955516,
+          "p99_ms": 0.977342,
+          "max_ms": 0.997969,
+          "output": "300..300",
+          "first_type": 4,
+          "checksum": 16149351355334441658,
+          "phase_avg_ms": {
+            "raw_lane": 0.177538,
+            "tracking": 0.483404,
+            "history": 0.0603133,
+            "filtered_lane": 0.18136
+          }
+        },
+        {
+          "objects": 100,
+          "hz": 100,
+          "churn": 0,
+          "p50_ms": 0.299109,
+          "p99_ms": 0.318565,
+          "max_ms": 0.325985,
+          "output": "100..100",
+          "first_type": 4,
+          "checksum": 8045189026354202435,
+          "phase_avg_ms": {
+            "raw_lane": 0.06769,
+            "tracking": 0.0684896,
+            "history": 0.0772242,
+            "filtered_lane": 0.06771
+          }
+        },
+        {
+          "objects": 100,
+          "hz": 20,
+          "churn": 1,
+          "p50_ms": 0.94186,
+          "p99_ms": 1.03198,
+          "max_ms": 1.05342,
+          "output": "50..50",
+          "first_type": 4,
+          "checksum": 13308686896191463937,
+          "phase_avg_ms": {
+            "raw_lane": 0.0453461,
+            "tracking": 0.251664,
+            "history": 0.108708,
+            "filtered_lane": 0.486338
+          }
+        },
+        {
+          "objects": 300,
+          "hz": 20,
+          "churn": 1,
+          "p50_ms": 4.06632,
+          "p99_ms": 4.18903,
+          "max_ms": 4.26774,
+          "output": "150..150",
+          "first_type": 4,
+          "checksum": 3330078276200870411,
+          "phase_avg_ms": {
+            "raw_lane": 0.118325,
+            "tracking": 2.08628,
+            "history": 0.291952,
+            "filtered_lane": 1.37361
+          }
+        }
+      ]
+    ],
+    "after": [
+      [
+        {
+          "objects": 20,
+          "hz": 20,
+          "churn": 0,
+          "p50_ms": 0.052253,
+          "p99_ms": 0.057344,
+          "max_ms": 0.05825,
+          "output": "20..20",
+          "first_type": 4,
+          "checksum": 8592568600123056497,
+          "phase_avg_ms": {
+            "raw_lane": 0.0218983,
+            "tracking": 0.00211334,
+            "history": 0.00292916,
+            "filtered_lane": 0.021497
+          }
+        },
+        {
+          "objects": 100,
+          "hz": 20,
+          "churn": 0,
+          "p50_ms": 0.176957,
+          "p99_ms": 0.189162,
+          "max_ms": 0.204413,
+          "output": "100..100",
+          "first_type": 4,
+          "checksum": 16339365662132361128,
+          "phase_avg_ms": {
+            "raw_lane": 0.0683822,
+            "tracking": 0.0112722,
+            "history": 0.0119106,
+            "filtered_lane": 0.0677342
+          }
+        },
+        {
+          "objects": 300,
+          "hz": 20,
+          "churn": 0,
+          "p50_ms": 0.456672,
+          "p99_ms": 0.492782,
+          "max_ms": 0.495236,
+          "output": "300..300",
+          "first_type": 4,
+          "checksum": 16149351355334441658,
+          "phase_avg_ms": {
+            "raw_lane": 0.167115,
+            "tracking": 0.0402513,
+            "history": 0.0352818,
+            "filtered_lane": 0.16656
+          }
+        },
+        {
+          "objects": 100,
+          "hz": 100,
+          "churn": 0,
+          "p50_ms": 0.218041,
+          "p99_ms": 0.232396,
+          "max_ms": 0.232441,
+          "output": "100..100",
+          "first_type": 4,
+          "checksum": 8045189026354202435,
+          "phase_avg_ms": {
+            "raw_lane": 0.0681125,
+            "tracking": 0.0110474,
+            "history": 0.0531679,
+            "filtered_lane": 0.0677304
+          }
+        },
+        {
+          "objects": 100,
+          "hz": 20,
+          "churn": 1,
+          "p50_ms": 0.646234,
+          "p99_ms": 0.686101,
+          "max_ms": 0.692391,
+          "output": "50..50",
+          "first_type": 4,
+          "checksum": 13308686896191463937,
+          "phase_avg_ms": {
+            "raw_lane": 0.0442609,
+            "tracking": 0.0491161,
+            "history": 0.0362752,
+            "filtered_lane": 0.459482
+          }
+        },
+        {
+          "objects": 300,
+          "hz": 20,
+          "churn": 1,
+          "p50_ms": 1.93917,
+          "p99_ms": 2.03907,
+          "max_ms": 2.09324,
+          "output": "150..150",
+          "first_type": 4,
+          "checksum": 3330078276200870411,
+          "phase_avg_ms": {
+            "raw_lane": 0.112845,
+            "tracking": 0.147387,
+            "history": 0.116617,
+            "filtered_lane": 1.35715
+          }
+        }
+      ],
+      [
+        {
+          "objects": 20,
+          "hz": 20,
+          "churn": 0,
+          "p50_ms": 0.051729,
+          "p99_ms": 0.057651,
+          "max_ms": 0.068963,
+          "output": "20..20",
+          "first_type": 4,
+          "checksum": 8592568600123056497,
+          "phase_avg_ms": {
+            "raw_lane": 0.0217266,
+            "tracking": 0.00210413,
+            "history": 0.00290143,
+            "filtered_lane": 0.0211376
+          }
+        },
+        {
+          "objects": 100,
+          "hz": 20,
+          "churn": 0,
+          "p50_ms": 0.176658,
+          "p99_ms": 0.186161,
+          "max_ms": 0.187768,
+          "output": "100..100",
+          "first_type": 4,
+          "checksum": 16339365662132361128,
+          "phase_avg_ms": {
+            "raw_lane": 0.0677076,
+            "tracking": 0.0115182,
+            "history": 0.0126768,
+            "filtered_lane": 0.0671612
+          }
+        },
+        {
+          "objects": 300,
+          "hz": 20,
+          "churn": 0,
+          "p50_ms": 0.460898,
+          "p99_ms": 0.485837,
+          "max_ms": 0.486297,
+          "output": "300..300",
+          "first_type": 4,
+          "checksum": 16149351355334441658,
+          "phase_avg_ms": {
+            "raw_lane": 0.166551,
+            "tracking": 0.0411341,
+            "history": 0.0369909,
+            "filtered_lane": 0.166135
+          }
+        },
+        {
+          "objects": 100,
+          "hz": 100,
+          "churn": 0,
+          "p50_ms": 0.215769,
+          "p99_ms": 0.229881,
+          "max_ms": 0.23016,
+          "output": "100..100",
+          "first_type": 4,
+          "checksum": 8045189026354202435,
+          "phase_avg_ms": {
+            "raw_lane": 0.0674495,
+            "tracking": 0.0111081,
+            "history": 0.0521767,
+            "filtered_lane": 0.0669425
+          }
+        },
+        {
+          "objects": 100,
+          "hz": 20,
+          "churn": 1,
+          "p50_ms": 0.659315,
+          "p99_ms": 0.689229,
+          "max_ms": 0.692182,
+          "output": "50..50",
+          "first_type": 4,
+          "checksum": 13308686896191463937,
+          "phase_avg_ms": {
+            "raw_lane": 0.0443815,
+            "tracking": 0.0500644,
+            "history": 0.0356586,
+            "filtered_lane": 0.466742
+          }
+        },
+        {
+          "objects": 300,
+          "hz": 20,
+          "churn": 1,
+          "p50_ms": 1.98164,
+          "p99_ms": 2.0537,
+          "max_ms": 2.05421,
+          "output": "150..150",
+          "first_type": 4,
+          "checksum": 3330078276200870411,
+          "phase_avg_ms": {
+            "raw_lane": 0.113625,
+            "tracking": 0.151098,
+            "history": 0.119527,
+            "filtered_lane": 1.38236
+          }
+        }
+      ],
+      [
+        {
+          "objects": 20,
+          "hz": 20,
+          "churn": 0,
+          "p50_ms": 0.052323,
+          "p99_ms": 0.058819,
+          "max_ms": 0.060236,
+          "output": "20..20",
+          "first_type": 4,
+          "checksum": 8592568600123056497,
+          "phase_avg_ms": {
+            "raw_lane": 0.0220286,
+            "tracking": 0.00211882,
+            "history": 0.00294592,
+            "filtered_lane": 0.0216318
+          }
+        },
+        {
+          "objects": 100,
+          "hz": 20,
+          "churn": 0,
+          "p50_ms": 0.179342,
+          "p99_ms": 0.189182,
+          "max_ms": 0.190972,
+          "output": "100..100",
+          "first_type": 4,
+          "checksum": 16339365662132361128,
+          "phase_avg_ms": {
+            "raw_lane": 0.0695901,
+            "tracking": 0.0113948,
+            "history": 0.0118346,
+            "filtered_lane": 0.0688657
+          }
+        },
+        {
+          "objects": 300,
+          "hz": 20,
+          "churn": 0,
+          "p50_ms": 0.462278,
+          "p99_ms": 0.47989,
+          "max_ms": 0.481716,
+          "output": "300..300",
+          "first_type": 4,
+          "checksum": 16149351355334441658,
+          "phase_avg_ms": {
+            "raw_lane": 0.168528,
+            "tracking": 0.0406523,
+            "history": 0.0345692,
+            "filtered_lane": 0.16778
+          }
+        },
+        {
+          "objects": 100,
+          "hz": 100,
+          "churn": 0,
+          "p50_ms": 0.225586,
+          "p99_ms": 0.238225,
+          "max_ms": 0.239818,
+          "output": "100..100",
+          "first_type": 4,
+          "checksum": 8045189026354202435,
+          "phase_avg_ms": {
+            "raw_lane": 0.0689798,
+            "tracking": 0.0112134,
+            "history": 0.0566893,
+            "filtered_lane": 0.0683273
+          }
+        },
+        {
+          "objects": 100,
+          "hz": 20,
+          "churn": 1,
+          "p50_ms": 0.656256,
+          "p99_ms": 0.685476,
+          "max_ms": 0.69805,
+          "output": "50..50",
+          "first_type": 4,
+          "checksum": 13308686896191463937,
+          "phase_avg_ms": {
+            "raw_lane": 0.0445764,
+            "tracking": 0.0495824,
+            "history": 0.0360241,
+            "filtered_lane": 0.466993
+          }
+        },
+        {
+          "objects": 300,
+          "hz": 20,
+          "churn": 1,
+          "p50_ms": 1.96837,
+          "p99_ms": 2.10032,
+          "max_ms": 2.12136,
+          "output": "150..150",
+          "first_type": 4,
+          "checksum": 3330078276200870411,
+          "phase_avg_ms": {
+            "raw_lane": 0.113249,
+            "tracking": 0.14993,
+            "history": 0.117112,
+            "filtered_lane": 1.37631
+          }
+        }
+      ]
+    ]
+  },
+  "summary": {
+    "tracking": [
+      {
+        "objects": 100,
+        "new_percent": 0,
+        "before": {
+          "p50_ms": 0.0961,
+          "p99_ms": 0.1004,
+          "max_ms": 0.1039
+        },
+        "after": {
+          "p50_ms": 0.0131,
+          "p99_ms": 0.0226,
+          "max_ms": 0.023
+        }
+      },
+      {
+        "objects": 100,
+        "new_percent": 50,
+        "before": {
+          "p50_ms": 0.2553,
+          "p99_ms": 0.3837,
+          "max_ms": 0.4082
+        },
+        "after": {
+          "p50_ms": 0.059,
+          "p99_ms": 0.1319,
+          "max_ms": 0.1913
+        }
+      },
+      {
+        "objects": 300,
+        "new_percent": 0,
+        "before": {
+          "p50_ms": 0.4679,
+          "p99_ms": 0.487,
+          "max_ms": 0.4886
+        },
+        "after": {
+          "p50_ms": 0.04,
+          "p99_ms": 0.0455,
+          "max_ms": 0.0456
+        }
+      },
+      {
+        "objects": 300,
+        "new_percent": 50,
+        "before": {
+          "p50_ms": 2.0439,
+          "p99_ms": 2.3968,
+          "max_ms": 2.4031
+        },
+        "after": {
+          "p50_ms": 0.1463,
+          "p99_ms": 0.4573,
+          "max_ms": 0.5005
+        }
+      }
+    ],
+    "callback": [
+      {
+        "objects": 20,
+        "hz": 20,
+        "churn": 0,
+        "before": {
+          "p50_ms": 0.056756,
+          "p99_ms": 0.063418,
+          "max_ms": 0.064156
+        },
+        "after": {
+          "p50_ms": 0.052253,
+          "p99_ms": 0.057651,
+          "max_ms": 0.060236
+        },
+        "matching_field_digest": 8592568600123056497
+      },
+      {
+        "objects": 100,
+        "hz": 20,
+        "churn": 0,
+        "before": {
+          "p50_ms": 0.246063,
+          "p99_ms": 0.261561,
+          "max_ms": 0.262713
+        },
+        "after": {
+          "p50_ms": 0.176957,
+          "p99_ms": 0.189162,
+          "max_ms": 0.190972
+        },
+        "matching_field_digest": 16339365662132361128
+      },
+      {
+        "objects": 300,
+        "hz": 20,
+        "churn": 0,
+        "before": {
+          "p50_ms": 0.955516,
+          "p99_ms": 0.977342,
+          "max_ms": 0.995886
+        },
+        "after": {
+          "p50_ms": 0.460898,
+          "p99_ms": 0.485837,
+          "max_ms": 0.486297
+        },
+        "matching_field_digest": 16149351355334441658
+      },
+      {
+        "objects": 100,
+        "hz": 100,
+        "churn": 0,
+        "before": {
+          "p50_ms": 0.302365,
+          "p99_ms": 0.327923,
+          "max_ms": 0.332652
+        },
+        "after": {
+          "p50_ms": 0.218041,
+          "p99_ms": 0.232396,
+          "max_ms": 0.232441
+        },
+        "matching_field_digest": 8045189026354202435
+      },
+      {
+        "objects": 100,
+        "hz": 20,
+        "churn": 1,
+        "before": {
+          "p50_ms": 0.930877,
+          "p99_ms": 0.972975,
+          "max_ms": 0.973816
+        },
+        "after": {
+          "p50_ms": 0.656256,
+          "p99_ms": 0.686101,
+          "max_ms": 0.692391
+        },
+        "matching_field_digest": 13308686896191463937
+      },
+      {
+        "objects": 300,
+        "hz": 20,
+        "churn": 1,
+        "before": {
+          "p50_ms": 4.06632,
+          "p99_ms": 4.18903,
+          "max_ms": 4.24666
+        },
+        "after": {
+          "p50_ms": 1.96837,
+          "p99_ms": 2.0537,
+          "max_ms": 2.09324
+        },
+        "matching_field_digest": 3330078276200870411
+      }
+    ]
+  },
+  "summary_statistic": "median of three independently measured P50/P99/max values, alternating before/after run order",
+  "baseline": "Immediately preceding performance fix, saved before this cache/spatial-index optimization",
+  "backup": "/home/mothotob/work/projects/claude-code/perception_monitor_before_cache_perf_20260916_225148.tar.gz",
+  "artifacts": "/tmp/perception_cache_perf_20260916_225148",
+  "validation": {
+    "tracking": {
+      "language": "C++11",
+      "transport": "stubs generated from actual ROS messages",
+      "test": "PASS: 19733 tracking and velocity checks",
+      "sanitizers": "PASS: 19733 tracking and velocity checks",
+      "benchmark": [
+        "tracking objects=100 new_percent=0 p50_ms=0.0130 p99_ms=0.0224 max_ms=0.0226",
+        "tracking objects=100 new_percent=50 p50_ms=0.0591 p99_ms=0.1328 max_ms=0.2025",
+        "tracking objects=300 new_percent=0 p50_ms=0.0399 p99_ms=0.0454 max_ms=0.0478",
+        "tracking objects=300 new_percent=50 p50_ms=0.1470 p99_ms=0.4813 max_ms=0.5162"
+      ]
+    },
+    "publish": {
+      "language": "C++11",
+      "transport": "generated ROS message stubs",
+      "sdk": "/home/mothotob/work/projects/claude-code/qingwei-L4-No2-pudong/src/hdmap/sdk",
+      "cmake_target": "perception_msg_convert",
+      "dynamic_link": "PASS",
+      "integration": "PASS: 4366 filtered perception publish checks",
+      "sanitizers": "PASS: 4366 filtered perception publish checks"
+    },
+    "differential": {
+      "frames": 1000,
+      "differences": 0,
+      "scenarios": [
+        "sparse",
+        "dense",
+        "grid_boundaries",
+        "extreme_coordinate_scan_fallback"
+      ],
+      "fields": [
+        "id",
+        "type",
+        "x",
+        "y",
+        "dx",
+        "dy",
+        "vx",
+        "vy",
+        "heading",
+        "confidence"
+      ]
+    },
+    "static_analysis": "Checking src/pnc/src/robot_perception_convert/perception_object_tracker.inc ...\n1/2 files checked 65% done\nChecking src/pnc/src/robot_perception_convert/perception_temporal_filter.inc ...\n2/2 files checked 100% done",
+    "callback_digest_fields": [
+      "id",
+      "x",
+      "y",
+      "vx",
+      "vy",
+      "heading",
+      "confidence",
+      "type"
+    ],
+    "callback_digest_equal_in_all_six_scenarios": true
+  },
+  "implementation": {
+    "candidate_search": "Reusable open-addressed four-metre grid, nine-cell query, exact original gates for all candidates; exhaustive fallback below 16 tracks or for extreme finite coordinates",
+    "matching": "Split the feasible bipartite graph into connected components, original Hungarian solver per conflicting component, direct optimum for isolated observations; preserve row/track order for ties",
+    "frame_cache": "Precompute track gates, dimensions and variance penalty once per frame; reuse scratch buffers outside copied tracking state; single-thread contract",
+    "ids": "32768-bit occupied-ID set replaces node-allocating hash set",
+    "history": "32768-entry int index table (128 KiB on x86_64/aarch64), clear only previously used IDs; cache IDs separately to avoid dereferencing destroyed input messages",
+    "memory_bound": "Retains scratch high-water capacities until process exit; grid/cache sizes follow track count and matching-component size, not elapsed frame count; dense worst case remains expensive"
+  },
+  "limitations": [
+    "Local x86_64 timings, not Orin; no deployment or real control-latency measurement",
+    "ROS stubs; callback measurements exclude ROS transport/serialization and terminal rendering; exclusion polygons are empty",
+    "Tracking benchmark includes a copied working tracker; churn benchmark intentionally creates far-away new objects each frame",
+    "Spatial indexing is an average-case reduction; all targets in one neighbourhood can still require dense global matching"
+  ],
+  "source_sha256": {
+    "perception_object_tracker.inc": "fdb23b1a330b6aec4620ccdefde212311d8f69f5d53d136d0fa6fab0cabde479",
+    "perception_temporal_filter.inc": "a756dc5ed24960c59dcec7cba7be549f4e6087b76563a0b56d6f8ef115365d90",
+    "tests/tracking_test.cpp": "7769fb8c506ce520c480d1fa5037d6af596656c87653c6c3575e9f82b024b69a"
+  }
+}

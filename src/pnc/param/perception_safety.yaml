@@ -1,0 +1,27 @@
+# 前进挡感知避障；path_plan_node 启动时读取，修改后重启该节点。
+# 长宽为含载荷的保护外廓；front 为后轴参考点到最前端距离，单位 m。
+# 尚未取得实测外廓，空车/挂托盘均保留旧 3.4 m 宽、3.6 m 长保护范围。
+/robot/planning/perception_safety:
+  empty_width: 3.4
+  loaded_width: 3.4
+  empty_length: 3.6
+  loaded_length: 3.6
+  empty_front: 2.3
+  loaded_front: 2.3
+  lateral_margin: 0.15
+  stop_margin: 1.0
+  emergency_margin: 0.3
+  reaction_time: 0.4
+  comfort_deceleration: 0.8       # m/s²，普通风险减速上限
+  emergency_deceleration: 0.8     # m/s²，估计紧急停车距离用；须按最差载荷实测保证值标定
+  jerk: 0.8                     # m/s³，普通风险限速变化率
+  release_acceleration: 0.3     # m/s²，障碍解除后的限速恢复上限
+  confirmation_hits: 3
+  confirmation_time: 0.2        # s，只累计不同时间戳的真实观测
+  confirmation_gap: 0.3         # s，连续观测允许的最大间隔
+  coast_time: 0.5               # s，已确认目标短时漏检外推上限
+  input_timeout: 0.6            # s，新通道启用后断流停车，不退回历史帧
+  clear_time: 0.3               # s，紧急状态解除还须至少两个新的有效观测帧
+  prediction_time: 6.0          # s，动态目标预测时域上限
+  prediction_margin_rate: 0.05  # m/s，动态预测不确定性余量随时长增长
+  low_score: 0.35               # 低于此值加两帧、确认时长翻倍；0 表示上游未提供分数

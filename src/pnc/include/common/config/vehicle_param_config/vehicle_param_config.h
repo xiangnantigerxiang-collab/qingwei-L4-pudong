@@ -3,16 +3,14 @@
 
 // namespace planning
 // {
-    //use FLU
-class VehicleParamConfig
-{
+//use FLU
+class VehicleParamConfig {
 public:
-   
     double car_length = 3.09;
     double car_width = 1.56;
     double wheel_base = 1.6;
     double rear_axis_to_front = 2.3;
-    double rear_axis_to_rear  = 0.7;
+    double rear_axis_to_rear = 0.7;
     double front_edge_to_center = 1.5;
     double back_edge_to_center = 1.5;
     double mini_r = 4.0;
@@ -26,12 +24,11 @@ public:
     double emergency_brake = -7.0;
 };
 
-
 // 长城车辆参数
 // class VehicleParamConfig
 // {
 // public:
-   
+
 //     double car_length = 3.495;
 //     double car_width = 1.660;
 //     double wheel_base = 2.475;
@@ -49,4 +46,4 @@ public:
 //     double emergency_brake = -7.0;
 // };
 
-#endif //PLANNING_VEHICLE_PARAM_CONFIG_H
+#endif  //PLANNING_VEHICLE_PARAM_CONFIG_H

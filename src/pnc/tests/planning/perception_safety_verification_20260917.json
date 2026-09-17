@@ -1,0 +1,562 @@
+{
+  "core": "PASS perception safety: 4762 checks",
+  "sanitizers": "PASS perception safety: 4762 checks",
+  "integration": "PASS perception integration: 31 checks",
+  "allocations": "300 objects, 1000 warmed Observe+Evaluate calls: allocations=0 cache_bytes=4133888",
+  "core_language": "C++11",
+  "planning_language": "C++14 (host Boost requirement)",
+  "transport": "generated ROS stubs",
+  "parameters": {
+    "empty_width": 3.4,
+    "loaded_width": 3.4,
+    "empty_length": 3.6,
+    "loaded_length": 3.6,
+    "empty_front": 2.3,
+    "loaded_front": 2.3,
+    "lateral_margin": 0.15,
+    "stop_margin": 1.0,
+    "emergency_margin": 0.3,
+    "reaction_time": 0.4,
+    "comfort_deceleration": 0.8,
+    "emergency_deceleration": 0.8,
+    "jerk": 0.8,
+    "release_acceleration": 0.3,
+    "confirmation_hits": 3,
+    "confirmation_time": 0.2,
+    "confirmation_gap": 0.3,
+    "coast_time": 0.5,
+    "input_timeout": 0.6,
+    "clear_time": 0.3,
+    "prediction_time": 6.0,
+    "prediction_margin_rate": 0.05,
+    "low_score": 0.35
+  },
+  "legacy": {
+    "snapshots": 387,
+    "trace_sha256": "f75580fdfc324b245be7951ae225a699ae2761e7c324746f1b2d81d61caab8dc",
+    "gantry": "PASS: 1806 gantry checks"
+  },
+  "benchmarks": {
+    "before": [
+      [
+        "objects=20 dense=0 p50_ms=0.058789 p99_ms=0.066140 max_ms=0.070553",
+        "objects=20 dense=1 p50_ms=0.044983 p99_ms=0.069199 max_ms=0.130409",
+        "objects=100 dense=0 p50_ms=0.209311 p99_ms=0.233643 max_ms=0.242347",
+        "objects=100 dense=1 p50_ms=0.219532 p99_ms=0.261798 max_ms=0.265981",
+        "objects=300 dense=0 p50_ms=0.663291 p99_ms=0.766894 max_ms=0.804388",
+        "objects=300 dense=1 p50_ms=0.656079 p99_ms=0.757729 max_ms=0.778146",
+        "objects=1000 dense=0 p50_ms=2.175846 p99_ms=2.445566 max_ms=2.478736",
+        "objects=1000 dense=1 p50_ms=2.230839 p99_ms=2.930346 max_ms=3.498278"
+      ],
+      [
+        "objects=20 dense=0 p50_ms=0.059870 p99_ms=0.067343 max_ms=0.073297",
+        "objects=20 dense=1 p50_ms=0.046026 p99_ms=0.070292 max_ms=0.220337",
+        "objects=100 dense=0 p50_ms=0.217009 p99_ms=0.259098 max_ms=0.266658",
+        "objects=100 dense=1 p50_ms=0.225725 p99_ms=0.383184 max_ms=0.389769",
+        "objects=300 dense=0 p50_ms=0.678485 p99_ms=0.900008 max_ms=0.943777",
+        "objects=300 dense=1 p50_ms=0.674334 p99_ms=0.780028 max_ms=0.799394",
+        "objects=1000 dense=0 p50_ms=2.181631 p99_ms=2.442192 max_ms=2.552181",
+        "objects=1000 dense=1 p50_ms=2.268690 p99_ms=2.581020 max_ms=2.656643"
+      ],
+      [
+        "objects=20 dense=0 p50_ms=0.060132 p99_ms=0.069657 max_ms=0.076650",
+        "objects=20 dense=1 p50_ms=0.046112 p99_ms=0.070584 max_ms=0.275241",
+        "objects=100 dense=0 p50_ms=0.212085 p99_ms=0.244614 max_ms=0.246790",
+        "objects=100 dense=1 p50_ms=0.226807 p99_ms=0.262497 max_ms=0.265419",
+        "objects=300 dense=0 p50_ms=0.682108 p99_ms=0.794205 max_ms=0.806960",
+        "objects=300 dense=1 p50_ms=0.675829 p99_ms=0.772244 max_ms=0.786441",
+        "objects=1000 dense=0 p50_ms=2.205677 p99_ms=3.543556 max_ms=3.765111",
+        "objects=1000 dense=1 p50_ms=2.261661 p99_ms=2.613327 max_ms=2.679489"
+      ]
+    ],
+    "after": [
+      [
+        "objects=20 dense=0 p50_ms=0.002784 p99_ms=0.004066 max_ms=0.017584 cache_bytes=4133888",
+        "objects=20 dense=1 p50_ms=0.003749 p99_ms=0.004725 max_ms=0.006098 cache_bytes=4133888",
+        "objects=100 dense=0 p50_ms=0.011133 p99_ms=0.014002 max_ms=0.019219 cache_bytes=4133888",
+        "objects=100 dense=1 p50_ms=0.015036 p99_ms=0.017877 max_ms=0.019359 cache_bytes=4133888",
+        "objects=300 dense=0 p50_ms=0.032026 p99_ms=0.036788 max_ms=0.187032 cache_bytes=4133888",
+        "objects=300 dense=1 p50_ms=0.028252 p99_ms=0.030633 max_ms=0.031594 cache_bytes=4133888",
+        "objects=1000 dense=0 p50_ms=0.069768 p99_ms=0.081976 max_ms=0.093206 cache_bytes=4185088",
+        "objects=1000 dense=1 p50_ms=0.090488 p99_ms=0.099800 max_ms=0.100420 cache_bytes=4185088"
+      ],
+      [
+        "objects=20 dense=0 p50_ms=0.002764 p99_ms=0.003899 max_ms=0.008333 cache_bytes=4133888",
+        "objects=20 dense=1 p50_ms=0.003931 p99_ms=0.004838 max_ms=0.007595 cache_bytes=4133888",
+        "objects=100 dense=0 p50_ms=0.011262 p99_ms=0.014013 max_ms=0.015243 cache_bytes=4133888",
+        "objects=100 dense=1 p50_ms=0.014992 p99_ms=0.017444 max_ms=0.018203 cache_bytes=4133888",
+        "objects=300 dense=0 p50_ms=0.031678 p99_ms=0.035620 max_ms=0.079469 cache_bytes=4133888",
+        "objects=300 dense=1 p50_ms=0.025646 p99_ms=0.028459 max_ms=0.029520 cache_bytes=4133888",
+        "objects=1000 dense=0 p50_ms=0.047597 p99_ms=0.055987 max_ms=0.056518 cache_bytes=4185088",
+        "objects=1000 dense=1 p50_ms=0.073108 p99_ms=0.081049 max_ms=0.119382 cache_bytes=4185088"
+      ],
+      [
+        "objects=20 dense=0 p50_ms=0.002828 p99_ms=0.004296 max_ms=0.005363 cache_bytes=4133888",
+        "objects=20 dense=1 p50_ms=0.004222 p99_ms=0.005786 max_ms=0.007621 cache_bytes=4133888",
+        "objects=100 dense=0 p50_ms=0.012071 p99_ms=0.014590 max_ms=0.024248 cache_bytes=4133888",
+        "objects=100 dense=1 p50_ms=0.015004 p99_ms=0.018445 max_ms=0.019360 cache_bytes=4133888",
+        "objects=300 dense=0 p50_ms=0.031853 p99_ms=0.038885 max_ms=0.135348 cache_bytes=4133888",
+        "objects=300 dense=1 p50_ms=0.024654 p99_ms=0.027426 max_ms=0.028427 cache_bytes=4133888",
+        "objects=1000 dense=0 p50_ms=0.051226 p99_ms=0.054458 max_ms=0.055509 cache_bytes=4185088",
+        "objects=1000 dense=1 p50_ms=0.080792 p99_ms=0.089334 max_ms=0.090838 cache_bytes=4185088"
+      ]
+    ]
+  },
+  "source_sha256": {
+    "src/robot_path_plan/path_plan_node.cpp": "bb2fd037e537fc95875e47bd426e4e7f8adcad1187502d49f266e525c1154806",
+    "src/robot_path_plan/geometry_utils.h": "7d5f8da3f3a1385e6e1bb26da0d1d842733268c3445805aaeb6c5624d152beb3",
+    "src/robot_path_plan/adaptiveHook.h": "decf9288105d99a9b74cba5ea1ed083f0d04c0f5a8f00f4fa03f106cbcc98ce5",
+    "src/robot_path_plan/path_plan_task.inc": "b3517a7b3ed4b3428903b7982629398d78ae924a9689f13d3993b87a6a1842f9",
+    "src/robot_path_plan/adaptiveHook.cpp": "96e73bfcd22a9f5a7e253e69803c4fefaa65090400a96982347b898356bdb351",
+    "src/robot_path_plan/path_plan_comply.h": "46a21d56f10d5789252214bb5c9bb5ad41ee5e8e0e7eea62dcc32ca13c715882",
+    "src/robot_path_plan/path_plan_geometry.inc": "db028e512affdf7782f0698c217ca4e5c09560705fd2a6cd9eb30a170c74fd40",
+    "src/robot_path_plan/path_plan_perception.inc": "2ea05f04ee041102eb49c407124f42344eaa2e2a86aeef0bbdcf40a0e45dc433",
+    "src/robot_path_plan/ivmsglocpos.h": "322848dd91fd80c4b472f9a2100e824b3bdd5a94e26e9be7a011de9cc359435a",
+    "src/robot_path_plan/path_plan_comply.cpp": "a47bec1c549c640ba54709573d26047a2e503bf7c2c98c41e2c450384770a338",
+    "src/robot_path_plan/path_plan_output.inc": "aaa0b8a0d7357daefce53eacb557b0fabb5dcf5ed26dc102904670fcd74b6458",
+    "src/robot_path_plan/path_plan_reference.inc": "a14682ad2773e583d3cb696dbe6f8fa482d0ac599180dfb75e637aa82da3b689",
+    "src/robot_path_plan/path_plan_experimental.inc": "08c919be3205448181effbe37e9e780da007b95af6622fc4f2244a785a057749",
+    "src/robot_path_plan/pathdecision/lanechange_decision.cpp": "04c886ab379bf03e120503afffa51f4fc9c96889c63f22570cecd4dcae880ab3",
+    "src/robot_path_plan/pathdecision/lanechange_decision.h": "083e516fc38fd8405c1eb098038c72950217eefc2540839e0559074b923c7d0c",
+    "src/robot_path_plan/pathdecision/path_decision.cpp": "d250e3dbb6cf558ebcead7c7a0539ac188780538be322cb81292ef2d75f40722",
+    "src/robot_path_plan/pathdecision/path_decision.h": "299111bb343d3d5967971ca7bf15f0beef2e01c61162e1254e820d551a428cbd",
+    "src/robot_path_plan/lattice/collision_check_with_bbox.h": "ede0e4c2cc5590410d1d6f41bcb57082e7ba3319230b36776133895d4719cdef",
+    "src/robot_path_plan/lattice/geometry_utils.h": "fdfbfead81c4dfecca19be91ecf2d20f5c06fccc3652434b0743667b291afbeb",
+    "src/robot_path_plan/lattice/gis_utils.h": "db3e269423a5789d4c4e5c044cb19fe3810b098b6723acd2b7e8e83512bf1071",
+    "src/robot_path_plan/lattice/pose2d.h": "c274976e65ab9ad586e5d8fe6b5d2bb57cdba0a6189211d7a0fa5d0fb6499703",
+    "src/robot_path_plan/lattice/collision_check_with_bbox.cpp": "c224fa48c27b7e19e9b1ab15e19ec0029ac6f9c6b05521d1d927000b83f90abb",
+    "src/robot_path_plan/lattice/my_lattice_planner.cpp": "838fb7762c7b6085829f2d0087bb6ce112d73af4f9a3b73dce2b20c4c1fb5b8d",
+    "src/robot_path_plan/lattice/math_utils.h": "78dfc0f11b0e608a495966f5db55a45299b665de1d8275332cbab8b04c1070f6",
+    "src/robot_path_plan/lattice/time_logger.h": "9a8d343770a5a4c0e8cf7acec0a1b394a3aa2cad790f7c72ccaf0b887c03a53b",
+    "src/robot_path_plan/lattice/my_lattice_planner.h": "e6d106ebab88099106c5f58dd8fee58b830024e9f2d8eb741b3a0000c04062d0",
+    "src/robot_path_plan/lattice/planner_utils.h": "10cfb1b4382b75052c26b63f3138c022a9ae0aeee7a95aa6485e1e2f34c39282",
+    "src/robot_path_plan/reference/collision_safety.inc": "7616000cf1bbcde0a4c6ec7154172271acb7e57133305359962a4f4b0630c520",
+    "src/robot_path_plan/reference/path_generation.inc": "478dd35b420957636b8673d1802ca8477abfedbc8cfdffc115ec4af60e4c6d24",
+    "src/robot_path_plan/trans/trans_data.h": "59c323d4401c0ab3cef58c521fb84671261488c09116242fad6b94ab19b07ac5",
+    "src/robot_path_plan/trans/trans_data.cpp": "7aac100ca935cce978dc2eb2a0c2591fdb4b7a3ae190850ff1fd32908a43fa62",
+    "src/robot_path_plan/lattice_plan/trajectory1d_generator.h": "92f268c33079edb4ecf3e59e9bfffd1907a72730bceaa7efbb85d4648c0f9ffc",
+    "src/robot_path_plan/lattice_plan/trajectory_cost.h": "fcb2f84fd31eb9b83276dd846831cf6c7e5f533dafd6315eddd8f1deead81258",
+    "src/robot_path_plan/lattice_plan/lattice_planner.h": "7913ca6d95a0735aff19c609f2a654f97e48de71b2972a618c2739082282e717",
+    "src/robot_path_plan/lattice_plan/end_condition_sampler.h": "3e74809d596b153bcc11f348bd5f6c5e7a8be483cea83cb9e308d65d3f500bfc",
+    "src/robot_path_plan/lattice_plan/end_condition_sampler.cpp": "cb25ed3bdfc6ee61cfe557ba7c62f9aeab25224f55c8820b62c1b37d91e89aa1",
+    "src/robot_path_plan/lattice_plan/trajectory_cost.cpp": "e1ae0fe4717c24f8ff0a39a4dce3721dc977df138399d093dda8bcd59b65ad2d",
+    "src/robot_path_plan/lattice_plan/lattice_trajectory1d.h": "83baf9f365b27fd1b980f62f81b4586df7e44e3106563acdc8da783578ffdb8d",
+    "src/robot_path_plan/lattice_plan/trajectory_combiner.h": "17162ab417183e41be9305f935c61e41d735e6b4d3ab90084bfb7c6de69664ee",
+    "src/robot_path_plan/lattice_plan/trajectory_combiner.cpp": "4a21016612844e88c938ca8836c07bdeb04876598505c52c1424480807810ed0",
+    "src/robot_path_plan/lattice_plan/lattice_planner.cpp": "65d992b6e09fa2b7385869ca181f12d0ee36025ad81467bb48ac5c1edccc5310",
+    "src/robot_path_plan/lattice_plan/trajectory1d_generator.cpp": "27d35b28d5765f7e03737b14ac08670517d583e72c0e77216c355e04569ee77e",
+    "src/robot_path_plan/lattice_plan/lattice_trajectory1d.cpp": "105e022db7dfafe5b582039e21d3f02ec4997903b83cdc0dbdf14fc814cd3d38",
+    "src/robot_path_plan/task/global_path.inc": "59393181051e7a44d0368e5f308a4deb9aa18b1a8ef398c05f9cf95a0511c87d",
+    "src/robot_path_plan/task/stop_speed.inc": "d403b1b035ba0f30b59172a7aa7f10d808b9f1de4e8b27d5542b6c35c6fc0562",
+    "src/robot_path_plan/task/operation_path.inc": "10d85d763ace44689970d610ca51ae3045d1ac82c4712b1be5972e5c6d80e3ef",
+    "src/robot_path_plan/task/airport_stop.inc": "9f20b5d6949fd0cf1f1e6f02b6f0ac4887323a7dd582e7fed87f2f26e300b33e",
+    "src/robot_path_plan/collisioncheck/collision_detection.cpp": "ce8b148a2d4b0c856237ecf5ac1e63d711363ab3249c974db3f516137c80feeb",
+    "src/robot_path_plan/collisioncheck/collision_detection.h": "317949eb9edeca6631b300a8f0d639d2ac6ce8cebe214663223b0d4bd32542f7",
+    "src/robot_path_plan/safety/startup_observation.inc": "86ec1974da56989a0f2101741ac9e988397d25c8ef3dc553677b58ec2247f6ab",
+    "src/robot_path_plan/safety/perception_safety.h": "d8c507cc82a80e385cfaf974974f91b4aa7f3cbb09bc10844c6169552b2d9ac2",
+    "src/robot_path_plan/safety/perception_safety_adapter.inc": "da6328ecb5c26878b77d036e948ca66f01f1986931661202a2dc3954447bab67",
+    "src/robot_path_plan/safety/perception_safety.inc": "b62c1e7972bc16656253f31c058968a02a8b052ff85b2539606707b2b263cc37",
+    "src/robot_path_plan/pathmatch/pathmatcher.h": "42339a4ab68f873ccb67e0a07599c3be6b2bbb42792e6276e1b3d23d8ef4b25d",
+    "src/robot_path_plan/pathmatch/pathmatcher.cpp": "f4178cca65e2d534bf3a4cbaf5d93e9533036146110abfe445c068e58d77adcd",
+    "src/robot_path_plan/speedplan/speed_planning.h": "f468cefb034c4f1007f300dbf08411750f012886089f08dbee33db71230f1807",
+    "src/robot_path_plan/speedplan/speed_planning.cpp": "ec32cf44b5e2bd62a3f5fe218dcae126c11e6afc1db69518b4c3bb9dc9ae9bc8",
+    "src/robot_path_plan/reference_line/reference_line.h": "98486827804d142cfb9248ff3eaaed9585e52a98cbf6ae05aefc66a5a049d100",
+    "src/robot_path_plan/reference_line/reference_point.cpp": "3b46c14f164a039733505ef4829dea4f58c4e70a66f7a9f04e09fa86bb625fa3",
+    "src/robot_path_plan/reference_line/reference_line.cpp": "87ab7dba258834feb7d82efd822cea6004b6d3b83feba9e9fe2b432cc02f64b4",
+    "src/robot_path_plan/reference_line/reference_line_provider.h": "a8cfca7d94d2ab3a932650d8bdb1876b55ce3b21770289d9d7c931e62bed19d6",
+    "src/robot_path_plan/reference_line/matrix_operation.h": "35040ecd398293530c28bdc08211f8dda51f299e130277035319c61cf78b675b",
+    "src/robot_path_plan/reference_line/qp_spline_corridor_reference_line_generation.h": "f22b7c77b3c60cb4799e23f8bcf1c955b69c8560ad82557c8299a5bb77978160",
+    "src/robot_path_plan/reference_line/reference_point.h": "f79adda47cfedb546523032eac9d257628c209f14c5cc5ee93e0bf500dc7c167",
+    "src/robot_path_plan/reference_line/reference_line_provider.cpp": "0fece39fef00b8102e84b5ee08e4b910bf8386f149560eb5b98b3dd98efe70d5",
+    "src/robot_path_plan/reference_line/qp_spline_corridor_reference_line_generation.cpp": "779abb7ae0bd7e58b12cd045dc1fe968f31ab94d34c7c3510667bb431d919894",
+    "src/robot_path_plan/common/pubalgor/pubalgor.cpp": "a5fc0c13456dadb4440d62a867f3bcb30b3950d5b288ae2565d1adefe44f3931",
+    "src/robot_path_plan/common/pubalgor/pubalgor.h": "b864a12dd25aede34ee3ad030e9be072512cdc98633e129d9356178dcab383f2",
+    "src/robot_path_plan/common/line/linear_interpolation.cpp": "18fa6b6fe18901f111f4a6b01850d7f62800bc857524365628cc9b037abeb6cf",
+    "src/robot_path_plan/common/line/line_segment2d.h": "e929216ef8dc54a4cc563f71f12ee2e0f0af67955765db399d8306f3c29c636b",
+    "src/robot_path_plan/common/line/line_segment2d.cpp": "09900272527feae577dd7cbbe8c201d7f394fb98a53f9ef04115d3a7240a396f",
+    "src/robot_path_plan/common/line/linear_interpolation.h": "da088a863c53abcea21ead65977da8473ddeb86911eee12d6d0672c753b9c1ad",
+    "src/robot_path_plan/common/spline/Spline.h": "7583f270a88828e86f3e7669717e23f5a141c4500a9aee8a36195fe048c904db",
+    "src/robot_path_plan/common/spline/Spline.cpp": "1cac1573357ceea5d6fe09b3c7647bb43ff449795f10f4df0488962cf37b95fa",
+    "src/robot_path_plan/common/piecewise_jerk/piecewise_jerk_speed_problem.h": "65d72de259f09080e6d923ad74dde665df0a78fbc7d08f0bfb96f13b3328e321",
+    "src/robot_path_plan/common/piecewise_jerk/piecewise_jerk_problem.h": "09bfe4e64142ec448a960e7cb786de7bfc69bfe291c1ccaf0aa82f9c131459c4",
+    "src/robot_path_plan/common/piecewise_jerk/piecewise_jerk_problem.cpp": "d3dfb1a49dcc1bf9aaa62ea0920360376113cb0b7fb652dbc28846183cccfb01",
+    "src/robot_path_plan/common/piecewise_jerk/piecewise_jerk_speed_problem.cpp": "2b4e3477ed332775d978037d99d84aa814826727fd61c7168b9491ab9569dfb3",
+    "src/robot_path_plan/common/path/sl_boundary.h": "7d15fd7ef5948347084e7ca6338917b4d97b676217c5edd83f8526d30dd7247a",
+    "src/robot_path_plan/common/path/frenet_frame_path.cpp": "2da9d6edee27028b706bdb2657dbd66adb97076db92ed404acc626fcc685d575",
+    "src/robot_path_plan/common/path/sl_boundary.cpp": "24ef9300a0b8deb779572aec7e360e8220d24ddf1a3b186cbcac1219f5c15c62",
+    "src/robot_path_plan/common/path/frenet_frame_path.h": "d9f24bd953d76e515fee07d6d65f1fc846ed422774a367a6a34a2b9a09b9afa3",
+    "src/robot_path_plan/common/path/discretized_path.h": "c2074ec94980a39a69d0db2bf3a1d803c79e4dd1ba56173bb9376fa9cb677783",
+    "src/robot_path_plan/common/path/discretized_path.cpp": "46ffdfe21f8a6fa54a31c68652e71792bf26b4167fa66accef738a0e2634e9e5",
+    "src/robot_path_plan/common/path/path.h": "09399c471ea5b1957abcc020767fee0d56a2548f1e64c7c98a814448cef54457",
+    "src/robot_path_plan/common/polynomial_xd/curve_math.cpp": "830f10903724499573ed0bb3aded01263dc958e61534fad9ea663cb963d2450c",
+    "src/robot_path_plan/common/polynomial_xd/polynomial_xd.cpp": "c2f271fe4e3138902c41e5c31c8b900a9f6dfd1a858d7ac8f9eda1a31d809e5a",
+    "src/robot_path_plan/common/polynomial_xd/polynomial_xd.h": "d5a4cf51cc0c11b792f69df1a3b71d3678b20b8c197b15c71d49cd9da0be9681",
+    "src/robot_path_plan/common/polynomial_xd/curve_math.h": "31ca6cc370516c1b85d96dbac1728fa8e3c944bb5447b32dc81ded6e3613a7ef",
+    "src/robot_path_plan/common/surface/box2d.h": "96ad824ceb123141c99800723ca45902bd6c06414c91028a501b280d221315a3",
+    "src/robot_path_plan/common/surface/vec2d.cpp": "74e6a2ea62fc3d7374ccf2a07037ed9a74b98822e1eb89f0206e1061a0647aba",
+    "src/robot_path_plan/common/surface/box2d.cpp": "bd8237d600c0d3547fa87ad42a991bf20350de56d4c3f0c389915e40d2786438",
+    "src/robot_path_plan/common/surface/aabox2d.h": "38fc6ea6025f1b10294f0f3b9a1e760937d694c05c50caf4e47c399feebdd280",
+    "src/robot_path_plan/common/surface/polygon2d.h": "00b87d6316cb15c311b596fe0fc1e302b8006187254c3c5796d205ceacd9aca3",
+    "src/robot_path_plan/common/surface/vec2d.h": "eea6826916363827446b720cc22f14d0d0fb9a7deed9e187750d352c06d4dae9",
+    "src/robot_path_plan/common/surface/aabox2d.cpp": "6ad2b4201693aea246d9c4defab9efad698c6e9d8da0efa023cc72ba24d796b1",
+    "src/robot_path_plan/common/surface/polygon2d.cpp": "4ab74047288848e4ab1e3fa2e37497038279a7273b3c79d33a770f4ae597af42",
+    "src/robot_path_plan/common/curve1d/quintic_polynomial_curve1d.cpp": "da5e6339f111055a166718ac9e32f44a705db6b81f31e001673ade5c947dbb2e",
+    "src/robot_path_plan/common/curve1d/cubic_polynomial_curve1d.cpp": "b94a266e0261a373fd8809e26c6eb6281367cb08af31cab09c563ce6eab5552b",
+    "src/robot_path_plan/common/curve1d/quartic_polynomial_curve1d.h": "b70e396db1256c669e2b499a04a6b4c686a7a3befbcddf581cb5b4a3efe8ce06",
+    "src/robot_path_plan/common/curve1d/curve1d.h": "d4294b99f4f9eafb1dcc711205027ee608ce7775a1aabba967ba3b747ae2562d",
+    "src/robot_path_plan/common/curve1d/cubic_spline.h": "4cf55085e443774ef87df0064f24dd85fa73cbb87f64432b280eedacd7347a25",
+    "src/robot_path_plan/common/curve1d/quintic_polynomial_curve1d.h": "f15bee1ca105f39c45b23c4e1f07185afb293a48196d8058539018e506c0fb6e",
+    "src/robot_path_plan/common/curve1d/cubic_polynomial_curve1d.h": "a94566e593a81bb628e4dd47f1c544b174f965813e77007aa35fcb747ec1c577",
+    "src/robot_path_plan/common/curve1d/quartic_polynomial_curve1d.cpp": "8433d0b8901121558af4939a12bc1bc7e37d03d34d0eff569d2f40ed77c3f75e",
+    "src/robot_path_plan/common/curve1d/polynomial_curve1d.h": "d54a5370c61c69eacf24f13a5c17eb611e3442e55d681b9ee65fd02393ef7581",
+    "src/robot_path_plan/common/math/search.cpp": "27b63215a0a2b635f56f52eb1cc715707589957c2dcf0b64ce6e643a97e34152",
+    "src/robot_path_plan/common/math/search.h": "2c2ea75b3c110ab4da122cf878046b3f99e3c30476631070dc659774f9a23c8d",
+    "src/robot_path_plan/common/math/math_utils.cpp": "5f7ccd1069a7616f74c16ed86f36c86d7e5c52b9996e453aa61ea6f30fed079c",
+    "src/robot_path_plan/common/math/math_utils.h": "ebcd883f99f83517a261b2ac420e9caa9ba0ed2ee30d458728fccb40b627e111",
+    "src/robot_path_plan/common/math/cartesian_frenet_conversion.h": "b8ab983f02318d5ea0223da977abe76247d303ece62a6b2fa236526ef37e0d53",
+    "src/robot_path_plan/common/math/cartesian_frenet_conversion.cpp": "dd663837e0340b44363a968cf948fe573b7f009343de5f71e388bb9f658a67e4",
+    "src/robot_path_plan/common/speed/speed_data.h": "79184c37b5a51c40c742ec6fe927777cc93959d7c6dd3001cac92c1bad4b02a3",
+    "src/robot_path_plan/common/speed/speed_data.cpp": "0344f968080e2afab8ac7685faa6c036bdae7aae07b2de7742d5cafa95d8650c",
+    "src/robot_path_plan/common/smooth_line/smooth_spline/spline_2d_kernel.cpp": "082d5fb79d1b9630bc02d42d1611e16d5b260b407aabcd2a4e5fcd74eaa932c8",
+    "src/robot_path_plan/common/smooth_line/smooth_spline/spline_1d_seg.cpp": "011255478b559b255d1c4eb156374a8608eaddb8db66aa7bcecb1fbe278ebc09",
+    "src/robot_path_plan/common/smooth_line/smooth_spline/spline_2d_solver.h": "32154af419f330d9d117b0f2c72cf3fb6427a56deb1ad7e08e30c1b43e86df35",
+    "src/robot_path_plan/common/smooth_line/smooth_spline/spline_2d_solver.cpp": "1ea0eb0fe4ffc97ad8fabf79ea7bee1c137e0c148fa6a74d8102e6a1d9164133",
+    "src/robot_path_plan/common/smooth_line/smooth_spline/piecewise_linear_constraint.cpp": "9e15e78853b650172325fcc729d8e7c86536a9189c2bf21cc814083280b52339",
+    "src/robot_path_plan/common/smooth_line/smooth_spline/spline_2d_seg.cpp": "4e1f57d31d41ecd8cd468516306a941633c566656536392e9b774680e77160e5",
+    "src/robot_path_plan/common/smooth_line/smooth_spline/spline_1d_constraint.h": "97056b397cc0c94c0fc92775a4b64d368f6a117709f7957d3a72c592e509865e",
+    "src/robot_path_plan/common/smooth_line/smooth_spline/active_set_qp_solver.cpp": "f022addb8d9b57cb965097b20708202414a66ff5363720f797a5902f700aacf9",
+    "src/robot_path_plan/common/smooth_line/smooth_spline/qp_solver.cpp": "29f277fd273457502f801e2fd7aafbd826a5b44ba37ca4eaed309c525d86e873",
+    "src/robot_path_plan/common/smooth_line/smooth_spline/spline_1d_generator.h": "648aac5eeb0fe18fd95aa27aee191300d23e0dc3b69fed3c644cbaf3a591da17",
+    "src/robot_path_plan/common/smooth_line/smooth_spline/spline_1d_generator.cpp": "206785eed50e115a3292b2f530f6f0fcc6bbbf9d26980544776303aaf4ac9992",
+    "src/robot_path_plan/common/smooth_line/smooth_spline/spline_1d_kernel.h": "c95b1902b094d3337be02c85ada49b8faadb4efbeaf6f7c136ed18ba6e5cd87f",
+    "src/robot_path_plan/common/smooth_line/smooth_spline/spline_1d_seg.h": "59fc0c38fea816b40854b8d464d584dfebbdd79458755dd3210734b0e1f03cc3",
+    "src/robot_path_plan/common/smooth_line/smooth_spline/spline_2d_seg.h": "1f9c2bb995fa3408905ad84ef4755bb54d5220e16a77fa5408a7f80c3b12bcfe",
+    "src/robot_path_plan/common/smooth_line/smooth_spline/spline_2d_constraint.h": "fbf154d3c306b43c5ba8feaaade6a58d5dfba4e2c78715b774e204ba6c744f47",
+    "src/robot_path_plan/common/smooth_line/smooth_spline/active_set_qp_solver.h": "c7207509932fe98972b7fcc8606dc088e36c2e17fd71eb3927a25b93342950dd",
+    "src/robot_path_plan/common/smooth_line/smooth_spline/piecewise_linear_kernel.h": "f629e33e1414b0d45856b78898dd13e7bfebcb199941f9db1244084af61d0526",
+    "src/robot_path_plan/common/smooth_line/smooth_spline/spline2d.cpp": "7be680c1f41c3b4d22ecad0edad0903664f5ef1e778a55e6609b8b44ae4b0b65",
+    "src/robot_path_plan/common/smooth_line/smooth_spline/spline_2d_kernel.h": "feb862a31375c201b10a461fa35927b6f20fff54c2ebe1872196612f799d7924",
+    "src/robot_path_plan/common/smooth_line/smooth_spline/affine_constraint.cpp": "8d4fe3a9e23d0d1195297f034645c842b6219d1f88e8f1e7e95d2adf8a2f9bd5",
+    "src/robot_path_plan/common/smooth_line/smooth_spline/spline_1d_kernel.cpp": "7620544472be0ca73ffd8109724d490ebb9556680d74c10c1bdb7cbfd44ba30d",
+    "src/robot_path_plan/common/smooth_line/smooth_spline/spline_1d.cpp": "e2bb864bb849d20b41e0c7bbdf1bd321cba0e4a7c29de3c0ed795f64098af49e",
+    "src/robot_path_plan/common/smooth_line/smooth_spline/affine_constraint.h": "74add57bb362d2fa4c98be849ebf75545640ecf2ac0241d362469617d7d4fd2f",
+    "src/robot_path_plan/common/smooth_line/smooth_spline/spline_seg_kernel.h": "8c0f46abb73f50a02a967385d102a5c2ba99fca9f2ee9c4614d3fa7d76fabb72",
+    "src/robot_path_plan/common/smooth_line/smooth_spline/piecewise_linear_kernel.cpp": "11a1d9ea03f171fd49935ccf20839757e3f8dc37fd7a3e832264bfabd1766078",
+    "src/robot_path_plan/common/smooth_line/smooth_spline/spline_2d_constraint.cpp": "b6354e9d68d226e8f103f7712030bce0eae7b47b5a96554dbcc51f54edcd712d",
+    "src/robot_path_plan/common/smooth_line/smooth_spline/piecewise_linear_generator.cpp": "65f67391f2e3f98fea1028f5de7f5492a1633fd2f5d0754de7802a73e655d6b4",
+    "src/robot_path_plan/common/smooth_line/smooth_spline/piecewise_linear_generator.h": "f6feb95495801f8231c39bbcfbd4f038a2bec448cd81f8bdb95e926ac3902bde",
+    "src/robot_path_plan/common/smooth_line/smooth_spline/spline_seg_kernel.cpp": "cb94460f9bde432c4723979f5b27a72dbb4867d2e1c2617a838ce49999525c67",
+    "src/robot_path_plan/common/smooth_line/smooth_spline/spline_1d.h": "ff9aa621de07edf2e10d5bb0e1fec0123d16ab2b5b7bd92881af775c2ed48dc6",
+    "src/robot_path_plan/common/smooth_line/smooth_spline/qp_solver.h": "a74aaf18763313dc2362a007cd4bf9e81de03807c0d0f687f47c354f780fd4c5",
+    "src/robot_path_plan/common/smooth_line/smooth_spline/spline_1d_constraint.cpp": "b525ca2f3ce2a861a90a3d9277a67a677823c6937e4ebbea324ec9f3ad2b3b53",
+    "src/robot_path_plan/common/smooth_line/smooth_spline/piecewise_linear_constraint.h": "c174958bbf40d71fba120273d6b76aa07fb1371ef1eb359636fb3d67dcdfc4ce",
+    "src/robot_path_plan/common/smooth_line/smooth_spline/spline2d.h": "0460a36fe17c23ab580fc53fc1616982377b9c1c1311226416181468cbcad920",
+    "src/robot_path_plan/common/smooth_line/qp_spline_corridor/qp_spline_corridor.cpp": "57257c8a7cf5fda9805a0cfc7f7482ed4468f8e4425ca7137be80df10ca745b0",
+    "src/robot_path_plan/common/smooth_line/qp_spline_corridor/qp_spline_corridor.h": "021a57d27e060fd1b2d6f7888e0574e2705dabf703d141acc60052558d2a7ce6",
+    "src/robot_perception_convert/perception_object_tracker.h": "b8ee29a10d2fade7c18d3e51d6bafda12a86a571ad33b16eb62ebdc6c1cf799c",
+    "src/robot_perception_convert/perception_temporal_filter.inc": "a756dc5ed24960c59dcec7cba7be549f4e6087b76563a0b56d6f8ef115365d90",
+    "src/robot_perception_convert/ivmsglocpos.h": "322848dd91fd80c4b472f9a2100e824b3bdd5a94e26e9be7a011de9cc359435a",
+    "src/robot_perception_convert/perception_lane_classification.inc": "e757ffdfbb81ab7a19a6d3717ad155aa9f56255f25104456ab84b43a7e6d77d1",
+    "src/robot_perception_convert/perception_msg_convert.h": "835b16d6684ad40276b5f0bce0cdde0d2ea33898586db37d6ac464d99606a6a7",
+    "src/robot_perception_convert/perception_confidence_filter.h": "3e1049bdd659e2d3f0d142e1188d0613dbdad47016f43fee4fd1bd04f86dbaeb",
+    "src/robot_perception_convert/perception_temporal_filter.h": "10c9f9b758ad7116a98a1571f23908ffb6a937559f2c66d1ae15cb28ace6634e",
+    "src/robot_perception_convert/perception_msg_convert.cpp": "ff65e2ab11b043a36491236055ac167366f0ab390c1c05db3e07bfef4dae8865",
+    "src/robot_perception_convert/perception_confidence_filter.inc": "9ed4f31e2bb0cd5d17f0149ca39ba7162887bc4d9bd8db99d77506f1d5ed74d1",
+    "src/robot_perception_convert/perception_object_tracker.inc": "fdb23b1a330b6aec4620ccdefde212311d8f69f5d53d136d0fa6fab0cabde479",
+    "src/robot_perception_convert/tests/publish_integration.cpp": "389706d69746628a83f7a8b02633a28bc430e7f405b7e52a374dbdd5b1571ee4",
+    "src/robot_perception_convert/tests/tracking_test.cpp": "7769fb8c506ce520c480d1fa5037d6af596656c87653c6c3575e9f82b024b69a",
+    "src/robot_perception_convert/tests/temporal_filter_test.cpp": "b2175c3d023a3029b1959eda8c845d025d9d755863cfa8d1645a35e1e5a4aeac"
+  },
+  "publisher": {
+    "language": "C++11",
+    "transport": "generated ROS message stubs",
+    "sdk": "/home/mothotob/work/projects/claude-code/qingwei-L4-No2-pudong/src/hdmap/sdk",
+    "cmake_target": "perception_msg_convert",
+    "dynamic_link": "PASS",
+    "integration": "PASS: 4414 filtered perception publish checks",
+    "sanitizers": "PASS: 4414 filtered perception publish checks"
+  },
+  "public_output_differential": {
+    "before": [
+      {
+        "objects": "20",
+        "hz": "20",
+        "churn": "0",
+        "p50_ms": "0.054565",
+        "p99_ms": "0.063",
+        "max_ms": "0.064672",
+        "output": "20..20",
+        "first_type": "4",
+        "checksum": "8592568600123056497",
+        "phase_avg_ms": "0,0,0,0,"
+      },
+      {
+        "objects": "100",
+        "hz": "20",
+        "churn": "0",
+        "p50_ms": "0.184577",
+        "p99_ms": "0.204146",
+        "max_ms": "0.206908",
+        "output": "100..100",
+        "first_type": "4",
+        "checksum": "16339365662132361128",
+        "phase_avg_ms": "0,0,0,0,"
+      },
+      {
+        "objects": "300",
+        "hz": "20",
+        "churn": "0",
+        "p50_ms": "0.478478",
+        "p99_ms": "0.573537",
+        "max_ms": "0.598876",
+        "output": "300..300",
+        "first_type": "4",
+        "checksum": "16149351355334441658",
+        "phase_avg_ms": "0,0,0,0,"
+      },
+      {
+        "objects": "100",
+        "hz": "100",
+        "churn": "0",
+        "p50_ms": "0.236334",
+        "p99_ms": "0.28046",
+        "max_ms": "0.281586",
+        "output": "100..100",
+        "first_type": "4",
+        "checksum": "8045189026354202435",
+        "phase_avg_ms": "0,0,0,0,"
+      },
+      {
+        "objects": "100",
+        "hz": "20",
+        "churn": "1",
+        "p50_ms": "0.668227",
+        "p99_ms": "0.840859",
+        "max_ms": "0.841389",
+        "output": "50..50",
+        "first_type": "4",
+        "checksum": "13308686896191463937",
+        "phase_avg_ms": "0,0,0,0,"
+      },
+      {
+        "objects": "300",
+        "hz": "20",
+        "churn": "1",
+        "p50_ms": "2.06995",
+        "p99_ms": "2.30856",
+        "max_ms": "2.32553",
+        "output": "150..150",
+        "first_type": "4",
+        "checksum": "3330078276200870411",
+        "phase_avg_ms": "0,0,0,0,"
+      }
+    ],
+    "after": [
+      {
+        "objects": "20",
+        "hz": "20",
+        "churn": "0",
+        "p50_ms": "0.054285",
+        "p99_ms": "0.063372",
+        "max_ms": "0.063872",
+        "output": "20..20",
+        "first_type": "4",
+        "checksum": "8592568600123056497",
+        "phase_avg_ms": "0,0,0,0,"
+      },
+      {
+        "objects": "100",
+        "hz": "20",
+        "churn": "0",
+        "p50_ms": "0.177876",
+        "p99_ms": "0.192201",
+        "max_ms": "0.19667",
+        "output": "100..100",
+        "first_type": "4",
+        "checksum": "16339365662132361128",
+        "phase_avg_ms": "0,0,0,0,"
+      },
+      {
+        "objects": "300",
+        "hz": "20",
+        "churn": "0",
+        "p50_ms": "0.471337",
+        "p99_ms": "0.531627",
+        "max_ms": "0.546827",
+        "output": "300..300",
+        "first_type": "4",
+        "checksum": "16149351355334441658",
+        "phase_avg_ms": "0,0,0,0,"
+      },
+      {
+        "objects": "100",
+        "hz": "100",
+        "churn": "0",
+        "p50_ms": "0.231445",
+        "p99_ms": "0.266714",
+        "max_ms": "0.267516",
+        "output": "100..100",
+        "first_type": "4",
+        "checksum": "8045189026354202435",
+        "phase_avg_ms": "0,0,0,0,"
+      },
+      {
+        "objects": "100",
+        "hz": "20",
+        "churn": "1",
+        "p50_ms": "0.700428",
+        "p99_ms": "0.803116",
+        "max_ms": "0.805295",
+        "output": "50..50",
+        "first_type": "4",
+        "checksum": "13308686896191463937",
+        "phase_avg_ms": "0,0,0,0,"
+      },
+      {
+        "objects": "300",
+        "hz": "20",
+        "churn": "1",
+        "p50_ms": "2.47473",
+        "p99_ms": "3.27143",
+        "max_ms": "3.89447",
+        "output": "150..150",
+        "first_type": "4",
+        "checksum": "3330078276200870411",
+        "phase_avg_ms": "0,0,0,0,"
+      }
+    ]
+  },
+  "benchmark_medians_ms": [
+    {
+      "objects": 20,
+      "dense": false,
+      "before": {
+        "p50_ms": 0.05987,
+        "p99_ms": 0.067343
+      },
+      "after": {
+        "p50_ms": 0.002784,
+        "p99_ms": 0.004066
+      }
+    },
+    {
+      "objects": 20,
+      "dense": true,
+      "before": {
+        "p50_ms": 0.046026,
+        "p99_ms": 0.070292
+      },
+      "after": {
+        "p50_ms": 0.003931,
+        "p99_ms": 0.004838
+      }
+    },
+    {
+      "objects": 100,
+      "dense": false,
+      "before": {
+        "p50_ms": 0.212085,
+        "p99_ms": 0.244614
+      },
+      "after": {
+        "p50_ms": 0.011262,
+        "p99_ms": 0.014013
+      }
+    },
+    {
+      "objects": 100,
+      "dense": true,
+      "before": {
+        "p50_ms": 0.225725,
+        "p99_ms": 0.262497
+      },
+      "after": {
+        "p50_ms": 0.015004,
+        "p99_ms": 0.017877
+      }
+    },
+    {
+      "objects": 300,
+      "dense": false,
+      "before": {
+        "p50_ms": 0.678485,
+        "p99_ms": 0.794205
+      },
+      "after": {
+        "p50_ms": 0.031853,
+        "p99_ms": 0.036788
+      }
+    },
+    {
+      "objects": 300,
+      "dense": true,
+      "before": {
+        "p50_ms": 0.674334,
+        "p99_ms": 0.772244
+      },
+      "after": {
+        "p50_ms": 0.025646,
+        "p99_ms": 0.028459
+      }
+    },
+    {
+      "objects": 1000,
+      "dense": false,
+      "before": {
+        "p50_ms": 2.181631,
+        "p99_ms": 2.445566
+      },
+      "after": {
+        "p50_ms": 0.051226,
+        "p99_ms": 0.055987
+      }
+    },
+    {
+      "objects": 1000,
+      "dense": true,
+      "before": {
+        "p50_ms": 2.261661,
+        "p99_ms": 2.613327
+      },
+      "after": {
+        "p50_ms": 0.080792,
+        "p99_ms": 0.089334
+      }
+    }
+  ],
+  "environment": {
+    "machine": "x86_64",
+    "platform": "Linux-7.0.0-31-generic-x86_64-with-glibc2.39",
+    "note": "Host benchmark, ROS generated stubs; not Orin or ROS1 transport"
+  },
+  "scope": {
+    "protected_files": 152,
+    "protected_changes": [],
+    "unchanged": [
+      "control and calibrated throttle mapping",
+      "monitor",
+      "message definitions",
+      "task/navigation business sources",
+      "gantry detector"
+    ],
+    "concurrent_workspace_changes_preserved": [
+      "camera heartbeat condition in path_plan_node.cpp",
+      "task1/5/8/9/10/11.yaml",
+      "task1 (copy).yaml",
+      "pudong_air left1/left2/right.csv"
+    ]
+  },
+  "cppcheck": "C++11 new core: warning,performance,portability; no diagnostics",
+  "limitations": [
+    "No Orin or ROS1 deployment; no whole-vehicle CPU or latency measurement",
+    "ROS serialization and transport excluded from benchmarks",
+    "Empty and loaded footprints retain old defaults pending measurements; no articulated trailer swept-volume model",
+    "Emergency guaranteed deceleration and reaction time require vehicle calibration",
+    "Source observation stamps are receive times; no sensor/localization time alignment changes",
+    "Existing startup/T-zone and reverse/front-scan behavior remains",
+    "Legacy 387 snapshots cover tested cases, not all concurrent workspace changes"
+  ],
+  "baseline_archive": "../planning_perception_before_20260917_140441.tar.gz",
+  "logs": "/tmp/planning_perception_20260917_140441",
+  "configuration_sha256": "31a68cf5730df98e998ee38f73f57f0ffc4565e541b52d7542fdb86523c90152"
+}

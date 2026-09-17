@@ -1,5 +1,5 @@
 #   Tractor-task list
-task_sum: 3
+task_sum: 4
 
 #do action -- gear N and hook
 task0_task_type: 1 # 0-nothing 1-Track path  2-adaptiveloadpath 3-adaptiveunload  4-adaptivehook 5-adaptiveback 6-action

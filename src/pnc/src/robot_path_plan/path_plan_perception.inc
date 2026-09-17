@@ -8,15 +8,32 @@ void PathPlanComply::SetCanData(robot::can_msg can_msg_t) {
     mPathPlanStatus.curSpeed = mVehicleData.vehicleSpeed;
 }
 
-void PathPlanComply::SetPerceptionData(robot::perception perception_t) {
+void PathPlanComply::SetGantryState(bool active, bool gantry_open) {
+    mGantryStop = active && !gantry_open;
+}
+
+void PathPlanComply::SetPerceptionData(const robot::perception &perception_t) {
     // 侧向感知先过滤车辆后方/退化目标，再合并前向扫描框。
-    // 本函数计算的 /canbus/brake 是历史参数通道；现役规划安全结果仍由
-    // PublishReferPath 的路径碰撞检测写入 mReferPath。
     sysTime.msgPerception = ros::Time::now().toSec();
 
     mPerception.objs.clear();
+    if(++mPerceptionOutsideGeneration == 0) {
+        std::fill(mPerceptionOutsideMarks.begin(), mPerceptionOutsideMarks.end(), 0);
+        ++mPerceptionOutsideGeneration;
+    }
+    bool has_outside = false;
 
-    for(auto i : perception_t.objs) {
+    for(const auto &i : perception_t.objs) {
+        // 只忽略左右车道外；本车道、左一和左二仍参与原有几何及区域检查。
+        if(i.type == 3 || i.type == 4) {
+            if(i.id > 0) mPerceptionOutsideMarks[i.id] = mPerceptionOutsideGeneration;
+            has_outside = true;
+            continue;
+        }
+        // 两边都大于 1 m 且长宽比超过 3 时剔除；正尺寸用乘法比较，避免除法。
+        if(i.dx > 1.0 && i.dy > 1.0 && (i.dx > 3.0 * i.dy || i.dy > 3.0 * i.dx)) {
+            continue;
+        }
         Point me;
         Point point;
         me.x = mNavData.xAxis;
@@ -35,11 +52,27 @@ void PathPlanComply::SetPerceptionData(robot::perception perception_t) {
                 continue;
             mPerception.objs.push_back(i);
         }
-        // mPerception.objs.push_back(i);
     }
 
-    for(auto i : mPerceptionFrontScan.objs)
+    for(const auto &i : mPerceptionFrontScan.objs)
         mPerception.objs.push_back(i);
+
+    if(has_outside && !mPerceptionSafety.HasInput()) {
+        // 兼容链的四帧历史也删除已明确出车道的 ID；用索引避免目标与历史两层匹配。
+        bool has_history = false;
+        for(auto &frame : history_risk_vec) {
+            frame.erase(std::remove_if(frame.begin(), frame.end(), [this](const robot::object &object) {
+                            return object.type == 3 || object.type == 4 ||
+                                   (object.id > 0 && mPerceptionOutsideMarks[object.id] == mPerceptionOutsideGeneration);
+                        }),
+                        frame.end());
+            has_history = has_history || !frame.empty();
+        }
+        if(!has_history) safety_check_counter_refer = 0;
+    }
+
+    // 新观测链启用后，/perception 仅保留原起步/T 区等消费，避免重复进行未使用的限速计算。
+    if(mPerceptionSafety.HasInput()) return;
 
     // collistion check precise
     Point VehicleInfo;
@@ -91,16 +124,6 @@ void PathPlanComply::SetPerceptionData(robot::perception perception_t) {
 
     if(safety == 1)
         desireSpeed = 0.0;
-
-    // 这里的brake命令没有在代码中用到
-    int BrakeCmd = (int)((mNavData.gpsSpeed - desireSpeed) * 30.0);
-
-    if(BrakeCmd < 0)
-        BrakeCmd = 0;
-    if(desireSpeed == 0.0)
-        BrakeCmd = 85;
-
-    ros::param::set("/canbus/brake", BrakeCmd);
 }
 
 void PathPlanComply::SetFrontScanData(jsk_recognition_msgs::BoundingBoxArray msg) {

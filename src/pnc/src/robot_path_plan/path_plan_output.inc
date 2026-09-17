@@ -3,7 +3,7 @@
 void PathPlanComply::PublishPlanPath(ros::Publisher &tPub1, ros::Publisher &tPub2) {
     // 最终输出覆盖顺序：
     // 更新周边/T 路口观察窗 -> 手动模式/短路径提前返回 -> 起步安全判定 -> 复制参考路径 ->
-    // 加速平滑 -> 急停/断网 -> 声光 -> 等待区/T 路口 -> 云端暂停。
+    // 加速平滑 -> 急停/断网 -> 声光 -> 等待区/T 路口 -> 云端暂停 -> 单点区域限速 -> 发布时叠加闸机 safety。
     // 修改任一停车条件时，必须继续检查它后面的 desireSpeed/safety 赋值。
     // 启动时，检查四周是否有障碍物
     bool is_around_unsafe = checkAroundObstacle();
@@ -39,12 +39,39 @@ void PathPlanComply::PublishPlanPath(ros::Publisher &tPub1, ros::Publisher &tPub
     if(command_state == 1) {  // 暂停
         mPlanPath.desireSpeed = 0.0;
     }
+    ApplyPointSpeedLimit();
     printf("end speedlimit: %f\n", mPlanPath.desireSpeed);
     // param set & msg pub
     ros::param::set("/canbus/light", LightCmd);  // 灯光和起步周边障碍物报警再canbus用到了
     ros::param::set("/canbus/horn", HornCmd);    // 鸣笛也没有用到
-    tPub1.publish(mPlanPath);
+    PublishFinalPlanPath(tPub1);
     tPub2.publish(mSoundLightData);  // 这个没有用到
+}
+
+void PathPlanComply::PublishFinalPlanPath(ros::Publisher &tPub) {
+    // 闸机只覆盖本次发布的 safety；保留原值，避免影响声光或在退化路径中残留。
+    bool safety = mPlanPath.safety;
+    if(mGantryStop) {
+        mPlanPath.safety = 1;
+    }
+    tPub.publish(mPlanPath);
+    mPlanPath.safety = safety;
+}
+
+void PathPlanComply::ApplyPointSpeedLimit() {
+    if(mPointSpeedLimits.empty()) return;
+    const double x = mNavData.xAxis, y = mNavData.yAxis;
+    if(!std::isfinite(x) || !std::isfinite(y)) return;
+    for(const auto &point : mPointSpeedLimits) {
+        if(point.speed_limit >= mPlanPath.desireSpeed) continue;
+        const double dx = x - point.x;
+        if(dx < -5.0 || dx > 5.0) continue;
+        const double dy = y - point.y;
+        // 含 5 m 边界；多个区域重叠时逐项取小，保持其他业务的零速和更低限速。
+        if(dx * dx + dy * dy <= 25.0) {
+            mPlanPath.desireSpeed = std::min<double>(mPlanPath.desireSpeed, point.speed_limit);
+        }
+    }
 }
 
 void PathPlanComply::PublishStoppedPath(ros::Publisher &tPub1) {
@@ -52,7 +79,7 @@ void PathPlanComply::PublishStoppedPath(ros::Publisher &tPub1) {
     mPlanPath.x.clear();
     mPlanPath.y.clear();
     mPlanPath.desireSpeed = 0.0;
-    tPub1.publish(mPlanPath);
+    PublishFinalPlanPath(tPub1);
     InitSafetyCheck = 0;
     ros::param::set("/canbus/light", 0);
 }

@@ -1,27 +1,27 @@
 
 #ifndef PLANNING_PLANNING_GFLAG_H
 #define PLANNING_PLANNING_GFLAG_H
-namespace planning{
+namespace planning {
 
-const bool FLAGS_enable_nudge_slowdown = true;
+    const bool FLAGS_enable_nudge_slowdown = true;
 
-const double  FLAGS_planning_upper_speed_limit = 33.33;
+    const double FLAGS_planning_upper_speed_limit = 33.33;
 
-const bool FLAGS_enable_side_vehicle_st_boundary = false;
+    const bool FLAGS_enable_side_vehicle_st_boundary = false;
 
-const double FLAGS_min_stop_distance_obstacle = 4.0;
+    const double FLAGS_min_stop_distance_obstacle = 4.0;
 
-const double FLAGS_stop_line_stop_diatance = 1.0;
+    const double FLAGS_stop_line_stop_diatance = 1.0;
 
-const double FLAGS_follow_min_time_sec = 0.1;
+    const double FLAGS_follow_min_time_sec = 0.1;
 
-const double FLAGS_follow_time_buffer = 2.5;
+    const double FLAGS_follow_time_buffer = 2.5;
 
-const double FLAGS_follow_min_distance = 3.0;
+    const double FLAGS_follow_min_distance = 3.0;
 
-const double FLAGS_yield_distance = 3.0;
+    const double FLAGS_yield_distance = 3.0;
 
-const double FLAGS_yield_distance_pedestrian_bycicle = 5.0;
+    const double FLAGS_yield_distance_pedestrian_bycicle = 5.0;
 
 #define FLAGS_numerical_epsilon 1e-6
 #define FLAGS_trajectory_time_length 15
@@ -43,4 +43,4 @@ const double FLAGS_yield_distance_pedestrian_bycicle = 5.0;
 #define FLAGS_virtual_stop_wall_length 0.1
 #define FLAGS_max_stop_speed 0.2
 }
-#endif //PLANNING_PLANNING_GFLAG_H
+#endif  //PLANNING_PLANNING_GFLAG_H

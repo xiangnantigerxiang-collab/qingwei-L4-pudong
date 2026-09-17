@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""编译真实感知节点，验证 HDMap → 两秒历史滤波 → 0.25 置信度筛选 → publish 的实际回调链。"""
+"""编译真实感知节点，验证跟踪与估速、按 ID 置信度、20% 车道门槛和发布状态回滚。"""
 
 import argparse
 import json
@@ -51,6 +51,8 @@ inline void spinOnce() { if (testSpinOnce()) testSpinOnce()(); }
     }''') + '\n#define ROS_WARN_THROTTLE(...) ((void)0)\n')
     fake = work / "catkin"
     fake.mkdir(exist_ok=True)
+    (fake / "gantry_detectConfig.cmake").write_text(
+        'set(gantry_detect_FOUND TRUE)\nset(gantry_detect_INCLUDE_DIRS "' + str(work / "stubs") + '")\n')
     (fake / "catkinConfig.cmake").write_text(f'''
 set(catkin_FOUND TRUE)
 set(catkin_INCLUDE_DIRS "{work / 'stubs'}")
@@ -67,6 +69,7 @@ endmacro()
 ''')
     # 消息/通信使用桩；编译源文件、目标配置和 SDK 动态库均为实际交付内容。
     run(["cmake", "-S", str(pnc), "-B", str(work / "build"), "-Dcatkin_DIR=" + str(fake),
+         "-Dgantry_detect_DIR=" + str(fake),
          "-Dhdmap_DIR=" + str(sdk / "lib/cmake/hdmap"), "-DCMAKE_BUILD_TYPE=Release",
          "-DCMAKE_CXX_FLAGS=-include cstdint -include array"], work / "configure.log")
     run(["cmake", "--build", str(work / "build"), "--target", "perception_msg_convert", "-j2"], work / "build.log")

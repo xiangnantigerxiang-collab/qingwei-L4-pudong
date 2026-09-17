@@ -74,6 +74,8 @@ TYPED_SUBS = [
     ("/can_msg",            "canbus.msg", "can_msg",       "_on_can_msg"),
     # dashboard 仪表板(8082)原始字段展示(2026-09-07)
     ("/ehb_msg",            "canbus.msg", "ehb_msg",       "_on_ehb_msg"),
+    # 闸机口开/闭(gantry_detect 包,HMI"3D 感知"卡片捆绑启动;2026-09-17)
+    ("/gantry_state", "gantry_detect.msg", "gantry_state", "_on_gantry"),
 ]
 
 
@@ -537,6 +539,9 @@ class RosVisualizer(object):
     def _on_control(self, msg):
         self._stash("/control_msg", msg)
 
+    def _on_gantry(self, msg):
+        self._stash("/gantry_state", msg)
+
     def _on_can_msg(self, msg):
         self._stash("/can_msg", msg)
 
@@ -605,13 +610,15 @@ class RosVisualizer(object):
                         "h": _r2(getattr(o, "height", 0.0)),
                         "yaw": round(yaw_from_heading(
                             getattr(o, "heading", 0.0)), 4),
+                        # 标签直接显示上游 heading(度),保留 navigation_msg 约定。
+                        "heading": _r2(getattr(o, "heading", 0.0)),
                         "id": int(getattr(o, "id", 0)),
                         # 前端按 type 着色;语义由上游定:
                         # hdmap 车道占用 0-本道/1-左一/2-左二/3-左外/
                         # 4-右外(object.msg 旧注释 0-车/1-行人/2-骑行)
                         "type": int(getattr(o, "type", 3)),
                         # 置信度(object.msg confidence,上游时域滤波重算);
-                        # 前端以同色文字悬浮显示在障碍框正上方。
+                        # 前端以白色文字悬浮显示在障碍框正上方。
                         # 字段缺失(旧消息定义)发 null,前端隐藏文字
                         "conf": _r2(conf) if conf is not None else None,
                         "vx": _r2(getattr(o, "vx", 0.0)),
@@ -716,6 +723,16 @@ class RosVisualizer(object):
                 "bia": _r2(getattr(m, "biaDistance", 0.0)),
             }
 
+        # ---- 闸机口(gantry_detect:active=车在检测区且定位有效) ----
+        gantry = None
+        m = latest.get("/gantry_state")
+        if m:
+            m = m[0]
+            gantry = {
+                "active": bool(getattr(m, "active", False)),
+                "open": bool(getattr(m, "gantry_open", False)),
+            }
+
         # ---- CAN 反馈(can_msg 有效字段) ----
         # 不入栏:throttlePercent/epsCMD/wheelAngleCMD/epsCentring(反馈侧
         # 无写入者恒 0,见 canbus_core.h 字段注释)与 rawcommand/rawfeedback
@@ -774,6 +791,7 @@ class RosVisualizer(object):
             "pallet": pallet,
             "task": task,
             "plan": plan,
+            "gantry": gantry,
             "control": control,
             "can": can,
         }

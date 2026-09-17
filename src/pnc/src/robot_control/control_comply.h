@@ -79,6 +79,8 @@ private:
     // 纵向控制。ACC/AEB 实现在 longitudinal_acc_control.inc。
     void VehicleVerticalControl(float tDesireSpeed, float tCurSpeed,
                                 float tAcc, uint8_t& tThrottle, uint8_t& tBrake);
+    double SmoothLaunchSpeed(double speed_cmd);
+    void ResetLaunchSpeed();
     double LongitudinalFeedforwardControl(robot::acc& pub);
     double LongitudinalFeedbackControl();
     double LongitudinalControlOutput(robot::acc& pub);
@@ -121,6 +123,10 @@ private:
     Pose2d ego_pose2d;
     float mVehicleSpeed = 0.0;
     float mSteerAngle = 0.0;
+
+    // 速度给定保留小数,不能从 uint8 油门回读斜坡状态。
+    double mLaunchSpeedCmd = 0.0;
+    bool mLaunchSpeedInitialized = false;
 };
 
 #endif

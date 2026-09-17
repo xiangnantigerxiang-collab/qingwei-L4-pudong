@@ -1,0 +1,164 @@
+{
+  "environment": "Headless Chrome with SwiftShader on x86_64; not Orin",
+  "scenario": "20/100/300 obstacles, same confidence=0.87, changing motion labels, no map or point clouds; tight-loop stress render",
+  "resource_measurement": "RGBA pixel bytes, excluding driver overhead and mipmaps; draw_calls includes obstacle boxes and two vehicle draws",
+  "results": [
+    {
+      "mode": "before",
+      "count": 20,
+      "sync_ms": {
+        "p50": 0,
+        "p95": 0.10000000149011612,
+        "max": 0.10000000149011612
+      },
+      "render_swiftshader_ms": {
+        "p50": 0.3999999985098839,
+        "p95": 0.5999999977648258,
+        "max": 0.6999999992549419
+      },
+      "total_ms": {
+        "p50": 0.3999999985098839,
+        "p95": 0.6000000014901161,
+        "max": 0.6999999992549419
+      },
+      "draw_calls": 42,
+      "texture_bytes": 221184,
+      "textures": 1
+    },
+    {
+      "mode": "before",
+      "count": 100,
+      "sync_ms": {
+        "p50": 0,
+        "p95": 0.10000000149011612,
+        "max": 0.5
+      },
+      "render_swiftshader_ms": {
+        "p50": 0.29999999701976776,
+        "p95": 1,
+        "max": 1.2000000029802322
+      },
+      "total_ms": {
+        "p50": 0.30000000074505806,
+        "p95": 1,
+        "max": 1.2000000029802322
+      },
+      "draw_calls": 202,
+      "texture_bytes": 221184,
+      "textures": 1
+    },
+    {
+      "mode": "before",
+      "count": 300,
+      "sync_ms": {
+        "p50": 0.10000000149011612,
+        "p95": 0.20000000298023224,
+        "max": 0.20000000298023224
+      },
+      "render_swiftshader_ms": {
+        "p50": 1.7000000029802322,
+        "p95": 125.89999999850988,
+        "max": 131.29999999701977
+      },
+      "total_ms": {
+        "p50": 1.9000000022351742,
+        "p95": 126,
+        "max": 131.39999999850988
+      },
+      "draw_calls": 602,
+      "texture_bytes": 221184,
+      "textures": 1
+    },
+    {
+      "mode": "regressed",
+      "count": 100,
+      "sync_ms": {
+        "p50": 1.4000000022351742,
+        "p95": 2.2999999970197678,
+        "max": 2.699999999254942
+      },
+      "render_swiftshader_ms": {
+        "p50": 4.899999998509884,
+        "p95": 211.40000000223517,
+        "max": 217.70000000298023
+      },
+      "total_ms": {
+        "p50": 7.099999997764826,
+        "p95": 213.19999999925494,
+        "max": 218.70000000298023
+      },
+      "draw_calls": 302,
+      "texture_bytes": 78499584,
+      "textures": 101
+    },
+    {
+      "mode": "current",
+      "count": 20,
+      "sync_ms": {
+        "p50": 0.4000000022351742,
+        "p95": 0.6999999992549419,
+        "max": 0.8000000007450581
+      },
+      "render_swiftshader_ms": {
+        "p50": 0.3999999985098839,
+        "p95": 1.1000000014901161,
+        "max": 1.300000000745058
+      },
+      "total_ms": {
+        "p50": 0.8999999985098839,
+        "p95": 1.4000000022351742,
+        "max": 1.800000000745058
+      },
+      "draw_calls": 23,
+      "texture_bytes": 940032,
+      "textures": 1
+    },
+    {
+      "mode": "current",
+      "count": 100,
+      "sync_ms": {
+        "p50": 0.10000000149011612,
+        "p95": 0.19999999925494194,
+        "max": 0.3999999985098839
+      },
+      "render_swiftshader_ms": {
+        "p50": 0.30000000074505806,
+        "p95": 0.6000000014901161,
+        "max": 0.8000000007450581
+      },
+      "total_ms": {
+        "p50": 0.4000000022351742,
+        "p95": 0.6999999992549419,
+        "max": 1.199999999254942
+      },
+      "draw_calls": 103,
+      "texture_bytes": 940032,
+      "textures": 1
+    },
+    {
+      "mode": "current",
+      "count": 300,
+      "sync_ms": {
+        "p50": 0.30000000074505806,
+        "p95": 0.6000000014901161,
+        "max": 2.100000001490116
+      },
+      "render_swiftshader_ms": {
+        "p50": 0.6999999992549419,
+        "p95": 43.80000000074506,
+        "max": 234.80000000074506
+      },
+      "total_ms": {
+        "p50": 1.199999999254942,
+        "p95": 44.100000001490116,
+        "max": 235.10000000149012
+      },
+      "draw_calls": 303,
+      "texture_bytes": 940032,
+      "textures": 1
+    }
+  ],
+  "validation": "91 frontend checks; real Chrome top and orbit screenshots preserve white text, numbers/units, half-size font and order",
+  "artifacts": "/tmp/perception_monitor_perf_20260916_205319",
+  "limitation": "Browser stress timings are not real vehicle frame rates or control latency."
+}

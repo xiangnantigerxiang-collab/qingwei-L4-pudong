@@ -128,11 +128,14 @@ void PathPlanComply::UpdateForwardReferencePath(const std::vector<float> &x, con
     // float planspeed = speed_planning.SpeedCalculateInGuidePth(&path_final);
     double planspeed = 8.0;
 
-    double dist = Distance2PerceptionObjs(mNavData.xAxis, mNavData.yAxis);
-    dist = std::max<double>(1.0, dist / 2.0);
-    if(dist < 3 && mVehicleData.vehicleSpeed > 3.0) {
-        planspeed = std::min<double>(planspeed, dist);
+    if(!mPerceptionSafety.HasInput()) {
+        double dist = Distance2PerceptionObjs(mNavData.xAxis, mNavData.yAxis);
+        dist = std::max<double>(1.0, dist / 2.0);
+        if(dist < 3 && mVehicleData.vehicleSpeed > 3.0) {
+            planspeed = std::min<double>(planspeed, dist);
+        }
     }
+    // 新链已按真实行驶区域/相对运动限速，不能再由历史目标的径向距离把路边车当成阻挡。
 
     std::vector<float> x_final;
     std::vector<float> y_final;

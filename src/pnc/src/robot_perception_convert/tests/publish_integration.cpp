@@ -1,6 +1,7 @@
 #define main PerceptionConvertMain
 #include "../perception_msg_convert.cpp"
 #undef main
+#include "../../robot_path_plan/safety/perception_safety.inc"
 
 #include "hdmap/hdmap_server.h"
 #include <cstdio>
@@ -104,9 +105,15 @@ namespace {
         const auto& message = publications.back();
         Check(message.objs.size() == tTypes.size() && tTypes.size() == tConfidence.size(), "filtered object count");
         Near(message.header.stamp.toSec(), tTimestamp, "published acquisition timestamp");
+        std::unordered_set<int> ids;
         for(std::size_t i = 0; i < message.objs.size(); ++i) {
-            Check(message.objs[i].type == tTypes[i], "HDMap classification must precede filter and publish");
+            Check(message.objs[i].type == tTypes[i], "current-pose lane classification must precede publish");
             Near(message.objs[i].confidence, tConfidence[i], "confidence must be calculated before publish");
+            Check(message.objs[i].polygons.empty(), "internal world corners must not change published polygons");
+            Check(message.objs[i].id > 0 && ids.insert(message.objs[i].id).second, "published IDs are positive and unique");
+            Check(std::isfinite(message.objs[i].vx) && std::isfinite(message.objs[i].vy) &&
+                      message.objs[i].heading >= 0 && message.objs[i].heading < 360,
+                  "published velocity is finite and heading uses navigation range");
         }
     }
 
@@ -122,11 +129,11 @@ namespace {
         Check(mPerceptionHistory.back().first.objs[1].type == 2, "cached observations already classified");
         Near(mPerceptionHistory.back().first.objs[0].confidence, 0, "filtered confidence does not feed back into cache");
         const double total = std::exp(-1) + decay + 1;
-        Expect(101, {}, {0, 2}, {(std::exp(-1) + decay) / total, decay / total});
+        Expect(101, {}, {0, 1, 2}, {(std::exp(-1) + decay) / total, std::exp(-1) / total, decay / total});
         Check(mPerceptionHistory.back().first.objs.empty(), "empty raw frame retained in denominator");
         const double remaining = std::exp(-1.5) / (std::exp(-1.5) + std::exp(-1) + 1);
         Expect(102, {}, {}, {});
-        const auto unthresholded = FilterPerceptionHistory(mPerceptionHistory);
+        const auto unthresholded = FilterTrackedPerceptionHistory(mPerceptionHistory);
         Check(unthresholded.objs.size() == 2, "thresholded publication does not erase valid raw history");
         Near(unthresholded.objs[0].confidence, remaining, "first unpublished target retains original temporal evidence");
         Near(unthresholded.objs[1].confidence, remaining, "second unpublished target retains original temporal evidence");
@@ -227,7 +234,7 @@ namespace {
         Send(0, {}, false);
         Check(publications.size() == previous && mPerceptionHistory.empty(), "negative localization timestamp is rejected");
 
-        float robot::navigation_msg::* fields[] = {&robot::navigation_msg::xAxis, &robot::navigation_msg::yAxis};
+        float robot::navigation_msg::*fields[] = {&robot::navigation_msg::xAxis, &robot::navigation_msg::yAxis};
         for(auto field : fields) {
             SetPose(10, 0, 90);
             mGPS.*field = std::numeric_limits<double>::quiet_NaN();
@@ -411,7 +418,7 @@ namespace {
         output = FilterPerceptionByConfidence(input, 0);
         Check(output.objs.size() == 1 && output.objs[0].id == 13, "nonfinite confidence never passes filter");
         for(double threshold : {std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::infinity(),
-                                 -std::numeric_limits<double>::infinity()}) {
+                                -std::numeric_limits<double>::infinity()}) {
             bool rejected = false;
             try {
                 FilterPerceptionByConfidence(input, threshold);
@@ -429,8 +436,7 @@ namespace {
         input.header.seq = 56;
         input.header.stamp = ros::Time(789);
         input.header.frame_id = "map";
-        const float dimensions[][3] = {{0.25f, 2, 1}, {2, 0.25f, 1}, {0.5f, 1, 0.25f},
-                                      {2, 4, 0.125f}, {2, 4, 0.75f}};
+        const float dimensions[][3] = {{0.25f, 2, 1}, {2, 0.25f, 1}, {0.5f, 1, 0.25f}, {2, 4, 0.125f}, {2, 4, 0.75f}};
         for(int i = 0; i < 5; ++i) {
             robot::object object;
             object.id = i;
@@ -473,10 +479,10 @@ namespace {
         Check(FilterPerceptionByConfidence(input, 0.25, 0.5, 1).objs.empty(), "length just below minimum is removed");
         input.objs[0].dy = std::nextafter(1.0f, 2.0f);
         Check(FilterPerceptionByConfidence(input, 0.25, 0.5, 1).objs.size() == 1, "length just above minimum is retained");
-        float robot::object::* fields[] = {&robot::object::dx, &robot::object::dy};
+        float robot::object::*fields[] = {&robot::object::dx, &robot::object::dy};
         for(auto field : fields) {
             for(float invalid : {0.0f, -1.0f, std::numeric_limits<float>::quiet_NaN(),
-                                  std::numeric_limits<float>::infinity(), -std::numeric_limits<float>::infinity()}) {
+                                 std::numeric_limits<float>::infinity(), -std::numeric_limits<float>::infinity()}) {
                 input.objs[0].dx = 2;
                 input.objs[0].dy = 4;
                 input.objs[0].*field = invalid;
@@ -487,7 +493,7 @@ namespace {
         output = FilterPerceptionByConfidence(input, 0.25, 0.5, 1);
         Check(output.objs.empty() && output.header.frame_id == "map", "empty size-filter input retains header");
         for(double invalid : {-1.0, std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::infinity(),
-                               -std::numeric_limits<double>::infinity()}) {
+                              -std::numeric_limits<double>::infinity()}) {
             for(int dimension = 0; dimension < 2; ++dimension) {
                 bool rejected = false;
                 try {
@@ -505,8 +511,7 @@ namespace {
         input.header.seq = 78;
         input.header.stamp = ros::Time(234.5);
         input.header.frame_id = "map";
-        const float cases[][3] = {{0.25f, 2, 0.75f}, {2.25f, 2, 0.75f}, {1, 0.75f, 0.75f}, {1, 4.25f, 0.75f},
-                                 {0.5f, 1, 0.25f}, {2, 4, 0.75f}, {1, 2, 0.125f}, {1, 2, 0.75f}};
+        const float cases[][3] = {{0.25f, 2, 0.75f}, {2.25f, 2, 0.75f}, {1, 0.75f, 0.75f}, {1, 4.25f, 0.75f}, {0.5f, 1, 0.25f}, {2, 4, 0.75f}, {1, 2, 0.125f}, {1, 2, 0.75f}};
         for(int i = 0; i < 8; ++i) {
             robot::object object;
             object.id = i;
@@ -561,9 +566,7 @@ namespace {
         output = FilterPerceptionByConfidence(input, 0.25, 0.5, 2, 1, 4);
         Check(output.objs.empty() && output.header.frame_id == "map", "empty range input retains acquisition metadata");
         const double nan = std::numeric_limits<double>::quiet_NaN();
-        const double invalid_ranges[][4] = {{2, 1, 0, 10}, {0, 10, 2, 1}, {0, -1, 0, 10}, {0, 10, 0, -1},
-                                           {0, nan, 0, 10}, {0, 10, 0, nan}, {0, -max_size, 0, 10}, {0, 10, 0, -max_size},
-                                           {nan, 10, 0, 10}, {0, 10, nan, 10}, {max_size, max_size, 0, 10}, {0, 10, max_size, max_size}};
+        const double invalid_ranges[][4] = {{2, 1, 0, 10}, {0, 10, 2, 1}, {0, -1, 0, 10}, {0, 10, 0, -1}, {0, nan, 0, 10}, {0, 10, 0, nan}, {0, -max_size, 0, 10}, {0, 10, 0, -max_size}, {nan, 10, 0, 10}, {0, 10, nan, 10}, {max_size, max_size, 0, 10}, {0, 10, max_size, max_size}};
         for(const auto& interval : invalid_ranges) {
             bool rejected = false;
             try {
@@ -579,29 +582,144 @@ namespace {
         mPerceptionHistory.clear();
         SetPose(10, 0, 90);
         Expect(1000, {Marker(10, 0)}, {0}, {1});
-        // 两帧权重比为 1:3，历史对象置信度恰为 0.25，验证发布时保留等号边界。
-        const double boundary_time = 1000 + std::log(3.0);
-        Expect(boundary_time, {}, {0}, {0.25});
-        Check(publications.back().objs[0].confidence == 0.25f, "publish retains confidence exactly equal to 0.25");
+        // 当前发布门槛为 0.15；两帧权重比为 3:17，验证等号边界。
+        const double boundary_time = 1000 + std::log(17.0 / 3.0);
+        Expect(boundary_time, {}, {0}, {0.15});
+        Check(publications.back().objs[0].confidence == 0.15f, "publish retains confidence exactly equal to 0.15");
         Expect(boundary_time + 0.0001, {}, {}, {});
         Check(mPerceptionHistory.front().first.objs.size() == 1, "below-threshold historical target remains cached until expiration");
 
         mPerceptionHistory.clear();
-        for(int i = 0; i < 4; ++i) {
+        for(int i = 0; i < 10; ++i) {
             Expect(1100 + i * 0.1, {}, {}, {});
         }
-        // 四个空观测后首次检出，置信度约 0.242；原始帧非空也必须正常发布筛选后的空消息。
-        Expect(1100.4, {Marker(10, 4)}, {}, {});
-        Check(mPerceptionHistory.size() == 5 && mPerceptionHistory.back().first.objs.size() == 1,
+        // 十个空观测后首次检出，置信度约 0.143；非空原始帧也须正常发布筛选后的空消息。
+        Expect(1101, {Marker(10, 4)}, {}, {});
+        Check(mPerceptionHistory.size() == 11 && mPerceptionHistory.back().first.objs.size() == 1,
               "nonempty low-confidence input remains raw history even when publication is empty");
         Check(mPerceptionHistory.back().first.objs[0].type == 1 && mPerceptionHistory.back().first.objs[0].confidence == 0,
               "raw history keeps HDMap classification without feeding back filtered scores");
         double total_weight = 0;
-        for(int i = 0; i < 6; ++i) {
+        for(int i = 0; i < 12; ++i) {
             total_weight += std::exp(-i * 0.1);
         }
-        Expect(1100.5, {Marker(10.2, 4)}, {1}, {(std::exp(-0.1) + 1) / total_weight});
+        Expect(1101.1, {Marker(10.2, 4)}, {1}, {(std::exp(-0.1) + 1) / total_weight});
         Near(publications.back().objs[0].x, 20.2, "target recovers using earlier unpublished evidence and latest geometry");
+    }
+
+    void TestCurrentLaneOverlapThreshold() {
+        SetPose(10, 0, 90);
+        // 车道为 y=[-2,2]，框长为 5；y=-3.5 时交面积/框面积恰好 1/5。
+        const double centers[] = {-4.51, -4.5, -4.499, -4.0, -3.55,
+                                  std::nextafter(-3.5f, -4.0f), -3.5,
+                                  std::nextafter(-3.5f, -3.0f), -3.0, 0};
+        const int types[] = {4, 4, 4, 4, 4, 4, 0, 0, 0, 0};
+        for(std::size_t i = 0; i < sizeof(centers) / sizeof(centers[0]); ++i) {
+            mPerceptionHistory.clear();
+            Expect(1200 + i, {Marker(10, centers[i], 2, 5)}, {types[i]}, {1});
+            const auto& object = publications.back().objs[0];
+            Near(object.x, 20, "overlap threshold keeps original world position x");
+            Near(object.y, centers[i], "overlap threshold keeps original world position y");
+            Near(object.dx, 2, "overlap threshold keeps original dx");
+            Near(object.dy, 5, "overlap threshold keeps original dy");
+            Near(object.heading, 90, "new target fallback heading uses north-zero clockwise convention");
+            Check(object.id > 0 && object.vx == 0 && object.vy == 0 && object.height == 0,
+                  "new target has an ID and unknown velocity is initialized to zero");
+            Check(mPerceptionHistory.back().first.objs[0].type == types[i],
+                  "raw current-lane classification uses the same twenty-percent gate");
+        }
+
+        // 保持 HDMap 的既有车道宽度，不能按 monitor 显示边界重新定义本车道。
+        mPerceptionHistory.clear();
+        Expect(1220, {Marker(10, -1.5, 0.4, 0.4)}, {0}, {1});
+        // 左一/左二不足 20% 时仍采用 SDK 结果，本次门槛只作用于本车道。
+        mPerceptionHistory.clear();
+        Expect(1221, {Marker(-10.9, 4), Marker(10, 10.9)}, {1, 2}, {1, 1});
+
+        SetPose(10, 8, 90);
+        mPerceptionHistory.clear();
+        Expect(1222, {Marker(10, 3.55, 2, 5)}, {3}, {1});
+        mPerceptionHistory.clear();
+        Expect(1223, {Marker(10, 3.5, 2, 5)}, {0}, {1});
+        SetPose(10, 0, 90);
+        // 旋转后的真实矩形面积判定：框局部 x 长 2.5，旋转 90 度后在 y 方向伸展。
+        auto rotated = Marker(10, -2.75, 2.5, 1);
+        rotated.pose.orientation = tf::createQuaternionMsgFromYaw(M_PI / 2);
+        mPerceptionHistory.clear();
+        Expect(1224, {rotated}, {0}, {1});
+        rotated.pose.position.y = std::nextafter(-2.75f, -3.0f);
+        mPerceptionHistory.clear();
+        Expect(1225, {rotated}, {4}, {1});
+        rotated = Marker(10, -2.8);
+        rotated.pose.orientation = tf::createQuaternionMsgFromYaw(M_PI / 4);
+        mPerceptionHistory.clear();
+        Expect(1226, {rotated}, {4}, {1});
+        rotated.pose.position.y = -2;
+        mPerceptionHistory.clear();
+        Expect(1227, {rotated}, {0}, {1});
+    }
+
+    void TestCurrentPoseReclassification() {
+        mPerceptionHistory.clear();
+        SetPose(10, 0, 90);
+        Expect(1300, {Marker(20, 0)}, {0}, {1});
+        const auto original = publications.back().objs[0];
+        const double decay = std::exp(-0.1);
+        SetPose(10, 4, 90);
+        Expect(1300.1, {}, {4}, {decay / (decay + 1)});
+        const auto& retained = publications.back().objs[0];
+        Check(retained.x == original.x && retained.y == original.y && retained.dx == original.dx &&
+                  retained.dy == original.dy && retained.heading == original.heading,
+              "ego lane change only updates retained target lane type and confidence");
+        Check(mPerceptionHistory.front().first.objs[0].type == 0 && mPerceptionHistory.back().first.objs.empty(),
+              "reclassification never writes retained targets or current types back into raw history");
+        Expect(1300.2, {Marker(20, -4)}, {4}, {(decay * decay + 1) / (decay * decay + decay + 1)});
+
+        // 框世界朝向固定为北向；自车转向和运动 heading 都不能改变车道匹配使用的几何。
+        mPerceptionHistory.clear();
+        SetPose(10, 0, 90);
+        auto rotated = Marker(10, -2.5, 4, 1);
+        rotated.pose.orientation = tf::createQuaternionMsgFromYaw(M_PI / 2);
+        Expect(1310, {rotated}, {0}, {1});
+        Near(publications.back().objs[0].heading, 0, "north-facing new target has navigation-compatible heading");
+        SetPose(10, 0, 135);
+        Expect(1310.1, {}, {0}, {decay / (decay + 1)});
+        Near(publications.back().objs[0].heading, 0, "ego rotation does not rewrite historical heading");
+        Near(publications.back().objs[0].y, -2.5, "ego rotation does not move historical geometry");
+        // 新观测维持相同世界矩形，但车体局部角已改变；静止目标仍保持北向。
+        rotated.pose.position.x = 12.5 / std::sqrt(2.0);
+        rotated.pose.position.y = 7.5 / std::sqrt(2.0);
+        rotated.pose.orientation = tf::createQuaternionMsgFromYaw(3 * M_PI / 4);
+        Expect(1310.2, {rotated}, {0}, {(decay * decay + 1) / (decay * decay + decay + 1)});
+        Near(publications.back().objs[0].heading, 0, "fresh matched observation supplies the latest heading");
+        SetPose(10, 0, 90);
+        Expect(1310.3, {}, {0}, {(decay * decay * decay + decay) / (decay * decay * decay + decay * decay + decay + 1)});
+
+        mPerceptionHistory.clear();
+        SetPose(10, 0, 90);
+        Expect(1320, {Marker(10, -3.55, 2, 5)}, {4}, {1});
+        SetPose(10, 0, 270);
+        Expect(1320.1, {}, {3}, {decay / (decay + 1)});
+        Near(publications.back().objs[0].y, -3.55, "outside side uses current heading without rotating the old box");
+
+        mPerceptionHistory.clear();
+        SetPose(10, 0, 90);
+        Expect(1330, {Marker(10, 0)}, {0}, {1});
+        const auto corners = mPerceptionHistory.front().first.objs[0].polygons;
+        Check(corners.size() == 4, "raw observations retain world geometry internally");
+        const auto previous = publications.size();
+        mPerceptionHistory.front().first.objs[0].polygons.clear();
+        Send(1330.1, {});
+        Check(publications.size() == previous && mPerceptionHistory.size() == 1,
+              "missing historical geometry rolls back the new frame without publishing stale types");
+        Near(mPerception.header.stamp.toSec(), 1330, "reclassification failure preserves last valid snapshot");
+        mPerceptionHistory.front().first.objs[0].polygons = corners;
+        mPerceptionHistory.front().first.objs[0].polygons[0].x = std::numeric_limits<double>::quiet_NaN();
+        Send(1330.1, {});
+        Check(publications.size() == previous && mPerceptionHistory.size() == 1,
+              "invalid historical geometry also rolls back without a synthetic empty publication");
+        mPerceptionHistory.front().first.objs[0].polygons = corners;
+        Expect(1330.1, {}, {0}, {decay / (decay + 1)});
     }
 
     void TestMainLoopWithoutCallbacks() {
@@ -627,6 +745,136 @@ namespace {
               "main cleanup never publishes a synthetic empty heartbeat");
     }
 
+    visualization_msgs::Marker WorldMarker(double tX, double tY, double tDx = 0.4, double tDy = 0.4,
+                                           double tYaw = 0) {
+        const double yaw = (90 - mGPS.heading) * M_PI / 180.0;
+        const double x = tX - mGPS.xAxis, y = tY - mGPS.yAxis;
+        auto marker = Marker(x * std::cos(yaw) + y * std::sin(yaw), -x * std::sin(yaw) + y * std::cos(yaw), tDx, tDy);
+        marker.pose.orientation = tf::createQuaternionMsgFromYaw(tYaw - yaw);
+        return marker;
+    }
+
+    robot::object PublishedObject(int tId) {
+        for(const auto& object : publications.back().objs) {
+            if(object.id == tId) {
+                return object;
+            }
+        }
+        throw std::runtime_error("Expected track ID missing from publication");
+    }
+
+    void TestMotionPublication() {
+        mPerceptionHistory.clear();
+        SetPose(10, 0, 90);
+        Expect(1400, {WorldMarker(20, 0), WorldMarker(40, 4)}, {0, 1}, {1, 1});
+        const int moving_id = publications.back().objs[0].id;
+        const int stationary_id = publications.back().objs[1].id;
+        Check(moving_id != stationary_id, "simultaneous objects get distinct tracking IDs");
+        for(int i = 1; i <= 40; ++i) {
+            // 自车同时平移和转向，地图内静止目标仍应为零速。
+            SetPose(10 + 0.3 * i, 0, 45 + i % 3 * 45);
+            const auto moving = WorldMarker(20 + 0.2 * i, 0);
+            const auto stationary = WorldMarker(40, 4);
+            const auto previous = publications.size();
+            Send(1400 + 0.1 * i, i % 2 ? std::vector<visualization_msgs::Marker>{stationary, moving} : std::vector<visualization_msgs::Marker>{moving, stationary});
+            Check(publications.size() == previous + 1 && publications.back().objs.size() == 2,
+                  "continuous moving targets publish once without geometry-based ghost duplicates");
+            const auto target = PublishedObject(moving_id);
+            const auto fixed = PublishedObject(stationary_id);
+            Check(target.type == 0 && fixed.type == 1 && target.confidence == 1 && fixed.confidence == 1,
+                  "tracking identity remains stable as the confidence window and object order change");
+            Near(target.x, 20 + 0.2 * i, "published position remains latest measured position");
+            Check(fixed.vx == 0 && fixed.vy == 0, "ego motion is removed before estimating object velocity");
+            if(i >= 10) {
+                Check(std::abs(target.vx - 2) < 0.03 && std::abs(target.vy) < 0.01,
+                      "node publishes absolute map velocity in metres per second");
+                Near(target.heading, 90, "eastbound velocity generates navigation heading 90");
+            }
+        }
+        const auto last_seen = PublishedObject(moving_id);
+        for(int i = 1; i <= 5; ++i) {
+            Send(1404 + i * 0.1, {WorldMarker(40, 4)});
+            const auto missed = PublishedObject(moving_id);
+            Check(missed.x == last_seen.x && missed.y == last_seen.y && missed.vx == last_seen.vx &&
+                      missed.vy == last_seen.vy && missed.heading == last_seen.heading,
+                  "missed target keeps measured geometry and predicted constant velocity without fake observations");
+            Check(mPerceptionHistory.back().first.objs.size() == 1 &&
+                      mPerceptionHistory.back().first.objs[0].id == stationary_id,
+                  "missed target is never added back to raw evidence");
+        }
+        Send(1404.6, {WorldMarker(29.2, 0), WorldMarker(40, 4)});
+        Check(publications.back().objs.size() == 2, "reacquisition avoids a second ghost object at the old position");
+        Check(std::abs(PublishedObject(moving_id).vx - 2) < 0.03, "reacquired target keeps ID and velocity");
+
+        // 物理长框竖直、运动向东；运动航向不能把 20% 的几何重叠错误变成零重叠。
+        mPerceptionHistory.clear();
+        SetPose(10, 0, 90);
+        int id = 0;
+        for(int i = 0; i <= 10; ++i) {
+            Expect(1430 + i * 0.1, {WorldMarker(20 + i * 0.2, -2.75, 2.5, 1, M_PI / 2)}, {0}, {1});
+            if(i == 0) {
+                id = publications.back().objs[0].id;
+                Near(publications.back().objs[0].heading, 0, "new vertical box fallback points north");
+            }
+            Check(publications.back().objs[0].id == id, "box and motion heading differences do not break tracking");
+        }
+        Near(publications.back().objs[0].heading, 90, "motion heading replaces fallback while lane geometry stays vertical");
+    }
+
+    void TestTrackingTransactions() {
+        mPerceptionHistory.clear();
+        SetPose(10, 0, 90);
+        Expect(1450, {Marker(10, 0), Marker(10, 4)}, {0, 1}, {1, 1});
+        const int first_id = publications.back().objs[0].id, second_id = publications.back().objs[1].id;
+        Expect(1450, {Marker(10, 4), Marker(10, 0)}, {1, 0}, {1, 1});
+        Check(publications.back().objs[0].id == second_id && publications.back().objs[1].id == first_id,
+              "same-time replacement preserves newborn IDs despite reordered observations");
+        Expect(1450, {Marker(10, 4)}, {1}, {1});
+        Check(publications.back().objs[0].id == second_id, "same-time replacement preserves ID after another newborn is removed");
+        Expect(1450, {}, {}, {});
+        Expect(1450, {Marker(20, 0)}, {0}, {1});
+        Check(publications.back().objs[0].id != first_id && publications.back().objs[0].id != second_id,
+              "replacing a birth with empty input cannot recycle its published ID immediately");
+
+        mPerceptionHistory.clear();
+        Expect(1460, {Marker(10, 0)}, {0}, {1});
+        const int id = publications.back().objs[0].id;
+        Expect(1460.1, {Marker(10.2, 0)}, {0}, {1});
+        Expect(1460.2, {Marker(10.4, 0)}, {0}, {1});
+        const auto original = publications.back().objs[0];
+        for(int i = 0; i < 20; ++i) {
+            Expect(1460.2, {Marker(10.4, 0)}, {0}, {1});
+            const auto repeated = publications.back().objs[0];
+            Check(repeated.id == id && repeated.vx == original.vx && repeated.vy == original.vy &&
+                      repeated.heading == original.heading && mPerceptionHistory.size() == 3,
+                  "same timestamp does not repeatedly update Kalman state or confidence");
+        }
+        PerceptionObjectTracker control = mPerceptionTracker;
+        robot::perception expected;
+        expected.objs = {original};
+        expected.objs[0].x = 20.6;
+        control.Update(expected, 1460.3);
+        const auto previous = publications.size();
+        ros::Time::testFailAfter() = 1;
+        Send(1460.3, {Marker(10.9, 0)});
+        Check(publications.size() == previous && mPerceptionHistory.size() == 3,
+              "filter failure does not commit the candidate tracking update");
+        Expect(1460.3, {Marker(10.6, 0)}, {0}, {1});
+        Check(publications.back().objs[0].id == id && publications.back().objs[0].vx == expected.objs[0].vx,
+              "motion state after rollback agrees with processing only the successful observations");
+
+        Expect(1459, {Marker(10, 0)}, {0}, {1});
+        Check(publications.back().objs[0].id != id && publications.back().objs[0].vx == 0,
+              "clock rollback clears motion history without immediately reusing an ID");
+        const int reset_id = publications.back().objs[0].id;
+        const auto count = publications.size();
+        MaintainPerceptionHistory(1461);
+        Check(publications.size() == count && mPerceptionHistory.empty(), "silent expiry clears tracks without publishing heartbeat");
+        Expect(1461.1, {Marker(10, 0)}, {0}, {1});
+        Check(publications.back().objs[0].id != reset_id && publications.back().objs[0].vx == 0,
+              "first detection after silent expiry starts a fresh velocity estimate");
+    }
+
     void TestClassificationAndExclusions() {
         mPerceptionHistory.clear();
         Expect(500, {Marker(10, 0), Marker(10, 4), Marker(10, 8), Marker(10, 14), Marker(10, -6)},
@@ -649,6 +897,58 @@ namespace {
         Check(mPerceptionHistory.back().first.objs.empty(), "excluded and non-CUBE markers never enter raw history");
         Expect(506, {}, {}, {});
         g_perception_boundary.polygons_.clear();
+    }
+
+    void TestPlanningObservationPublication() {
+        std::vector<robot::perception> planning;
+        planning_perception_pub.capture = [&planning](const std::type_info& type, const void* value) {
+            Check(type == typeid(robot::perception), "planning observation keeps existing ROS message definition");
+            planning.push_back(*static_cast<const robot::perception*>(value));
+        };
+        mPerceptionHistory.clear();
+        SetPose(10, 0, 90);
+        auto marker = Marker(10, -2.5, 1, 4);
+        marker.pose.orientation = tf::createQuaternionMsgFromYaw(M_PI / 2);
+        marker.color.a = 0.72;
+        Send(5000, {marker});
+        Check(planning.size() == 1 && planning.back().objs.size() == 1, "one real observation published");
+        const auto object = planning.back().objs.front();
+        Check(object.id > 0 && object.polygons.size() == 4, "stable ID and true world corners supplied together");
+        Near(object.confidence, 0.72, "planning confidence is original detection score");
+        Near(object.polygons[0].x, 22, "physical long side follows marker geometry");
+        Near(object.polygons[0].y, -3, "physical short side follows marker geometry");
+        planning_perception::PerceptionSafety safety;
+        Check(safety.Observe(planning.back(), 5000), "real converter output is accepted by real planning algorithm");
+        planning_perception::EGO_S ego;
+        ego.x = 10;
+        ego.heading = 90;
+        ego.speed = 0.8;
+        std::vector<planning_perception::PATH_POINT_S> path;
+        for(int i = 0; i < 25; ++i) path.emplace_back(10 + i, 0);
+        const auto risk = safety.Evaluate(path, ego, 3, 5000);
+        Check(risk.reason == planning_perception::CLEAR && !risk.emergency,
+              "converter physical side box stays clear through actual planning despite heading mismatch");
+        Check(publications.back().objs.front().polygons.empty(), "legacy polygons unchanged");
+        Near(publications.back().objs.front().confidence, 1, "legacy temporal confidence unchanged");
+        Send(5000.1, {});
+        Check(planning.size() == 2 && planning.back().objs.empty(), "missing object not re-published as observation");
+        Check(publications.back().objs.size() == 1, "legacy history retention remains available to existing consumers");
+        const auto count = planning.size();
+        MaintainPerceptionHistory(5003);
+        Check(planning.size() == count, "expiry cannot generate a false fresh planning frame");
+        mNavigationReceived = false;
+        Send(5004, {marker}, false);
+        Check(planning.size() == count, "invalid localization blocks both outputs");
+        SetPose(10, 0, 90);
+        const auto before_burst = planning.size();
+        for(int i = 0; i <= 20; ++i) Send(5100 + i * 0.01, {marker});
+        Check(planning.size() == before_burst + 3, "100 Hz observations are bounded to 12.5 Hz planning publications");
+        Send(5100.21, {});
+        Check(planning.size() == before_burst + 4 && planning.back().objs.empty(), "empty transition bypasses rate gate");
+        Send(5100.22, {marker});
+        Check(planning.size() == before_burst + 5 && planning.back().objs.size() == 1,
+              "new nonempty transition bypasses rate gate");
+        planning_perception_pub.capture = {};
     }
 }
 
@@ -677,6 +977,12 @@ int main() {
         TestSizeFilter();
         TestSizeRangeFilter();
         TestPublishConfidenceThreshold();
+        TestCurrentLaneOverlapThreshold();
+        TestCurrentPoseReclassification();
+        TestMotionPublication();
+        TestTrackingTransactions();
+        TestPlanningObservationPublication();
+        SetPose(10, 0, 90);
         TestMainLoopWithoutCallbacks();
         std::printf("PASS: %d filtered perception publish checks\n", checks);
     } catch(const std::exception& error) {

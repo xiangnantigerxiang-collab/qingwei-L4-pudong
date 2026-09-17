@@ -1,0 +1,7 @@
+==== start[INFO] [1.5] [canbus]: calibration: started, hook up
+[INFO] [2.0] [canbus]: calibration done: hook [186..249], pallet [127..249] applied
+[ERROR] [3.0] [canbus]: calibration aborted: hook action command appeared, limits unchanged
+[INFO] [3.5] [canbus]: calibration: started, hook up
+[ERROR] [4.0] [canbus]: calibration done: hook [186..249], pallet [127..249] applied in memory, config.cfg NOT written (cannot write /x.tmp: Permission denied; values lost on restart)
+[INFO] [4.5] [canbus]: calibration: started, hook up
+[INFO] [5.0] [canbus]: calibration done: hook [999..0], pallet [65635..7] applied

@@ -52,7 +52,13 @@ class El {
       self2._ctx2d = {
         __calls: calls,
         clearRect() {},
-        fillText(...a) { (calls.texts = calls.texts || []).push(a); },
+        measureText(text) { return { width: String(text).length *
+          Number((this.font || "84px").match(/\d+/)[0]) * 0.6 }; },
+        // 记录调用时刻的 font/fillStyle(最终态会被后续绘制覆盖,不能事后读)
+        fillText(...a) { (calls.texts = calls.texts || []).push(
+          { a: a, font: this.font, fill: this.fillStyle }); },
+        strokeText(...a) { (calls.strokes = calls.strokes || []).push(
+          { a: a, lw: this.lineWidth, stroke: this.strokeStyle }); },
         fillRect() { calls.fillRect++; },
         beginPath() {}, moveTo() {}, closePath() {},
         lineTo() { calls.lineTo++; },
@@ -123,7 +129,8 @@ const OBJ_SEQ = [];
 function rec(o, kind) { o.__kind = kind; OBJ_SEQ.push(o); return o; }
 function makeGeom() {
   return rec({
-    _attrs: {}, _pts: null,
+    _attrs: {}, _pts: null, drawRange: { start: 0, count: 0 },
+    setDrawRange(start, count) { this.drawRange = { start, count }; },
     setAttribute(n, a) { this._attrs[n] = a; },
     setFromPoints(pts) { this._pts = pts; return this; },
     dispose() {},
@@ -170,13 +177,18 @@ const THREE = {
   BufferAttribute: function (arr, n) { this.array = arr; this.itemSize = n; },
   Vector3: function (x, y, z) { this.x = x; this.y = y; this.z = z; },
   LineBasicMaterial: mat, MeshBasicMaterial: mat, PointsMaterial: mat,
-  SpriteMaterial: mat,
+  SpriteMaterial: mat, ShaderMaterial: mat,
   Mesh: function (g, m) { return obj3("mesh", { geometry: g, material: m, userData: {} }); },
   Points: function (g, m) { return obj3("points", { geometry: g, material: m }); },
-  Sprite: function (m) { return obj3("sprite", { material: m, userData: {} }); },
-  SphereGeometry: makeGeom, BoxGeometry: makeGeom, ConeGeometry: makeGeom,
+  Sprite: function (m) { return obj3("sprite", { material: m, userData: {},
+    center: { x: 0.5, y: 0.5, set(x, y) { this.x = x; this.y = y; } } }); },
+  SphereGeometry: makeGeom, ConeGeometry: makeGeom,
   TorusGeometry: makeGeom,
-  CanvasTexture: function (cv) { this.minFilter = 0; this.needsUpdate = false; this.cv = cv; },
+  // BoxGeometry 记录构造参数:锁定"闸机箱尺寸朝向"(x=沿车头/高/横向跨度)
+  BoxGeometry: function (a, b, c) {
+    const g = makeGeom(); g.__dims = [a, b, c]; return g;
+  },
+  CanvasTexture: function (cv) { this.minFilter = 0; this.needsUpdate = false; this.cv = cv; this.disposed = false; this.dispose = function () { this.disposed = true; }; },
   LinearFilter: 1006,
 };
 global.THREE = THREE;
@@ -206,16 +218,18 @@ async function main() {
   const SNAP = {
     ros_available: true, master_ok: true, typed_ok: true,
     msg_import_errors: [], origin: [49.23, 0.56],
-    ages: { "/navigation_msg": 0.2, "/perception": 0.1, "/back_left_scan": 8.0 },
+    ages: { "/navigation_msg": 0.2, "/perception": 0.1, "/back_left_scan": 8.0,
+            "/gantry_state": 0.3 },
     vehicle: { x: 6.7, y: -13.1, yaw: -3.2198, speed: 2.5 },
     obstacles: [
-      { x: 8.8, y: 2.4, l: 4.0, w: 1.0, h: 1.8, yaw: -0.1745, id: 1, vx: 0, vy: 0, type: 1, conf: 0.87 },
-      { x: 9.9, y: 3.4, l: 2.0, w: 0.9, h: 1.2, yaw: 0.1, id: 2, vx: 0, vy: 0, type: 9 }],
+      { x: 8.8, y: 2.4, l: 4.0, w: 1.0, h: 1.8, yaw: -0.1745, id: 1, vx: 3, vy: -4, heading: 100, type: 1, conf: 0.87 },
+      { x: 9.9, y: 3.4, l: 2.0, w: 0.9, h: 1.2, yaw: 0.1, id: 0, vx: 0, vy: 0, heading: 0, type: 9 }],
     paths: { plan: [[0, 0], [1, 1], [2, 2]], refer: [[0, 0], [3, 3]] },
     stop: { x: 10.7, y: -1.5, yaw: 1.57 }, pallet: { x: 9.8, y: -2.4 },
     task: { id: 88, type: 1, work_mode: 1, exec: 1, cloud_proc: 1,
             fail_code: 0, fail_reason: "" },
     plan: { desire_speed: 2.5, planspeed: 2.4, safety: true },
+    gantry: { active: true, open: false },
     control: { steer: -11.0, brake: 0, throttle: 18, bia: 0.21 },
     can: { gear: 4, mode: 1, estop: 0, battery: 77, hook: 1,
            steer_fb: -220.0, fault: [0], speed: 1.2, brake_fb: 30,
@@ -346,6 +360,7 @@ async function main() {
           near(m0.scale.y, 1.8) && near(m0.scale.z, 1.0),
           JSON.stringify([m0.scale.x, m0.scale.y, m0.scale.z]));
     check("障碍 z 抬高 h/2", near(m0.position.y, 0.9), String(m0.position.y));
+    check("新增标签不改变框朝向", near(m0.rotation.y, -0.1745));
     // 按 type 着色:1=行人橙;其余(9)落默认墨绿
     check("障碍 type=1 着橙", m0.material.color.c === 0xff8000,
           String(m0.material.color.c));
@@ -353,35 +368,57 @@ async function main() {
           obstacleMeshes[1].material.color.c === 0x339999,
           String(obstacleMeshes[1].material.color.c));
   }
-  // 置信度文字 sprite:与 mesh 池同步;有 conf 的显示在框上方,无 conf 隐藏
-  const labelSprites = OBJ_SEQ.filter((o) => o.__kind === "sprite");
-  check("置信度文字 sprite 2 个", labelSprites.length === 2,
-        String(labelSprites.length));
-  if (labelSprites.length === 2) {
-    check("置信度文字位于框上方(h+0.3)", near(labelSprites[0].position.y, 2.1),
-          String(labelSprites[0].position.y));
-    check("置信度文字纹理已挂", !!labelSprites[0].material.map &&
-          labelSprites[0].visible === true,
-          String(labelSprites[0].visible));
-    check("无 conf 的文字隐藏",
-          labelSprites[1].visible === false && !labelSprites[1].material.map,
-          String(labelSprites[1].visible));
-    // 白色 + 3 倍字号规格锁(位置不变已由 h+0.3 断言覆盖)
-    const cv0 = labelSprites[0].material.map.cv;
-    const c20 = cv0.getContext();
-    check("置信度文字白色", c20.fillStyle === "#ffffff", String(c20.fillStyle));
-    check("置信度文字 3 倍字号(84px)", cv0._font === "bold 84px monospace",
-          String(cv0._font));
-    check("置信度画布 3 倍(384x144)",
-          cv0.width === 384 && cv0.height === 144,
-          cv0.width + "x" + cv0.height);
-    check("置信度文字内容 0.87",
-          JSON.stringify((c20.__calls.texts || [])[0] || []).indexOf("0.87") >= 0,
-          JSON.stringify((c20.__calls.texts || [])[0] || []));
-    check("置信度 sprite 世界尺寸 3 倍(4.8x1.8)",
-          near(labelSprites[0].scale.x, 4.8) && near(labelSprites[0].scale.y, 1.8),
-          labelSprites[0].scale.x + "x" + labelSprites[0].scale.y);
+  // 从真实生成的几何与 UV 还原屏幕文字,验证批量绘制的内容/位置。
+  const labelMeshes = OBJ_SEQ.filter(
+    (o) => o.__kind === "mesh" && o.userData.isObstacleLabel);
+  const labels = labelMeshes[0];
+  function readLabels(mesh) {
+    const cv = mesh.material.uniforms.labelMap.value.cv;
+    const glyphs = cv.getContext().__calls.texts;
+    const pos = mesh.geometry._attrs.position.array;
+    const ofs = mesh.geometry._attrs.labelOffset.array;
+    const uv = mesh.geometry._attrs.uv.array;
+    const groups = [];
+    for (let i = 0; i < mesh.geometry.drawRange.count; i += 6) {
+      const anchor = Array.from(pos.slice(i * 3, i * 3 + 3));
+      let group = groups.find((g) => g.anchor.every((v, k) => near(v, anchor[k])));
+      if (!group) { group = { anchor, rows: [] }; groups.push(group); }
+      const up = (ofs[i * 2 + 1] + ofs[(i + 2) * 2 + 1]) / 2;
+      let row = group.rows.find((r) => near(r.up, up));
+      if (!row) { row = { up, text: "" }; group.rows.push(row); }
+      const u = (uv[i * 2] + uv[(i + 2) * 2]) / 2;
+      const v = (uv[i * 2 + 1] + uv[(i + 2) * 2 + 1]) / 2;
+      const glyph = glyphs.find((g) => near(g.a[1] / cv.width, u) &&
+        near(1 - g.a[2] / cv.height, v));
+      row.text += glyph ? glyph.a[0] : "INVALID_UV";
+    }
+    return groups;
   }
+  check("全部障碍标签合为一个绘制批次", labelMeshes.length === 1);
+  const atlas = labels.material.uniforms.labelMap.value;
+  const labelCanvas = atlas.cv;
+  const labelCtx = labelCanvas.getContext();
+  let decoded = readLabels(labels);
+  check("标签保持世界锚点(h+0.3)", near(decoded[0].anchor[1], 2.1));
+  check("四行只显示数值与单位,速度取模且 heading 为度",
+        JSON.stringify(decoded[0].rows.map((r) => r.text)) ===
+        JSON.stringify(["1", "5.00 m/s", "100.00°", "0.87"]));
+  check("没有 confidence 仍显示运动标签且保留零值",
+        JSON.stringify(decoded[1].rows.map((r) => r.text)) ===
+        JSON.stringify(["0", "0.00 m/s", "0.00°"]));
+  check("置信度基线不变,三行运动文字按原间距显示在上方",
+        decoded[0].rows.every((r, i) => near(r.up, [2.7, 1.8, 0.9, 0][i])));
+  check("全部字形白色且字号统一", labelCtx.__calls.texts.every(
+        (t) => t.fill === "#ffffff" && t.font === "bold 42px monospace"));
+  check("半字号的世界显示尺寸保持不变",
+        near(labels.geometry._attrs.labelOffset.array[5] -
+             labels.geometry._attrs.labelOffset.array[1], 0.9));
+  check("文字保留深色描边", labelCtx.__calls.strokes.every(
+        (t) => t.stroke === "#101418" && t.lw === 5));
+  check("全部标签纹理小于 1MiB", labelCanvas.width * labelCanvas.height * 4 < 1048576);
+  check("标签无深度遮挡且使用相机平面偏移",
+        labels.material.depthTest === false && labels.material.depthWrite === false &&
+        labels.material.vertexShader.includes("anchor.xy += labelOffset"));
   check("HUD 速度文本", el("#hSpd")._text.indexOf("2.5") >= 0,
         el("#hSpd")._text);
   // 数据龄列表段已按需求移除:灰化能力回归改走数值行(见 F2b)
@@ -408,6 +445,72 @@ async function main() {
         el("#hSafety").className.indexOf("bad") >= 0 &&
         el("#hSafety").className.indexOf("stale") < 0,
         el("#hSafety")._text + "/" + el("#hSafety").className);
+  // F14 闸机口(gantry_detect):三态渲染 + 3D 提示箱几何/位置/显隐
+  check("F14 HUD 闸机: 关闭+红色(fixture active&&!open)",
+        el("#hGantry")._text === "关闭" &&
+        el("#hGantry").className.indexOf("bad") >= 0 &&
+        el("#hGantry").className.indexOf("stale") < 0,
+        el("#hGantry")._text + "/" + el("#hGantry").className);
+  check("F14 闸机行位于安全与控制之间(页面源序)",
+        html.indexOf('id="hSafety"') >= 0 &&
+        html.indexOf('id="hSafety"') < html.indexOf('id="hGantry"') &&
+        html.indexOf('id="hGantry"') < html.indexOf("控制 (control)"));
+  const gMesh = OBJ_SEQ.find((o) => o.__kind === "mesh" &&
+        o.material && o.material.color === 0xff0000 &&
+        o.material.opacity === 0.55);
+  check("F14 3D 提示箱 mesh 存在(红色半透明)", !!gMesh);
+  if (gMesh) {
+    const savedSpd = SNAP.vehicle.speed;
+    SNAP.vehicle.speed = 0;        // 外推归零 -> 位置可精确断言
+    await sleep(700);              // 等下一拍 poll(500ms 周期)
+    if (rafCb) { rafCb(); }
+    const gx = SNAP.vehicle.x + Math.cos(SNAP.vehicle.yaw) * 2.5;
+    const gy = SNAP.vehicle.y + Math.sin(SNAP.vehicle.yaw) * 2.5;
+    check("F14 3D 提示箱: 尺寸朝向=1m 沿车头/2m 高/3m 横向拦路",
+          JSON.stringify(gMesh.geometry.__dims) === "[1,2,3]",
+          JSON.stringify(gMesh.geometry.__dims));
+    check("F14 3D 提示箱: 关闭时可见,中心=车前 2.5m(近端面 2m),z=1",
+          gMesh.visible === true &&
+          near(gMesh.position.x, gx, 1e-6) &&
+          near(gMesh.position.y, 1.0, 1e-6) &&
+          near(gMesh.position.z, -gy, 1e-6) &&
+          near(gMesh.rotation.y, SNAP.vehicle.yaw, 1e-6),
+          JSON.stringify(gMesh.position) + "/" + gMesh.rotation.y);
+    SNAP.gantry = { active: true, open: true };
+    await sleep(700);
+    check("F14 HUD 闸机: 开启+绿色",
+          el("#hGantry")._text === "开启" &&
+          el("#hGantry").className.indexOf("ok") >= 0,
+          el("#hGantry")._text + "/" + el("#hGantry").className);
+    if (rafCb) { rafCb(); }
+    check("F14 3D 提示箱: 开启时隐藏", gMesh.visible === false);
+    SNAP.gantry = { active: false, open: false };
+    await sleep(700);
+    check("F14 HUD 闸机: 无效=默认色(无 ok/bad/stale)",
+          el("#hGantry")._text === "无效" &&
+          el("#hGantry").className === "v",
+          el("#hGantry")._text + "/" + el("#hGantry").className);
+    if (rafCb) { rafCb(); }
+    check("F14 3D 提示箱: 无效时隐藏", gMesh.visible === false);
+    delete SNAP.gantry;
+    await sleep(700);
+    check("F14 HUD 闸机: 无数据 -- 默认色",
+          el("#hGantry")._text === "--" &&
+          el("#hGantry").className === "v",
+          el("#hGantry")._text + "/" + el("#hGantry").className);
+    SNAP.gantry = { active: true, open: false };
+    SNAP.ages["/gantry_state"] = 8.0;
+    await sleep(700);
+    check("F14 HUD 闸机: 陈旧>5s 灰化 --",
+          el("#hGantry")._text === "--" &&
+          el("#hGantry").className.indexOf("stale") >= 0,
+          el("#hGantry")._text + "/" + el("#hGantry").className);
+    if (rafCb) { rafCb(); }
+    check("F14 3D 提示箱: 数据陈旧时隐藏", gMesh.visible === false);
+    /* 恢复 fixture 缺省(后续 F12 降级段整页重跑会复用同一 SNAP) */
+    SNAP.ages["/gantry_state"] = 0.3;
+    SNAP.vehicle.speed = savedSpd;
+  }
   check("HUD 挂接: 0/1 域文案",
         el("#hEbat")._text.indexOf("已挂") >= 0,
         el("#hEbat")._text);
@@ -522,14 +625,51 @@ async function main() {
   cbLidar.fire("change", { target: cbLidar });
   check("关 lidar 图层 -> 障碍隐藏",
         obstacleMeshes.every((m) => m.visible === false));
-  check("关 lidar 图层 -> 置信度文字隐藏",
-        labelSprites.every((sp) => sp.visible === false));
+  check("关 lidar 图层 -> 所有文字隐藏", labels.visible === false);
+  const glyphDraws = labelCtx.__calls.texts.length;
+  const originalPositions = labels.geometry._attrs.position;
+  SNAP.obstacles[0].vx = -6; SNAP.obstacles[0].vy = 0;
+  SNAP.obstacles[0].heading = 270;
+  await sleep(800);
+  decoded = readLabels(labels);
+  check("刷新速度/heading 后文字正确",
+        JSON.stringify(decoded[0].rows.map((r) => r.text)) ===
+        JSON.stringify(["1", "6.00 m/s", "270.00°", "0.87"]));
+  check("数值变化不重画或重建纹理",
+        labels.material.uniforms.labelMap.value === atlas &&
+        labelCtx.__calls.texts.length === glyphDraws && !atlas.needsUpdate);
+  check("普通刷新复用几何缓冲", labels.geometry._attrs.position === originalPositions);
+  check("关图层期间刷新仍隐藏文字", labels.visible === false);
   cbLidar.checked = true;
   cbLidar.fire("change", { target: cbLidar });
   check("开 lidar 图层 -> 障碍恢复", obstacleMeshes.every((m) => m.visible === true));
-  check("开 lidar 图层 -> 有 conf 文字恢复/无 conf 恒隐",
-        labelSprites[0].visible === true && labelSprites[1].visible === false,
-        String(labelSprites.map((sp) => sp.visible)));
+  check("开 lidar 图层 -> 文字恢复", labels.visible === true);
+  delete SNAP.obstacles[1].heading;
+  delete SNAP.obstacles[1].vx;
+  await sleep(800);
+  check("旧快照缺字段显示 --",
+        JSON.stringify(readLabels(labels)[1].rows.map((r) => r.text)) ===
+        JSON.stringify(["0", "--", "--"]));
+  const savedObstacles = SNAP.obstacles;
+  SNAP.obstacles = [];
+  await sleep(800);
+  check("障碍消失后停止绘制文字", !labels.visible && labels.geometry.drawRange.count === 0);
+  cbLidar.fire("change", { target: cbLidar });
+  check("图层恢复不显示无数据文字", !labels.visible);
+  savedObstacles[0].vx = 3; savedObstacles[0].vy = -4;
+  savedObstacles[0].heading = 100;
+  savedObstacles[1].vx = 0; savedObstacles[1].heading = 0;
+  SNAP.obstacles = Array.from({ length: 100 }, (_, i) =>
+    Object.assign({}, savedObstacles[0], { id: i + 1, x: i * 4, heading: i * 3 }));
+  await sleep(800);
+  check("100 个障碍共用一张纹理且全部有文字",
+        labels.material.uniforms.labelMap.value === atlas && readLabels(labels).length === 100 &&
+        labelCtx.__calls.texts.length === glyphDraws);
+  SNAP.obstacles = savedObstacles;
+  await sleep(800);
+  check("障碍减少后无残留标签", readLabels(labels).length === 2 && labels.visible);
+  check("整个生命周期只创建一个文字批次", OBJ_SEQ.filter(
+        (o) => o.__kind === "mesh" && o.userData.isObstacleLabel).length === 1);
 
   // F9 断网横幅(等下一个 poll 周期的 catch 分支)
   fetchRoutes = {};
@@ -602,6 +742,27 @@ async function main() {
       near(a[0], -0.8 * 6) && near(a[2], 3.1 * 6));
     check("F13 2D 车身矩形从后缘 -0.8m 起画", vehicleRectOk,
           JSON.stringify(ctx2 && ctx2.__calls.strokeRects));
+    // 2D 降级置信度文字:18px 白色带描边(调用时刻快照,非最终态)
+    const confText2d = ctx2 && (ctx2.__calls.texts || []).find(
+      (t) => String(t.a[0]).indexOf("0.87") >= 0);
+    check("F13 2D 置信度文字白色且字号减半为 18px", confText2d &&
+          confText2d.fill === "#ffffff" && confText2d.font === "18px monospace",
+          JSON.stringify(confText2d || null));
+    const confStroke2d = ctx2 && (ctx2.__calls.strokes || []).find(
+      (t) => String(t.a[0]).indexOf("0.87") >= 0);
+    check("F13 2D 置信度文字带描边", confStroke2d &&
+          confStroke2d.stroke === "#101418",
+          JSON.stringify(confStroke2d || null));
+    const motionTexts2d = ["1", "5.00 m/s", "100.00°"].map(
+      (text) => ctx2 && (ctx2.__calls.texts || []).find((t) => t.a[0] === text));
+    check("F13 2D 运动标签值正确,白色且字号减半为 18px",
+          motionTexts2d.every((t) => t && t.fill === "#ffffff" &&
+            t.font === "18px monospace"));
+    check("F13 2D 运动三行间距减半且位于 confidence 上方",
+          confText2d && motionTexts2d.every((t) => t &&
+            t.a[1] === confText2d.a[1] && t.a[2] < confText2d.a[2]) &&
+          near(motionTexts2d[1].a[2] - motionTexts2d[0].a[2], 22) &&
+          near(motionTexts2d[2].a[2] - motionTexts2d[1].a[2], 22));
     const drawCount = ctx2 && ctx2.__calls.fillRect;
     if (rafCb) { rafCb(1050); }
     check("F13 2D 重绘限制为最多 10FPS",

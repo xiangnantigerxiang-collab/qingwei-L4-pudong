@@ -1,0 +1,106 @@
+{
+  "date": "2026-09-17",
+  "topic": "/gantry_state",
+  "message": "gantry_detect/gantry_state",
+  "rule": "Only active && !gantry_open overrides published /plan_path_msg.safety to true",
+  "baseline": "planning_before_gantry_20260917_103937.tar.gz",
+  "baseline_compile_adjustment": "Removed only the unused, nonexistent gantry_detect/gantry_detect.h include from the comparison copy",
+  "regression": {
+    "snapshots": 387,
+    "trace_sha256": "874fc8d966801c834258bf075aa5754255f0aacdf17b43bd8c9dfbc23c9b319b",
+    "common_translation_units": 39,
+    "baseline": "/tmp/planning_gantry_20260917_103937/before/pnc",
+    "gantry_checks": 1266
+  },
+  "build_configuration": {
+    "actual_pnc_cmake_configure": "PASS",
+    "message_target_dependency": "path_plan_node only",
+    "message_include_scope": "path_plan_node only",
+    "catkin_package_order": [
+      "ivlocmsg",
+      "gantry_detect",
+      "robot"
+    ],
+    "runtime_dependency": "PASS",
+    "source_link": "../gantry_detect",
+    "transport": "mock catkin package configs; not ROS1 build"
+  },
+  "unchanged_by_sha256": [
+    "other PNC business modules and algorithms",
+    "PNC messages",
+    "gantry_detect",
+    "monitor"
+  ],
+  "changed_existing_files": [
+    "src/pnc/CMakeLists.txt",
+    "src/pnc/package.xml",
+    "src/pnc/src/robot_path_plan/README.md",
+    "src/pnc/src/robot_path_plan/path_plan_comply.h",
+    "src/pnc/src/robot_path_plan/path_plan_node.cpp",
+    "src/pnc/src/robot_path_plan/path_plan_output.inc",
+    "src/pnc/src/robot_path_plan/path_plan_perception.inc",
+    "src/pnc/tests/planning/README.md",
+    "src/pnc/tests/planning/generate_stubs.py",
+    "src/pnc/tests/planning/verify.py",
+    "workflow.md"
+  ],
+  "added_files": [
+    "src/pnc/tests/planning/gantry_safety.cpp",
+    "src/pnc/tests/planning/gantry_verification_20260917.json"
+  ],
+  "added_symlink": "src/gantry_detect -> ../gantry_detect",
+  "limits": "ROS transport stubs; host Boost needs C++14, production remains C++11. No ROS1/Orin build or vehicle test.",
+  "logs": "/tmp/planning_gantry_20260917_103937",
+  "safety_review": {
+    "rule": "published safety = original planning safety OR (active AND NOT gantry_open)",
+    "regression": {
+      "snapshots": 387,
+      "trace_sha256": "71b6c515ff344490c3e808f3236d3e59a23f384ed4e66ec28c364dc9d16b6744",
+      "common_translation_units": 39,
+      "baseline": "/tmp/planning_gantry_20260917_103937/before/pnc",
+      "gantry_checks": 1806
+    },
+    "scope": {
+      "existing_output_logic_tokens_unchanged": true,
+      "existing_input_logic_tokens_unchanged": true,
+      "existing_node_wiring_and_loop_tokens_unchanged": true,
+      "changed_production_files": [
+        "src/pnc/CMakeLists.txt",
+        "src/pnc/package.xml",
+        "src/pnc/src/robot_path_plan/path_plan_comply.h",
+        "src/pnc/src/robot_path_plan/path_plan_node.cpp",
+        "src/pnc/src/robot_path_plan/path_plan_output.inc",
+        "src/pnc/src/robot_path_plan/path_plan_perception.inc"
+      ],
+      "unchanged_files_by_sha256": 1482,
+      "other_pnc_code_and_messages_unchanged": true,
+      "gantry_detect_and_monitor_unchanged": true
+    },
+    "mutations": [
+      {
+        "mutation": "inactive_forces_zero",
+        "rejected": true,
+        "failure": "FAIL: forward: opening preserves other cause: independent published safety expectation"
+      },
+      {
+        "mutation": "restore_forces_zero",
+        "rejected": true,
+        "failure": "FAIL: forward: other cause appears while closed: original safety retained after publication"
+      },
+      {
+        "mutation": "input_clears_safety",
+        "rejected": true,
+        "failure": "FAIL: manual_retain_unsafe: only published safety may change"
+      }
+    ],
+    "production_code_changed_during_review": false,
+    "ros_noetic_publish_source_review": "const M& serialization completes before publish returns; restoring local safety does not rewrite serialized bytes",
+    "ros_sources": [
+      "https://github.com/ros/ros_comm/blob/noetic-devel/clients/roscpp/include/ros/publisher.h#L94",
+      "https://github.com/ros/ros_comm/blob/noetic-devel/clients/roscpp/src/libros/publisher.cpp#L82",
+      "https://github.com/ros/ros_comm/blob/noetic-devel/clients/roscpp/src/libros/topic_manager.cpp#L659"
+    ],
+    "logs": "/tmp/planning_gantry_review_20260917_105121",
+    "review": "gantry_safety_review_20260917.md"
+  }
+}

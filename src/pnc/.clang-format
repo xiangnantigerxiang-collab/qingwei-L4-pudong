@@ -1,0 +1,23 @@
+# PNC 自有 C/C++ 源码统一风格（2026-09-14 用户指定）。
+# 只改变排版，禁止重排 include、using 声明或增删大括号。
+BasedOnStyle: Google
+Standard: c++11
+BreakBeforeBraces: Attach
+IndentWidth: 4
+ContinuationIndentWidth: 4
+AccessModifierOffset: -4
+NamespaceIndentation: All
+UseTab: Never
+ColumnLimit: 0
+SpaceBeforeParens: Never
+SortIncludes: Never
+IncludeBlocks: Preserve
+SortUsingDeclarations: Never
+ReflowComments: false
+FixNamespaceComments: false
+InsertBraces: false
+RemoveBracesLLVM: false
+AllowShortBlocksOnASingleLine: Never
+AllowShortFunctionsOnASingleLine: None
+AllowShortIfStatementsOnASingleLine: WithoutElse
+AllowShortLoopsOnASingleLine: true

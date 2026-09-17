@@ -1,6 +1,10 @@
 // 前向路径风险筛选、跨帧历史和碰撞限速。由 path_plan_reference.inc 包含。
 
 void PathPlanComply::CheckForwardReferenceSafety() {
+    if(mPerceptionSafety.HasInput()) {
+        CheckTrackedReferenceSafety();
+        return;
+    }
     // 空感知不推进历史窗；这与有感知但无风险的帧不同。
     if(mPerception.objs.size() == 0)
         return;

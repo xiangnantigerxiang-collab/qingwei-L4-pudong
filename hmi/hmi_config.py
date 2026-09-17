@@ -101,9 +101,10 @@ CONFIG = {
             "cwd": "$ROOT",
             "setup": ["$ROOT/devel/setup.bash"],
             "health": [
-                # /can_msg 自 2026-09-07 起由 canbus T1(10Hz)发布(状态机+数据同拍,
-                # 用户调整);min_hz=10 → 有效门槛 8Hz(0.8 容差),勿改回 20
-                {"topic": "/can_msg", "min_hz": 10},
+                # /can_msg 由 canbus T2(20Hz)发布(09-07 晚用户自 T1 移回,恢复基线编排);
+                # min_hz=20 → 有效门槛 16Hz(0.8 容差)。发布频率若再调整必须同步本值
+                # ——09-07 实车"CAN 总线启动超时"即阈值与实际频率漂移所致(workflow 09-07 日志)
+                {"topic": "/can_msg", "min_hz": 20},
                 {"topic": "/can_recv", "min_hz": 20},
             ],
             "start_timeout": 30,
@@ -129,12 +130,29 @@ CONFIG = {
             "name": "centerpoint",
             "title": "3D 感知",
             "group": 2,
-            # 裸可执行,不 source;cwd 必须是 build/(模型相对路径 ../model/)
-            "cmd": ["./centerpoint_ros_node"],
+            # 捆绑启动(2026-09-17):gantry_detect 闸机口识别随 3D 感知一同
+            # 启停,不设独立卡片。centerpoint 仍在 source 前启动(环境与单独
+            # 运行一致);gantry 经 devel/setup.bash 由 roslaunch 前台接管
+            # (bash 生命周期=roslaunch,centerpoint 后台存活)。
+            "cmd": ["bash", "-c",
+                    "./centerpoint_ros_node & "
+                    "source \"$ROOT/devel/setup.bash\" && "
+                    "exec roslaunch gantry_detect gantry_detect.launch"],
             "cwd": "$ROOT/src/CUDA-CenterPoint/build",
-            "health": [{"topic": "/box", "min_hz": 2}],
+            # /box=CenterPoint;/gantry_state=闸机识别(右雷达帧驱动,约 10Hz)。
+            # 两阈值独立:任一进程死亡其话题掉频 -> 卡片健康报警,互不掩盖。
+            "health": [{"topic": "/box", "min_hz": 2},
+                       {"topic": "/gantry_state", "min_hz": 2}],
             "start_timeout": 120,   # TensorRT 模型加载慢
-            "stop_pat": "centerpoint_ros_node",
+            # 停卡杀双进程;gantry_detect_node 防 roslaunch 退出后节点残留
+            "stop_pat":
+                "centerpoint_ros_node|gantry_detect_node|gantry_detect\\.launch",
+            # 兜底清理(二验发现):bash/roslaunch 先死时后台 centerpoint 被
+            # reparent 成孤儿,进程组信号够不着(句柄已死)——stop() 第 1 步
+            # 无条件执行本命令补杀,防 CRASHED 后重启双起双 TensorRT 引擎。
+            # 括号技巧避免 pkill 匹配到自身 shell 的命令行
+            "stop_cmd":
+                "pkill -f 'centerpoint_ros_nod[e]|gantry_detect_nod[e]' || true",
         },
         {
             "name": "auto_couple",
@@ -229,19 +247,6 @@ CONFIG = {
             # fms_agent.launch 实际 6 个 /cloud 前缀节点,阈值 5 允许坏 1 个
             "health": [{"type": "nodes", "pattern": "/cloud", "min": 5}],
             "stop_pat": "fms_agent.launch",
-        },
-        {
-            "name": "data_logger",
-            "title": "行车记录",
-            "group": 4,
-            "cmd": ["roslaunch", "data_logger", "data_logger.launch"],
-            "cwd": "$ROOT",
-            "setup": ["$ROOT/devel/setup.bash"],
-            "health": [],   # 纯订阅落盘,无发布话题,仅进程存活监控
-            "start_timeout": 30,
-            "stop_pat": "data_logger.launch",
-            # 行车记录只允许按需手动启动，不参与一键启动。
-            "enabled": False,
         },
         {
             "name": "monitor",

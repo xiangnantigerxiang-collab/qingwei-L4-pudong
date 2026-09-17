@@ -4,4 +4,5 @@
     <include file="$(find robot)/launch/robot_control.launch"/> 
     <include file="$(find robot)/launch/robot_canbus.launch"/>
     <include file="$(find robot)/launch/robot_navigation.launch"/>
+    <include file="$(find ultra_command)/launch/ultra_command.launch"/>
 </launch>

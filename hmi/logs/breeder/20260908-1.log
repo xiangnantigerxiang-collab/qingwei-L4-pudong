@@ -1,0 +1,2 @@
+==== start breeder 2026-09-08 13:21:34 pid=22978 ====
+   cmd: bash -c sleep 310 & sleep 311 & wait

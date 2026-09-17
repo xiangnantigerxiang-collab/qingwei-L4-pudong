@@ -3,6 +3,7 @@
 #include "path_plan_comply.h"
 #include "ivmsglocpos.h"
 #include <visualization_msgs/MarkerArray.h>
+#include "gantry_detect/gantry_state.h"
 
 bool Camera0 = true;
 bool Camera7 = true;
@@ -26,6 +27,15 @@ void PerceptionMsgCallBack(const robot::perception::ConstPtr &msg) {
     pathPlanComply.sysTime.msgPerception = ros::Time::now().toSec();
     if(pathPlanComply.AccSwitch) return;
     pathPlanComply.SetPerceptionData(*msg);
+}
+
+void GantryStateCallBack(const gantry_detect::gantry_state::ConstPtr &msg) {
+    pathPlanComply.SetGantryState(msg->active, msg->gantry_open);
+}
+
+void PlanningPerceptionCallBack(const robot::perception::ConstPtr &msg) {
+    if(pathPlanComply.AccSwitch) return;
+    pathPlanComply.SetPlanningPerceptionData(*msg);
 }
 
 void FrontScanCallBack(const jsk_recognition_msgs::BoundingBoxArray &msg) {
@@ -91,7 +101,7 @@ void T1Callback(const ros::TimerEvent &real) {
     // 雷达异常
     if(dlidar > 3.0) sensorstate += 2;
     //相机异常
-    if(dcamera > 2.0) sensorstate += 4;
+    //if(dcamera > 2.0) sensorstate += 4;
     //gnss异常
     if(dgnss > 2.0) sensorstate += 8;
 
@@ -114,6 +124,11 @@ int main(int argc, char **argv) {
         "/localization", 10, LocalizationCallBack, ros::TransportHints().tcpNoDelay());  // 订阅定位状态
     ros::Subscriber perception_sub = nh.subscribe(
         "/perception", 10, PerceptionMsgCallBack, ros::TransportHints().tcpNoDelay());
+    // 只消费最新真实观测快照，CPU 忙时不按顺序追赶已过时的障碍帧。
+    ros::Subscriber planning_perception_sub = nh.subscribe(
+        "/perception/planning", 1, PlanningPerceptionCallBack, ros::TransportHints().tcpNoDelay());
+    ros::Subscriber gantry_state_sub = nh.subscribe(
+        "/gantry_state", 1, GantryStateCallBack, ros::TransportHints().tcpNoDelay());
     ros::Subscriber load_pos_sub = nh.subscribe(
         "/palletpos", 10, LoadPosCallBack, ros::TransportHints().tcpNoDelay());
     ros::Subscriber pallet_pos_sub = nh.subscribe(
@@ -145,6 +160,7 @@ int main(int argc, char **argv) {
     ros::Rate loop_rate(10);
     ros::Timer T1 = nh.createTimer(ros::Duration(0.1), T1Callback);
 
+    if(!pathPlanComply.ConfigurePerceptionSafety()) return 1;
     pathPlanComply.InitParameter();
 
     double msgPerception;

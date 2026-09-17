@@ -42,6 +42,7 @@
 #include "trans/trans_data.h"
 #include <ros/ros.h>
 #include "lattice/my_lattice_planner.h"
+#include "safety/perception_safety.h"
 
 using namespace planning;
 using namespace adaptive;
@@ -71,7 +72,10 @@ public:
     void SetTaskPlanData(robot::task_plan_msg task_plan_t);
     void SetCanData(robot::can_msg can_msg_t);
     void SetNavigationData(robot::navigation_msg navigation_msg_t);
-    void SetPerceptionData(robot::perception perception_t);
+    void SetPerceptionData(const robot::perception &perception_t);
+    void SetPlanningPerceptionData(const robot::perception &perception_t);
+    bool ConfigurePerceptionSafety();
+    void SetGantryState(bool active, bool gantry_open);
     void SetFrontScanData(jsk_recognition_msgs::BoundingBoxArray msg);
     void SetBackScanData(jsk_recognition_msgs::BoundingBoxArray msg);
     void SetPalletCoorData(robot::hook_position hook_pos_t);
@@ -144,6 +148,10 @@ public:
     } sysTime;
 
 private:
+    // 单点区域限速：初始化时读文件，发布时只遍历缓存。
+    void LoadPointSpeedLimits();
+    void ApplyPointSpeedLimit();
+
     // 全局路径构建阶段；实现见 task/global_path.inc。
     void LoadTaskPaths(const robot::task_plan_msg &task_plan_t);
     void FindTaskStartPoint();
@@ -166,6 +174,8 @@ private:
                                     const std::vector<float> &heading, int LaneChangeSwitch);
     void ReusePreviousTrajectory();
     void CheckForwardReferenceSafety();
+    void CheckTrackedReferenceSafety();
+    void BuildPerceptionSafetyPath(double tLookahead);
     std::vector<robot::object> CollectReferenceRiskObjects();
     bool UpdateReferenceRiskHistory(std::vector<robot::object> &risk_objs);
     std::vector<robot::object> FilterForwardRiskObjects(
@@ -173,6 +183,7 @@ private:
     void ApplyReferenceCollisionSpeed(const std::vector<robot::object> &risk_objs_filter, double dh);
 
     // 最终路径覆盖顺序集中在 PublishPlanPath；实现见 path_plan_output.inc。
+    void PublishFinalPlanPath(ros::Publisher &tPub);
     void PublishStoppedPath(ros::Publisher &tPub1);
     void UpdateStartupSafety(bool is_around_unsafe, bool is_T_unsafe);
     void CopyReferencePath();
@@ -292,6 +303,18 @@ private:
     std::vector<AirCraftParkingPort> aircraft_parking_ports_;  //飞机位信息
     int go_task_id_ = 0;
     int back_task_id_ = 0;
+    bool mGantryStop = false;  // 未收到有效闸机关闭状态时，不叠加安全标志。
+    planning_perception::PerceptionSafety mPerceptionSafety;
+    std::vector<planning_perception::PATH_POINT_S> mPerceptionSafetyPath;
+    planning_perception::RESULT_S mPerceptionSafetyResult;
+    double mPerceptionSafetyLogTime = -1;
+    int mPerceptionSafetyLogReason = -1;
+    struct POINT_SPEED_LIMIT_S {
+        double x, y, speed_limit;
+    };
+    std::vector<POINT_SPEED_LIMIT_S> mPointSpeedLimits;
+    std::vector<std::uint32_t> mPerceptionOutsideMarks = std::vector<std::uint32_t>(32768, 0);
+    std::uint32_t mPerceptionOutsideGeneration = 0;
 };
 
 #endif

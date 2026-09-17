@@ -124,6 +124,21 @@ class ComponentRunner(object):
             # 执行“停止”清理，禁止叠加启动第二份同名组件。
             if self.foreign or self.state not in ("STOPPED", "CRASHED"):
                 return False
+            # CRASHED 直接重启前清理捆绑 cmd 可能遗留的孤儿子进程:
+            # tracked bash 已死但后台子进程被 reparent 存活时,stop() 的
+            # 进程组信号够不着,残留检测只置 stop_failed 不杀——不清理则
+            # 本次启动会叠加第二份进程(如双 TensorRT 引擎/双话题发布者)。
+            # 持锁执行防并发态变;正常单进程组件崩溃后无残留,零影响。
+            pat = self.spec.get("stop_pat")
+            if pat and self.state == "CRASHED" and _pgrep(pat):
+                try:
+                    subprocess.run(["pkill", "-f", pat], timeout=8,
+                                   stdin=subprocess.DEVNULL,
+                                   stdout=subprocess.DEVNULL,
+                                   stderr=subprocess.DEVNULL)
+                    time.sleep(0.3)
+                except Exception:
+                    pass
             self._open_log()
             argv = self._build_argv()
             try:

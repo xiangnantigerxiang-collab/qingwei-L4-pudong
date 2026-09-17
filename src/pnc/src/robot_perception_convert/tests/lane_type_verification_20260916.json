@@ -1,0 +1,66 @@
+{
+  "date": "2026-09-16",
+  "scope": "src/pnc/src/robot_perception_convert only",
+  "current_lane_rule": {
+    "ratio": "SDK selected current-lane overlap_area / (obstacle.dx * obstacle.dy)",
+    "minimum": 0.2,
+    "ratio_roundoff_tolerance": 1e-09,
+    "below_threshold": "Change type 0 to outside-left 3 or outside-right 4 relative to the current ego pose; retain the obstacle for subsequent confidence/size filtering",
+    "equal_threshold": "Keep SDK current-lane result",
+    "other_lane_types": "Keep existing SDK results"
+  },
+  "historical_targets": "Reclassify temporal-filter output using the current valid localization and world corners saved at the latest real observation. No filtered output is written back into raw history.",
+  "external_message": "Internal world corners are cleared before publishing; retain original coordinates, dimensions, heading encoding, id, velocity, height and empty polygons. No message definition changes.",
+  "publication_thresholds_unchanged": {
+    "confidence": 0.15,
+    "width_m": [
+      0,
+      4
+    ],
+    "length_m": [
+      0,
+      15
+    ]
+  },
+  "modified_files": [
+    "src/pnc/src/robot_perception_convert/README.md",
+    "src/pnc/src/robot_perception_convert/perception_msg_convert.cpp",
+    "src/pnc/src/robot_perception_convert/tests/publish_integration.cpp",
+    "src/pnc/src/robot_perception_convert/tests/verify_publish.py"
+  ],
+  "added_files": [
+    "src/pnc/src/robot_perception_convert/perception_lane_classification.inc",
+    "src/pnc/src/robot_perception_convert/tests/lane_type_verification_20260916.json"
+  ],
+  "checks": {
+    "language": "C++11",
+    "transport": "generated ROS message stubs",
+    "sdk": "/home/mothotob/work/projects/claude-code/qingwei-L4-No2-pudong/src/hdmap/sdk",
+    "cmake_target": "perception_msg_convert",
+    "dynamic_link": "PASS",
+    "integration": "PASS: 3473 filtered perception publish checks",
+    "sanitizers": "PASS: 3473 filtered perception publish checks"
+  },
+  "cppcheck": {
+    "enable": "warning,performance,portability",
+    "standard": "C++11",
+    "exit_code": 0,
+    "log": "/tmp/perception_lane_type_verify_20260916/cppcheck.log"
+  },
+  "scope_check": {
+    "changed_outside_module": [],
+    "baseline": "/home/mothotob/work/projects/claude-code/perception_type_before_fix_20260916_165122.tar.gz"
+  },
+  "regressions": [
+    "Zero overlap, boundary touch, small positive overlap, 19%, exactly 20%, adjacent float values and above-threshold overlap",
+    "Right and left outside-current-lane classification, rotated rectangles and retained SDK lane width",
+    "Existing lane 1 and lane 2 results retained even below 20%",
+    "Retained obstacles after ego lane change, heading changes and fresh matched observations",
+    "World geometry preserved during ego rotation, raw history unchanged and published polygons still empty",
+    "Missing/nonfinite internal geometry rolls back the appended frame and preserves the last publication",
+    "Existing confidence, dimensions, clock changes, stale localization, silent expiration and failure recovery regressions"
+  ],
+  "temporal_association_algorithm": "UNCHANGED",
+  "logs": "/tmp/perception_lane_type_verify_20260916",
+  "limitation": "Local tests use stubs generated from actual ROS messages and the existing real HDMap SDK. ROS1 transport, Orin build and vehicle execution have not been verified."
+}

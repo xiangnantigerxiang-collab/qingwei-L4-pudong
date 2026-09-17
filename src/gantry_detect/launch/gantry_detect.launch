@@ -1,0 +1,25 @@
+<?xml version="1.0"?>
+<launch>
+  <!--
+    gantry_detect 闸机口识别:
+      订阅两路后向雷达点云 -> 合并 -> 强度过滤(高反) -> 聚类 ->
+      车进入触发区域后判定闸机口 开/闭, 发布 /gantry_state
+      可视化: /gantry_detect/cloud_merged(合并原始点云)
+              /gantry_detect/cloud_filtered(高反过滤后)
+              /gantry_detect/markers(聚类框/目标/状态/触发区域)
+
+    使用:
+      roslaunch gantry_detect gantry_detect.launch          # 不带 rviz
+      roslaunch gantry_detect gantry_detect.launch rviz:=true
+    参数见 config/gantry_detect.yaml
+  -->
+  <arg name="rviz" default="false" doc="是否同时打开 rviz"/>
+
+  <node pkg="gantry_detect" type="gantry_detect_node" name="gantry_detect_node"
+        output="screen">
+    <rosparam file="$(find gantry_detect)/config/gantry_detect.yaml" command="load"/>
+  </node>
+
+  <node if="$(arg rviz)" pkg="rviz" type="rviz" name="rviz_gantry"
+        args="-d $(find gantry_detect)/rviz/gantry_detect.rviz"/>
+</launch>

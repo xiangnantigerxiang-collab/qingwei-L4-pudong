@@ -29,10 +29,10 @@
 #define IMU_DATA "ImuData"
 
 //曼哈顿距离
-#define MANHATTAN_DIS(x1,y1,x2,y2) (fabs(x1 - x2) + fabs(y1 - y2))
+#define MANHATTAN_DIS(x1, y1, x2, y2) (fabs(x1 - x2) + fabs(y1 - y2))
 
 //欧式距离
-#define EUCLIDEAN(x1,y1,x2,y2) (sqrt((x1 - x2) * (x1 - x2) + (y1 - y2) * (y1 -y2)))
+#define EUCLIDEAN(x1, y1, x2, y2) (sqrt((x1 - x2) * (x1 - x2) + (y1 - y2) * (y1 - y2)))
 
 //定义生成候选轨迹宽度
 #define CANDIDATEWIDTHINTERVAL 0.2
@@ -61,7 +61,7 @@
 #endif
 
 // 组合定位结果按照*100000000 之后作为整形发出，因此此处接收到需要转化
-#define SCALE   100000000.0
+#define SCALE 100000000.0
 #define HEADINGSCALE 10000.0
 
 //决策层
@@ -82,7 +82,7 @@
 
 //车辆航向角与惯导航向角的偏差度数，右偏为负，左为正
 #ifndef SIMULATION
-#define B_COURSE_ANGLE_DEVIATION 0.5   //wei 0.0 wei1 0 wei2 0
+#define B_COURSE_ANGLE_DEVIATION 0.5  //wei 0.0 wei1 0 wei2 0
 #else
 #define B_COURSE_ANGLE_DEVIATION 0.0
 #endif
@@ -107,11 +107,11 @@
 #define ZOOM_SIZE 0.0
 #endif
 
-#define L 2.95        //轴距
+#define L 2.95  //轴距
 #define WHEELANGLERATIO 16.0
 
 //定义速度下的安全长度问题
-#define SAFELENGTH(v) 3*(v) + 1
+#define SAFELENGTH(v) 3 * (v) + 1
 
 #define MAX_COST_VALUE 10000
 
@@ -122,4 +122,3 @@ const bool FLAGS_use_navigation_mode = false;
 const double FLAGS_centralMinDiff = 0.001;
 const double FLAGS_replan_lateral_distance_threshold = 5.0;
 const double FLAGS_replan_longitudinal_distance_threshold = 5.0;
-

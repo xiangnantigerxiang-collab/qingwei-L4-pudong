@@ -59,6 +59,8 @@ DEFAULT_FIELDS = {
                                 "task_info.task_id": 88},
     "/control_msg": {"wheelAngle": -11.0, "brakePercent": 0,
                      "throttlePercent": 18, "biaDistance": 0.21},
+    # 闸机口(gantry_detect 包);未设 rates 时不泵,现有用例零影响
+    "/gantry_state": {"active": True, "gantry_open": False},
     "/can_msg": {"curGear": 4, "controlPanelState": 1, "emergencyStop": 0,
                  "batteryPower": 77, "hookState": 1, "faultCode": [0],
                  "wheelAngle": -220.0, "vehicleSpeed": 1.2,
@@ -341,6 +343,7 @@ def install():
                            "path_plan_status", "palletpos",
                            "task_plan_msg", "TaskStatus", "control_msg"]),
             ("canbus.msg", ["can_msg", "ehb_msg"]),
+            ("gantry_detect.msg", ["gantry_state"]),
             ("sensor_msgs.msg", ["LaserScan", "PointCloud2"])):
         parts = pkg.split(".")
         parent = types.ModuleType(parts[0])

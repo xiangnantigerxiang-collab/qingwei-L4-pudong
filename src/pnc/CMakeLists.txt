@@ -212,6 +212,12 @@ target_link_libraries(path_plan_comply
 add_executable(path_plan_node
   src/robot_path_plan/path_plan_node.cpp
 )
+# 仅规划节点使用闸机消息；不把检测算法或 PCL 引入其他 PNC 目标。
+find_package(gantry_detect REQUIRED CONFIG)
+target_include_directories(path_plan_node PRIVATE ${gantry_detect_INCLUDE_DIRS})
+if(gantry_detect_EXPORTED_TARGETS)
+  add_dependencies(path_plan_node ${gantry_detect_EXPORTED_TARGETS})
+endif()
 target_link_libraries(path_plan_node
   ${catkin_LIBRARIES}
   path_plan_comply

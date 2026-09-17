@@ -26,6 +26,52 @@ void PathPlanComply::InitParameter() {
     mHookPos.center_point_y = 0.0;
     sysTime.init = ros::Time::now().toSec();
     this->loadAirCraftPorts();
+    LoadPointSpeedLimits();
+}
+
+void PathPlanComply::LoadPointSpeedLimits() {
+    mPointSpeedLimits.clear();
+    std::string path_dir;
+    if(!ros::param::get("path_dir", path_dir) || path_dir.empty()) {
+        printf("单点区域限速未加载: path_dir 未设置\n");
+        return;
+    }
+    if(path_dir.back() != '/') path_dir += '/';
+    const std::string file_path = path_dir + "speed_limit.csv";
+    std::ifstream input(file_path.c_str());
+    if(!input.is_open()) {
+        printf("单点区域限速文件未打开: %s\n", file_path.c_str());
+        return;
+    }
+
+    std::string line;
+    std::size_t invalid_rows = 0;
+    while(std::getline(input, line)) {
+        if(line.find_first_not_of(" \t\r") == std::string::npos) continue;
+        std::istringstream row(line);
+        POINT_SPEED_LIMIT_S point = {};
+        char first_comma = 0, second_comma = 0;
+        if(!(row >> point.x >> first_comma >> point.y >> second_comma >> point.speed_limit) ||
+           first_comma != ',' || second_comma != ',' ||
+           !std::isfinite(point.x) || !std::isfinite(point.y) ||
+           !std::isfinite(point.speed_limit) || point.speed_limit < 0) {
+            ++invalid_rows;
+            continue;
+        }
+        row >> std::ws;
+        if(!row.eof()) {
+            ++invalid_rows;
+            continue;
+        }
+        mPointSpeedLimits.push_back(point);
+    }
+    if(input.bad()) {
+        mPointSpeedLimits.clear();
+        printf("单点区域限速文件读取失败: %s\n", file_path.c_str());
+        return;
+    }
+    // 速度单位与 desireSpeed 一致为 m/s；空文件保留空缓存，不增加运行时文件 I/O。
+    printf("单点区域限速已加载 %zu 个点，跳过 %zu 行无效数据\n", mPointSpeedLimits.size(), invalid_rows);
 }
 
 void PathPlanComply::ResetParameter() {

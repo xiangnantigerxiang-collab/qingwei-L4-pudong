@@ -1,0 +1,45 @@
+{
+  "core": "PASS perception safety: 4995 checks",
+  "asan_ubsan": "PASS perception safety: 4995 checks",
+  "integration": "PASS perception integration: 257 checks",
+  "point_speed_limit": "PASS point speed limit: 284 checks",
+  "legacy": {
+    "snapshots": 387,
+    "trace_sha256": "f477742d937818704d7062ea14140d17402aa7e140e911312fafc1ce7341143c",
+    "common_translation_units": 39,
+    "baseline": "/tmp/planning_policy_20260917_164328/baseline/pnc",
+    "gantry_checks": 1806
+  },
+  "allocations": "300 objects, 1000 warmed Observe+Evaluate calls: allocations=0 cache_bytes=4789248",
+  "mutations": {
+    "single_frame": "FAIL: retained near obstacles get a 60 percent limit before emergency confirmation",
+    "outside_not_filtered": "FAIL: outside-lane physical overlap is ignored without geometry work",
+    "left_lanes_filtered": "FAIL: left-lane cut-in predicts collision and slows in advance",
+    "first_soft_break": "FAIL: next-segment contact receives the same pending speed and confirmed stop",
+    "outside_cache_kept": "FAIL: valid outside classification immediately removes confirmed cached geometry",
+    "pending_ratio_wrong": "FAIL: retained near obstacles get a 60 percent limit before emergency confirmation"
+  },
+  "changed_existing_files": [
+    "src/pnc/src/robot_path_plan/path_plan_comply.h",
+    "src/pnc/src/robot_path_plan/path_plan_perception.inc",
+    "src/pnc/src/robot_path_plan/README.md",
+    "src/pnc/src/robot_path_plan/safety/perception_safety.h",
+    "src/pnc/src/robot_path_plan/safety/perception_safety.inc",
+    "src/pnc/src/robot_path_plan/safety/README.md",
+    "src/pnc/tests/planning/planning_convert_review_20260917.md",
+    "src/pnc/tests/planning/perception_safety.cpp",
+    "src/pnc/tests/planning/perception_safety_integration.cpp",
+    "src/pnc/tests/planning/README.md"
+  ],
+  "unchanged_existing_files": 1545,
+  "production_sha256": {
+    "src/pnc/src/robot_path_plan/safety/perception_safety.h": "6c8e2a8e3ae96b1b486de39d1e3296730790d41e704853fc93c9e5a69194ce41",
+    "src/pnc/src/robot_path_plan/safety/perception_safety.inc": "5c0895f002a2cc79dd1dad37b512fc161b628106b2870635b37910a17d77279d",
+    "src/pnc/src/robot_path_plan/path_plan_comply.h": "08efa9b98ba32b448da4dfbaa8d3cff8e1206b43c8f024d92b8472a30b7eecef",
+    "src/pnc/src/robot_path_plan/path_plan_perception.inc": "8e6b3cb573e946394131ccdd1150023cdccdeeed3a62e41135aebf47ded82970"
+  },
+  "scope": "Production changes only in robot_path_plan; control, converter, monitor, messages, parameters, CSV, canbus, gantry unchanged",
+  "build": "C++11 core; real planning with generated ROS stubs and host Boost/C++14; no ROS1/Orin deployment",
+  "backup": "/home/mothotob/work/projects/claude-code/planning_policy_before_20260917_164328.tar.gz",
+  "logs": "/tmp/planning_policy_20260917_164328"
+}

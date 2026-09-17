@@ -245,3 +245,62 @@ robot::perception FilterPerceptionHistory(const std::vector<std::pair<robot::per
     }
     return result;
 }
+
+robot::perception FilterTrackedPerceptionHistory(const std::vector<std::pair<robot::perception, double>>& tHistory) {
+    using namespace perception_filter_detail;
+    const double now = ros::Time::now().toSec();
+    if(!std::isfinite(now) || now < 0) {
+        throw std::invalid_argument("FilterTrackedPerceptionHistory requires a valid ROS time");
+    }
+    const std::vector<FRAME_S> frames = SelectFrames(tHistory, now);
+    robot::perception result;
+    if(frames.empty()) {
+        return result;
+    }
+    struct IDENTIFIED_TRACK_S {
+        const robot::object* latest;
+        double weight;
+        std::size_t last_frame;
+        int id;
+    };
+    // object.id 为正 int16，固定 128KiB 下标表替代逐观测哈希查找和节点分配。
+    // 单线程节点只复用工作容量；每次调用清空索引，异常/时钟回退不留下累计状态。
+    static std::vector<IDENTIFIED_TRACK_S> tracks;
+    static std::vector<int> identities(32768, -1);
+    for(std::size_t i = 0; i < tracks.size(); ++i) {
+        // 只清上次使用的条目；旧消息可能已经销毁，因此只读缓存的 ID，不访问 latest。
+        identities[tracks[i].id] = -1;
+    }
+    tracks.clear();
+    double total_weight = 0;
+    for(std::size_t i = 0; i < frames.size(); ++i) {
+        total_weight += frames[i].weight;
+        const auto& objects = frames[i].message->objs;
+        for(std::size_t j = 0; j < objects.size(); ++j) {
+            ReadBox(objects[j]);
+            if(objects[j].id <= 0) {
+                throw std::invalid_argument("Tracked history requires positive object IDs");
+            }
+            const int found = identities[objects[j].id];
+            if(found < 0) {
+                tracks.push_back(IDENTIFIED_TRACK_S{&objects[j], frames[i].weight, i, objects[j].id});
+                identities[objects[j].id] = static_cast<int>(tracks.size() - 1);
+            } else {
+                IDENTIFIED_TRACK_S& track = tracks[found];
+                if(track.last_frame == i) {
+                    throw std::invalid_argument("Duplicate object ID in one observation frame");
+                }
+                track.latest = &objects[j];
+                track.weight += frames[i].weight;
+                track.last_frame = i;
+            }
+        }
+    }
+    result.header = frames.back().message->header;
+    result.objs.reserve(tracks.size());
+    for(std::size_t i = 0; i < tracks.size(); ++i) {
+        result.objs.push_back(*tracks[i].latest);
+        result.objs.back().confidence = static_cast<float>(std::max(0.0, std::min(1.0, tracks[i].weight / total_weight)));
+    }
+    return result;
+}

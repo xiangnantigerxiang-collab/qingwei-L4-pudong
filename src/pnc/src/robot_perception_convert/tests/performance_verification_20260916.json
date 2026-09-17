@@ -1,0 +1,210 @@
+{
+  "environment": "x86_64, C++11 -O2, generated ROS message stubs and actual HDMap SDK/maps; not Orin",
+  "callback_scope": "BoxMsgCallBack; empty exclusion polygons, stdout redirected to /dev/null, ROS transport/serialization excluded",
+  "scenario": "120 measured frames after filling the 2-second window; churn=1 replaces half the targets each frame by distant new detections",
+  "phase_order": [
+    "raw_lane_classification",
+    "tracking",
+    "history_filter",
+    "filtered_lane_classification"
+  ],
+  "callback_results": {
+    "regressed": [
+      {
+        "objects": 20.0,
+        "hz": 20.0,
+        "churn": 0.0,
+        "p50_ms": 0.063253,
+        "p99_ms": 0.073384,
+        "max_ms": 0.073931,
+        "output": "20..20",
+        "first_type": 4.0,
+        "checksum": "8592568600123056497",
+        "phase_avg_ms": [
+          0.0234124,
+          0.00706433,
+          0.00472829,
+          0.0233488
+        ]
+      },
+      {
+        "objects": 100.0,
+        "hz": 20.0,
+        "churn": 0.0,
+        "p50_ms": 0.30377,
+        "p99_ms": 0.361519,
+        "max_ms": 0.366112,
+        "output": "100..100",
+        "first_type": 4.0,
+        "checksum": "16339365662132361128",
+        "phase_avg_ms": [
+          0.073023,
+          0.123041,
+          0.0202045,
+          0.0734776
+        ]
+      },
+      {
+        "objects": 300.0,
+        "hz": 20.0,
+        "churn": 0.0,
+        "p50_ms": 1.47825,
+        "p99_ms": 1.67029,
+        "max_ms": 1.75276,
+        "output": "300..300",
+        "first_type": 4.0,
+        "checksum": "16149351355334441658",
+        "phase_avg_ms": [
+          0.187769,
+          0.999367,
+          0.0611336,
+          0.192839
+        ]
+      },
+      {
+        "objects": 100.0,
+        "hz": 100.0,
+        "churn": 0.0,
+        "p50_ms": 0.363,
+        "p99_ms": 0.432224,
+        "max_ms": 0.450646,
+        "output": "100..100",
+        "first_type": 4.0,
+        "checksum": "8045189026354202435",
+        "phase_avg_ms": [
+          0.0717143,
+          0.122151,
+          0.0829948,
+          0.0719735
+        ]
+      },
+      {
+        "objects": 100.0,
+        "hz": 20.0,
+        "churn": 1.0,
+        "p50_ms": 6.45033,
+        "p99_ms": 6.90843,
+        "max_ms": 7.21044,
+        "output": "50..50",
+        "first_type": 4.0,
+        "checksum": "13308686896191463937",
+        "phase_avg_ms": [
+          0.0491092,
+          5.7568,
+          0.115704,
+          0.501629
+        ]
+      }
+    ],
+    "fixed": [
+      {
+        "objects": 20.0,
+        "hz": 20.0,
+        "churn": 0.0,
+        "p50_ms": 0.056519,
+        "p99_ms": 0.066932,
+        "max_ms": 0.151105,
+        "output": "20..20",
+        "first_type": 4.0,
+        "checksum": "8592568600123056497",
+        "phase_avg_ms": [
+          0.0216383,
+          0.00518466,
+          0.00420281,
+          0.0222621
+        ]
+      },
+      {
+        "objects": 100.0,
+        "hz": 20.0,
+        "churn": 0.0,
+        "p50_ms": 0.250527,
+        "p99_ms": 0.313669,
+        "max_ms": 0.319172,
+        "output": "100..100",
+        "first_type": 4.0,
+        "checksum": "16339365662132361128",
+        "phase_avg_ms": [
+          0.0714445,
+          0.0728234,
+          0.0203547,
+          0.0712968
+        ]
+      },
+      {
+        "objects": 300.0,
+        "hz": 20.0,
+        "churn": 0.0,
+        "p50_ms": 0.96226,
+        "p99_ms": 1.16637,
+        "max_ms": 1.19623,
+        "output": "300..300",
+        "first_type": 4.0,
+        "checksum": "16149351355334441658",
+        "phase_avg_ms": [
+          0.183834,
+          0.493651,
+          0.0616725,
+          0.182862
+        ]
+      },
+      {
+        "objects": 100.0,
+        "hz": 100.0,
+        "churn": 0.0,
+        "p50_ms": 0.297676,
+        "p99_ms": 0.356524,
+        "max_ms": 0.359822,
+        "output": "100..100",
+        "first_type": 4.0,
+        "checksum": "8045189026354202435",
+        "phase_avg_ms": [
+          0.0677741,
+          0.0698426,
+          0.0786942,
+          0.0680281
+        ]
+      },
+      {
+        "objects": 100.0,
+        "hz": 20.0,
+        "churn": 1.0,
+        "p50_ms": 0.929762,
+        "p99_ms": 1.04395,
+        "max_ms": 1.09123,
+        "output": "50..50",
+        "first_type": 4.0,
+        "checksum": "13308686896191463937",
+        "phase_avg_ms": [
+          0.0455582,
+          0.253746,
+          0.109295,
+          0.473757
+        ]
+      }
+    ]
+  },
+  "output_digests_equal": true,
+  "artifacts": "/tmp/perception_monitor_perf_20260916_205319",
+  "tracking_verification": {
+    "language": "C++11",
+    "transport": "stubs generated from actual ROS messages",
+    "test": "PASS: 3911 tracking and velocity checks",
+    "sanitizers": "PASS: 3911 tracking and velocity checks",
+    "benchmark": [
+      "tracking objects=100 new_percent=0 p50_ms=0.0959 p99_ms=0.1094 max_ms=0.1101",
+      "tracking objects=100 new_percent=50 p50_ms=0.2613 p99_ms=0.4238 max_ms=0.5504",
+      "tracking objects=300 new_percent=0 p50_ms=0.4866 p99_ms=0.5828 max_ms=0.6076",
+      "tracking objects=300 new_percent=50 p50_ms=2.1128 p99_ms=2.5449 max_ms=2.6668"
+    ]
+  },
+  "publish_verification": {
+    "language": "C++11",
+    "transport": "generated ROS message stubs",
+    "sdk": "/home/mothotob/work/projects/claude-code/qingwei-L4-No2-pudong/src/hdmap/sdk",
+    "cmake_target": "perception_msg_convert",
+    "dynamic_link": "PASS",
+    "integration": "PASS: 4366 filtered perception publish checks",
+    "sanitizers": "PASS: 4366 filtered perception publish checks"
+  }
+}

@@ -24,8 +24,10 @@ robot_<模块>/
   `ros::Publisher` 作参数传入（如 `PublishMessage(ros::Publisher& tPub)`）
 - **CMake 里 comply 编成库、node 是可执行**，二者分开（`add_library(xxx_comply)` + `add_executable(xxx_node)`）
 - **`robot_path_plan/` 的 comply 实现按职责拆成 `.inc`**：入口仍只有
-  `path_plan_comply.cpp`，它按固定顺序原位包含任务、感知、参考路径、最终输出和实验算法
-  五个分片。`.inc` 不得单独加入 CMake，否则会改变同一翻译单元语义并产生重复定义。
+  `path_plan_comply.cpp`，先包含几何辅助，再按固定顺序原位包含任务、感知、参考路径、
+  最终输出和实验算法五个业务分片。**2026-09-12** 按职责进一步分为
+  `task/`、`reference/`、`safety/` 子目录，由对应业务分片继续包含；核心入口按阶段函数
+  编排，状态仍集中在 Comply。`.inc` 不得单独加入 CMake，否则会改变同一翻译单元语义并产生重复定义。
 - **【2026-08-30 起第二种许可骨架】`robot_task_plan/` 已改为 canbus 同款 core/事件流结构**：
   `<模块>_core.{h,cpp}`（零 ROS 业务库：输入镜像结构体 + `Set*`（输入镜像写入，可含轻逻辑，
   如 SetCanData 的自动模式重武装、SetTaskInfo 的任务装载）/`On*`（同步发事件）
@@ -52,15 +54,35 @@ robot_<模块>/
 | C 风格结构体 | `typedef struct 小写tag {...} 全大写_S;`，成员 t 前缀（task_plan_core 08-30 起为 `struct TASKINFO_S {...};` 直写） | `TASKINFO_S`、`XYZ_COOR_S`、`CONTROL_PARAM_IN` |
 | 枚举常量 | 全大写连写 | `GEAR_N`、`TASKFINISHED`、`ADAPTIVEHOOK` |
 
-## 三、代码格式（两代并存，跟随所在文件）
+## 三、代码格式（2026-09-14 按用户要求统一）
 
-- **robot_control/ 与 robot_task_plan/ 已 Google 化**（2 空格缩进、80 列、左大括号同行、
-  `} else {` 同行、访问修饰符 1 空格缩进、指针引用贴类型 `FILE* fp`；
-  task_plan 于 08-30 随 core/node 解耦重写；robot_control/ 目录内有 `.clang-format`，
-  注意 `SortIncludes: false` —— **include 顺序有隐式依赖，禁止排序/重排**）
-- **其余目录（path_plan/can_comm/navigation/perception_convert）为历史格式**：
-  4 空格缩进、Allman 大括号独立成行
-- **铁律：新增/修改代码跟随所在文件的既有格式**，不要在旧格式文件里引入新格式，反之亦然
+- **自有 C/C++ 统一 4 空格缩进、左大括号同行、右大括号单独收尾**，
+  `else` / `catch` 使用 `} else {` / `} catch(...) {`。条件关键字与括号之间不加空格：
+
+  ```cpp
+  if(mReferPath.x.size() < 5) {
+      ROS_ERROR("publish plan path size less 5.");
+      PublishStoppedPath(tPub1);
+      return;
+  }
+  ```
+
+- 函数、类、结构体、命名空间、循环和条件块均采用上述同行大括号；
+  独立局部作用域和多维数组的元素初始化列表保留其语法对应的布局。
+- 统一范围为 `src/`、`include/common/`、`tests/` 中的 C/C++ 及 `.inc` 文件；
+  `3rd-party/`、`include/Eigen/`、`include/unsupported/` 的第三方内容保持原样。
+- 根配置为 [`.clang-format`](.clang-format)，`robot_control/.clang-format` 继承根配置。
+  **include 顺序有隐式依赖，禁止排序/分组；也不排序 using 声明，不增删大括号。**
+- 推荐使用 [`tools/format_cpp.py`](tools/format_cpp.py)，它调用 clang-format 18，
+  将条件末尾注释前的大括号一并归位，并检查有效 token、预处理指令与 include 顺序不变。
+  保留原有续行符和模板 `> >` 的 token 边界；字符串和注释中的伪代码不作业务代码处理：
+
+  ```bash
+  python3 src/pnc/tools/format_cpp.py --clang-format /path/to/clang-format
+  python3 src/pnc/tools/format_cpp.py --clang-format /path/to/clang-format --check
+  ```
+
+- 该规则替代此前 control/task_plan 的 2 空格 Google 与其他目录 4 空格 Allman 的混合格式。
 - C++11；克制使用现代特性（手写索引 `for (int i...)` 远多于 range-for，243:44；
   需要索引/相邻点配对/步进采样时必须用索引循环）
 - 【2026-08-30 晚更新】`robot_task_plan/task_plan_core` 与 canbus 包的 `canbus_core`
@@ -118,7 +140,23 @@ robot_<模块>/
 6. auto_couple 等 GBK/ISO-8859 文件 grep 必须 `-a`，否则静默漏检
 7. 修改后必须过编译验证：本机桩编译流程见 workflow.md（08-30 日志）
 
+## 八、感知车道分类接入（2026-09-15）
+
+`perception_msg_convert.cpp` 在坐标转换、排除区域过滤完成后，发布前调用
+`mLaneMap.ClassifyPerception(mGPS, mPerception)`。转换与分类使用同一定位，
+返回消息的 `objs[i].type` 为 0 本车道、1 左一、2 左二、3 左侧车道外、4 右侧车道外；
+`object.msg` 已添加对应中文注释，消息字段不变。
+
+节点启动时只加载一次 `hdmap` 包内 `map_processed`，可用全局参数
+`/hdmap/map_processed_dir` 覆盖。地图加载失败报错退出，单帧分类失败报错并跳过该帧发布。
+依赖 `hdmap`、`roslib`；`rebuild_all.sh` 已安排先编译 `hdmap` 再编译 `robot`。
+
+本机运行 `python3 src/pnc/tests/perception/verify.py --output /tmp/pnc_hdmap_publish_verify`：
+使用真实 `.msg` 生成的桩和真实 SDK，验证 C++11 感知目标、两种包导出配置的动态链接及
+71 项实际回调检查。目标车载仍需执行 ROS1 catkin 构建与运行验证。
+接口细节见 [HDMap 车道判断说明](../hdmap/docs/lane_occupancy.md)。
+
 ---
 
-*采样基准：2026-08-30 代码状态（control 已完成死代码清理/重命名/Google 格式化/话题全局化四轮整理）。
+*采样基准：2026-08-30 代码状态；代码格式于 2026-09-14 按用户明确要求统一。
 风格问题以本文件为准；本文件与代码冲突时，以【实际所在文件的上下文】为最终裁决。*
