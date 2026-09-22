@@ -1,19 +1,26 @@
 #ifndef TASK_PLAN_CORE_H
 #define TASK_PLAN_CORE_H
 
+#include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <exception>
+#include <fstream>
 #include <functional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
+#include "common/path_csv.h"
+#include "common/path_csv_upgrade.h"
 #include "robot_path_plan/common/pubalgor/pubalgor.h"
 // struct_type.h 的任务/挡位/子动作枚举经 pubalgor.h 引入:
 //   TASKTYPE_E(NOTHING/TRACKPATH..ADAPTIVEPARK/DOACTION)、
 //   TASKSTATUS(TASKFINISHED)、SUBACTION_E(HOOKOPERATION/DECOUPLING/WAITING/
 //   UNLOAD_LOWER)、GEAR_N、MANUALCONTROLMODE / NOMALWORKINGMODE
 #include "frame_transform.h"  // LatlonToUtmXY(远程指车目标点换算)
+#include "fence_geometry.h"
 #include <yaml-cpp/yaml.h>    // 任务 yaml / config.yaml 解析
 
 // ===========================================================================
@@ -81,6 +88,9 @@ struct NavStateIn {
     float lat = 0;
     float lon = 0;
     float heading = 0;
+    double xAxis = 0;
+    double yAxis = 0;
+    double received_time = -1;
     double longitudinal_accelerate = 0;  // 全链无生产者, 恒 0(原行为)
 };
 
@@ -262,6 +272,17 @@ struct TASKINFO_S {
     uint8_t tSubAction;
     // int64: 与 task_plan_msg.task_id 对齐——原 uint8 会把任务 1000 截断成 232
     int64_t task_id;
+    bool fenceTruncated = false;
+    uint32_t fenceStartIndex = 0;
+    uint32_t fenceStopIndex = 0;
+    uint64_t fenceRouteVersion = 0;
+};
+
+struct FenceGuardOut {
+    uint64_t revision = 0, task_key = 0, fence_version = 0, route_version = 0;
+    uint32_t start_index = 0, stop_index = 0;
+    std::string fence_file, reason;
+    bool stop = true, truncated = false;
 };
 
 class TaskPlanCore {
@@ -310,6 +331,38 @@ public:
     void RunHeartBeat(const HeartBeatInputs &in, TaskPlanSink sink);
 
     void clearTaskPool();  // 云端停车指令清空全部任务
+
+    // ---- 电子围栏校验与轨迹缓存（2026-09-22新增）----
+    struct TrajectoryPoint {
+        float x_axis = 0.0f;
+        float y_axis = 0.0f;
+        float heading = 0.0f;
+        bool in_fence = false;
+        bool first_in_file = true;
+        bool segment_in_fence = false;
+    };
+
+    struct FenceBBox {
+        double min_x = 0.0;
+        double max_x = 0.0;
+        double min_y = 0.0;
+        double max_y = 0.0;
+        bool valid = false;
+    };
+
+    void SetPathDir(const std::string &path_dir);
+    bool LoadFenceFile(const std::string &path_dir);
+    bool IsPointInFence(double px, double py) const;
+    bool ValidateTaskPoolWithFence(std::vector<TASKINFO_S> &task_pool);
+    void EnableFenceRuntime(uint64_t session) { mFenceRuntime = true; mFenceGuard.revision = session; }
+    void TickFence(double now);
+    void SetFenceFeedback(uint64_t revision, uint64_t task_key, bool stop,
+                          const std::string &reason, bool completed = false);
+    const FenceGuardOut &GetFenceGuard() const { return mFenceGuard; }
+    int GetFenceAlarm() const { return mFenceAlarm; }
+    const std::vector<XYZ_COOR_S> &GetFenceList() const {
+        return mFenceList;
+    }
 
     // ---- 事件发生时刻的输出快照(ROS 层逐字段拷贝成消息) ----
     const TaskPlanMsgOut &GetTaskPlanMsg() const {
@@ -371,6 +424,28 @@ private:
     PubAlgor pubalgor;  // 历史例外: 旧 comply 同名成员, 保留无前缀
     // 仅加载校验, 无读者(保留加载副作用: 配置坏即启动失败)
     YAML::Node mConfigFile;
+
+    // 电子围栏内部状态与路径轨迹缓存（有界空间换时间，避免每周期/每次任务重复读盘与重复算点）
+    const std::vector<TrajectoryPoint> &GetCachedPathTrajectory(const std::string &path_name);
+    void RejectFenceTask(const std::string &reason);
+    void PrepareFenceGuard();
+    bool FenceDriving(uint8_t type) const;
+    struct CachedTrajectory {
+        task_fence::FileStamp stamp;
+        std::vector<TrajectoryPoint> points;
+    };
+
+    std::string mPathDir = "";
+    std::vector<XYZ_COOR_S> mFenceList;
+    FenceBBox mFenceBBox;
+    std::unordered_map<std::string, CachedTrajectory> mPathTrajectoryCache;
+    size_t mCachedPointCount = 0;
+    task_fence::Geometry mFenceGeometry;
+    FenceGuardOut mFenceGuard;
+    bool mFenceRuntime = false, mFenceAck = false, mFenceRejected = false;
+    bool mFenceNavReady = false, mFenceComplete = false;
+    int mFenceAlarm = -1;
+    std::string mFenceError;
 };
 
 #endif  // TASK_PLAN_CORE_H

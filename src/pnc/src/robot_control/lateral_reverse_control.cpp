@@ -2,6 +2,7 @@
 // 局部坐标转换、预瞄点查找、转弯半径与转向角计算。
 
 #include "lateral_reverse_control.h"
+#include <algorithm>
 
 GeometricConstrol::GeometricConstrol() {
 }
@@ -22,15 +23,15 @@ float GeometricConstrol::LateralControlTrack1(
     startpoint_id = FindNearestPoint2VehicleID(tPathList, tPosition);
 
     size_t valid_size = tPathList.size() - startpoint_id;
-    if(valid_size < 10) {
-        std::cout << "valid size is few ...." << std::endl;
+    // 末端不再有规划生成的路线外延长点，少于 10 个前方点也需继续跟踪真实末点。
+    if(valid_size < 2) {
         return 0.0;
     }
 
-    XYZ_COOR_S temp;
+    XYZ_COOR_S temp{};
     vector<XYZ_COOR_S> localPath;
     // 转换为局部坐标（车体）
-    for(int i = startpoint_id; i < path_size - 1; i++) {
+    for(int i = startpoint_id; i < path_size; i++) {
         XYZ_COOR_S temp_point =
             global2local(tPosition.x_axis, tPosition.y_axis, tPosition.heading,
                          tPathList[i].x_axis, tPathList[i].y_axis,
@@ -45,6 +46,9 @@ float GeometricConstrol::LateralControlTrack1(
 
     preview_dis = GetPreviewDistance(tSpeed, tGear);  // speed: m/s
     preview_p_index = FindPreviewPointOnPath(localPath, preview_dis, nearest_id);
+
+    if(hypot(localPath[preview_p_index].x_axis, localPath[preview_p_index].y_axis) < 1e-6)
+        return 0.0;
 
     turning_radius = GetTurningRadiusByPosAndHeading(localPath, preview_p_index);
 
@@ -100,23 +104,27 @@ unsigned int GeometricConstrol::FindPreviewPointOnPath(
     float preview_dis = d;
     double s_point = 0;
 
+    if(path_num == 0) return 0;
+    nearest_id = std::max(0, std::min(nearest_id, static_cast<int>(path_num) - 1));
+
     lpath[0].p2pDistance = 0;
 
-    for(int i = 1; i < path_num - 1; i++) {
+    for(int i = 1; i < path_num; i++) {
         double dx = lpath[i].x_axis - lpath[i - 1].x_axis;
         double dy = lpath[i].y_axis - lpath[i - 1].y_axis;
         s_point += std::sqrt(dx * dx + dy * dy);
 
         lpath[i].p2pDistance = s_point;
     }
-    for(index = nearest_id + 1; index < path_num - 4; index++) {
+    for(index = nearest_id + 1; index < path_num; index++) {
         if((lpath[index].p2pDistance - lpath[nearest_id].p2pDistance) >=
            preview_dis) {
             break;
         }
     }
 
-    if(index > path_num - 5) index = path_num - 5;
+    // 剩余路径不足前视距离时选真实末点；不再减 4/5，避免短路径无符号下溢。
+    if(index >= path_num) index = path_num - 1;
 
     nearest_p_.x_axis = lpath[nearest_id].x_axis;
     nearest_p_.y_axis = lpath[nearest_id].y_axis;
@@ -144,7 +152,8 @@ double GeometricConstrol::GetTurningRadiusByPosAndHeading(
     prev_p.p2pDistance = lpath[prev_id].p2pDistance;
     prev_p.heading = lpath[prev_id].heading;
 
-    if(prev_p.y_axis == 0) prev_p.y_axis = 0.05;
+    // 目标在纵向轴上应直行；虚构 5 cm 横向偏差会在真实短末端放大成急转向。
+    if(fabs(prev_p.y_axis) < 1e-6) return max_turning_R_;
     // 计算预瞄点的航向
     double desired_r = CalculateLineDirection(prev_p);
 
@@ -213,7 +222,7 @@ double GeometricConstrol::GetLength(double x1, double y1, double x2,
 XYZ_COOR_S GeometricConstrol::global2local(double ox, double oy,
                                            double oheading, double gx, double gy, double gheading, double lx,
                                            double ly, double lheading) {
-    XYZ_COOR_S temp;
+    XYZ_COOR_S temp{};
     double dx = gx - ox;
     double dy = gy - oy;
     oheading = 360 - oheading;

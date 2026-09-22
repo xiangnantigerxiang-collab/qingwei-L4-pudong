@@ -1,4 +1,4 @@
-// 休眠规划入口、换道及调试输出。保留原有实现和调用门控；不可直接用于实车。
+// 休眠规划入口及调试输出。保留原有实现和调用门控；不可直接用于实车。
 
 std::vector<OriginalInsData> PathPlanComply::LatticePlan(
     std::vector<float> x, std::vector<float> y, std::vector<float> heading) {
@@ -41,7 +41,6 @@ std::vector<OriginalInsData> PathPlanComply::LatticePlan(
     TrajectoryPoint init_plan_point;
     init_plan_point.path_point.setX(mNavData.xAxis);
     init_plan_point.path_point.setY(mNavData.yAxis);
-    printf("x0:%f, y0:%f\n", mNavData.xAxis, mNavData.yAxis);
 
     init_plan_point.setV(30.0 / 3.6);
     init_plan_point.setA(0.0);
@@ -91,55 +90,9 @@ std::vector<OriginalInsData> PathPlanComply::LatticePlan(
     return final_path_out;
 }
 
-void PathPlanComply::TrajectoryMove(double offset) {
-    mVirtualPath.clear();
-
-    int points_num = mOriginPath.size();
-    double dist_origin = 0.0;
-
-    for(int i = 0; i < points_num - 1; i++) {
-        XYZ_COOR_S point;
-
-        double x0 = mOriginPath[i].x_axis;
-        double y0 = mOriginPath[i].y_axis;
-        double x1 = mOriginPath[i + 1].x_axis;
-        double y1 = mOriginPath[i + 1].y_axis;
-        double theta = GetLineDirection(x1, y1, x0, y0) * M_PI / 180.0;
-
-        theta = theta + M_PI / 2.0;
-
-        point.x_axis = (x0 + x1) / 2.0 + offset * cos(theta);
-        point.y_axis = (y0 + y1) / 2.0 + offset * sin(theta);
-        point.z_axis = 0.0;
-        point.heading = theta * 180.0 / M_PI;
-        point.velocity = 5;
-        point.p2pDistance = 0.04;
-        point.dist_origin = dist_origin + point.p2pDistance;
-
-        mVirtualPath.push_back(point);
-    }
-}
-
-void PathPlanComply::LaneChange(int quest) {
-    if(mLaneChangeSwitch == 0)
-        return;  // lane change disable
-
-    if(quest == 1 && mLaneId == 0) {  // left
-        mDrivingPath = mVirtualPath;
-        mLaneId = 1;
-    }
-
-    if(quest == 2 && mLaneId == 1) {  // right
-        mDrivingPath = mOriginPath;
-        mLaneId = 0;
-    }
-}
-
 bool PathPlanComply::JudgeTaskPlanMsgChanged(
     robot::task_plan_msg tLast, robot::task_plan_msg tNow) {
     int path_num = tNow.pathList.size();
-    printf("tlast type: %d, id:%d, now: type:%d, id:%d\n",
-           int(tLast.taskType), tLast.task_id, int(tNow.taskType), tNow.task_id);
     if(tNow.taskType == NOTHING)
         return 0;
     // if (tNow.taskType == DOACTION)
@@ -161,7 +114,6 @@ bool PathPlanComply::JudgeTaskPlanMsgChanged(
         if(0 != strcmp(tLast.pathList[i].c_str(), tNow.pathList[i].c_str()))
             return 1;
     }
-    printf("return 0\n");
     return 0;
 }
 
@@ -212,10 +164,8 @@ double PathPlanComply::getLaneLimitSpeedTest(double acur_lane_speed, double anex
             //lane_limit_speed = next_lane_speed + (current_lane_speed - next_lane_speed) / 10 * distance;
             // lane_limit_speed = next_lane_speed + (current_lane_speed - next_lane_speed) / 10 * distance;
         }
-        printf("distance: %f\n", distance);
     } else {
         lane_limit_speed = next_lane_speed;
     }
-    printf("============lane limit speed: %f, dot:%f\n", lane_limit_speed, dot_product);
     return lane_limit_speed;
 }

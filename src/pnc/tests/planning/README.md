@@ -1,202 +1,204 @@
-# planning 重构校验
+# Planning验证：用法、现行结果与历史边界
 
-在没有 ROS1 的开发机上编译真实 planning 源码，并把相同业务输入分别送入原版和当前版，
-对照完整发布消息、参数访问/写入/发布顺序、路径索引、任务状态和跨帧历史。
-测试不访问 ROS master，不启动实车节点，也不修改路径或任务配置。
+更新：2026-09-20。本目录在没有ROS1的主机上编译真实业务源码，从当前`.msg`生成桩，
+捕获实际发布消息、状态和参数事件。测试不启动实车节点。
 
-## 运行
-
-从工程根目录执行，`--baseline` 指向需要对照的 **pnc 目录**：
+## 四列地图与自动写回（2026-09-20，最新）
 
 ```bash
-python3 src/pnc/tests/planning/verify.py --baseline /path/to/baseline/pnc --output /tmp/planning-check
+python3 -B src/pnc/tests/planning/verify_map_speed_limit.py --output /tmp/pnc-csv-four-verify
 ```
 
-格式统一单独以格式化前的快照验证，覆盖全包自有 C/C++ 及预处理指令：
+现行地图只有x/y/heading/speed；第五列变道标志及独立区域限速业务已删除。
+planning读取三列地图补10并保存原文件，多列保留前四列，已有四列限速不重写。
+完整校验后通过同目录临时文件替换，失败不提交部分地图；覆盖只读文件/目录、并发修改、
+软链接、混合列数、BOM/CRLF/注释和无末尾换行。
+
+本轮53单元/6节点编译链接通过；地图1201、闸机6581、终点2481、感知995、起步定向615、
+退出不重入756、终点控制113项通过。四列解析C++11与ASan/UBSan各102项（24文件30992行），
+自动写回各79项；控制真实读取31032项，控制独立C++11回归153项通过。
+原区域限速测试入口及其文件已删除，终点控制覆盖迁入本入口；旧起步2m完整套件差异仍保留。
+
+与本轮开工快照比较：1269条发布、48条速度和335份内部状态相同；只移除11次区域配置
+初始化引起的path_dir读取事件。现有312_cargo_01_01.csv的113行0.5限速并行修改予以保留，
+不要求用户地图限速始终为10。删除path_pudong051501.csv已获用户确认。
+数据、性能、作用边界和部署清单见 [四列地图验证](csv_four_column_verification_20260920.md)。
+
+## CSV 地图最高限速（2026-09-20，上一轮记录）
 
 ```bash
-python3 src/pnc/tests/planning/check_structure.py --format-only /path/to/formatting_before/pnc src/pnc
-python3 src/pnc/tools/format_cpp.py --clang-format /path/to/clang-format --check
+python3 -B src/pnc/tests/planning/verify_map_speed_limit.py --output /tmp/pnc-map-speed-verify
+```
+
+该入口先重编全部公共对象，防止混用新增字段前后的路径点布局，再验证真实规划发布。
+本轮结果：53个编译单元、6节点链接；地图限速932、区域限速284、闸机6,581、终点2,481、
+感知集成995、起步左二/安全隔离615、起步退出后不重入756项通过。
+CSV解析器C++11严格编译和ASan/UBSan各106项，遍历全部26文件、31,719行。
+连接段跳过原始点、每6点抽稀、样条插值都包含单点零限速保留用例。
+
+其他读取器另以真实方法验证：control 31,750项；ultra_command 54,000次区域包含比较一致；
+simview 全部26文件显示几何与旧数据一致（只编译实际LoadMap方法，未编译完整RViz节点）。
+普通业务对照中1,269条发布消息、48条速度记录及参数事件相同；335份内部状态中5份仅移除
+旧feof读取多出的重复末点，拼接后索引相应减1。旧终点2,483计数因此变为2,481。
+这不是全部旧状态逐字节相同，详情及性能数据见 [地图限速验证](map_speed_verification_20260920.md)。
+
+## 闸机前方8m范围（2026-09-20）
+
+沿线触发门限由4m放宽到8m，仍严格要求 `0 < Δs < 8m` 和最近实际路径点距离<2m。
+业务仅改 `path_plan_output.inc` 一个常量，其他safety来源、D/R范围及缓存清理规则保持。
+
+- 当前闸机专项6,581项：保留原4m附近并补充7.999/8/8.001/9m、车后、2m横向边界和安全交接。
+- 生产几何方法原文C++11严格编译和ASan/UBSan各33,684项通过。
+- 新规划实现编译链接；387组既有业务完整输出与4m版本逐字节一致。
+- 两条真实进货路径使用节点回调、任务加载及周期发布流程，前后各341项通过；
+  相同56帧接近序列中，每条路径触发帧由16增加到36。该回放不代表实车闭环停车距离。
+
+复现命令、备份和部署范围见 [8m验证记录](gantry_8m_verification_20260920.md)。
+
+## 左二车道输入过滤（2026-09-20）
+
+两个感知入口新增剔除 `type=2`，覆盖常规跟踪、兼容风险历史和起步观察缓存。
+保留其他车道、独立前后扫描、其他 safety 来源及原急停解除迟滞；不改起步半径。
+
+- 感知核心 C++11 严格编译 16,395 项，起步左二定向核心 10 项；两者 ASan/UBSan 均通过。
+- 实际感知集成 995 项，两个输入/起步缓存/安全交接及 D/R 隔离 615 项；
+  闸机 5,013、区域限速 284、起步后不重入 756、终点 2,483 项通过。
+- 修改前后规划节点重新编译链接，387 组不涉及新增过滤的既有业务输出逐字节一致。
+- 300 目标、1,000 次预热后观测/评估，修改前后均 0 堆分配、缓存 4,789,248 bytes。
+  热点同输入耗时另作对照；复杂度不增加不等于常数开销为零。
+
+`startup_observation.cpp --left-second-only` 和
+`startup_observation_integration.cpp` 对应可执行文件的 `--left-second-only` 参数提供本轮定向入口。
+旧 2m 起步完整套件的既有差异仍保留，不把定向检查当作旧完整套件通过。
+备份、详细耗时、源码哈希与复现见 [左二过滤验证](left_second_lane_verification_20260920.md)。
+
+## 闸机参考路径触发与历史清理（2026-09-20，最初4m版本）
+
+本段记录最初4m版本；当前门限已按上节放宽为8m。最初规则为固定两处闸机坐标，
+只有最近路径点距离<2m且沿参考线位于自车前方`0 < Δs < 4m`，
+关闭消息才叠加safety；离开范围、已驶过、参考线失效时清除闸机缓存，重入等待新消息。
+其他安全来源与速度/路径/声光输出保持原有语义。
+
+- 闸机5,013项：两处坐标、两种路径点序、D/R、严格2m/4m边界、曲线里程、稀疏点、
+  自车投影、无效/空参考、开闭交接、清缓存后重入、其他safety保留。
+- 感知发布998项、区域限速284项、起步后不重入756项、终点规划2,483项；
+  定向起步安全与闸机交接/D-R隔离420项通过。
+- 无闸机输入时387组完整输出/状态/参数事件逐字节一致；修改前后规划节点编译链接通过。
+- 新增几何生产方法原文单独以C++11及ASan/UBSan编译，真实消息桩，各26,964项通过。
+- 原组合入口中的2m起步边界仍与当前1m源码不一致；本轮保留该已知差异，未宣称完整旧套件通过。
+
+近场夹具使用真实闸机坐标；旧`(100,100)`等远场夹具按新需求检查误检被过滤，
+并增加实际感知/起步停车与近场闸机之间的交接，避免只修改旧断言却丢失覆盖。
+复现方法、日志、哈希与备份见 [本轮验证记录](gantry_route_verification_20260920.md)。
+
+## D 挡前方提前减速与时间平滑（2026-09-19）
+
+新增用例覆盖本车道前方目标的速度条件、额外 3 秒提前量、车头净距 6m 时目标速度
+不超过 0.45m/s、3m 时为零，以及与原 safety/其他停车来源的叠加。
+测试使用当前生产源码和真实 `.msg` 生成的消息桩，不启动 ROS 或实车节点。
+
+- `perception_safety.cpp`：C++11、`-Wall -Wextra -Werror` 编译及 16,364 项检查通过，
+  同套 ASan/UBSan 通过。包括不同航向/载荷、严格速度边界、侧后方排除、漏检保持，
+  以及 2,700 对相同输入下启用/关闭本项的紧急标志、距离、确认票数和解除状态对照。
+- 时间轨迹覆盖 1、2、4.167m/s 的连续接近，10Hz 及 0.05/0.1/0.15 秒不等周期，
+  检查非紧急全过程减速度/jerk、重复时间戳和 6m 低速边界。理想跟随模型用于检查
+  曲线，不代表已验证实车制动能力；过近才首次发现时另验证硬限速优先。
+- `perception_safety_integration.cpp`：适配器至最终发布 994 项通过，包含 D/R 隔离、
+  原低速/零速/safety 保持、缓慢移动目标 3m 处普通零速及发布序列的时间平滑。
+- R 挡修改前后各 769 项断言通过，576 组完整消息、状态及参数事件逐字节一致。
+  起步挡位专项 352、区域限速 284、闸机 1,806、起步后不重入 756、终点规划 2,480、
+  终点控制 113 项通过。受影响编译单元已重编，公共算法经源码逐字节核对后复用对象；
+  规划主机因 Boost 使用 C++14，生产 CMake 的 C++11 设置未改。
+- `perception_allocations.cpp`：300 个对象、1,000 次预热后观测/评估零堆分配，
+  每次均实际执行新增普通减速分支，未因急停提前返回；缓存为 4,789,248 字节。
+
+已有起步测试仍按 2m 边界断言，而本轮开工源码已为 1m，原入口在该处失败。
+本轮未修改起步半径；仅在临时目录按当前 1m 调整四个场景后，767 项检查通过。
+不能将该临时夹具结果表述为原 2m 测试通过。
+
+备份、验证脚本和日志位于 `/tmp/pnc_forward_slow_20260919_cskkj770/`。
+业务改动仅三个 safety 文件；control 的 D 挡积分后 `dec*50` 保持。
+
+## 使用方法
+
+在工程根执行，输出目录放在 `/tmp` 或其他独立目录，不覆盖源码/配置。
+依赖Python3、g++、Boost、yaml-cpp、jsoncpp及现有Eigen/OSQP库；感知脚本另需PyYAML。
+
+```bash
 python3 src/pnc/tests/compile_all.py --output /tmp/pnc-all-nodes
+python3 src/pnc/tests/control/verify.py --output /tmp/pnc-control-check
+python3 -B src/pnc/tests/planning/verify_map_speed_limit.py --output /tmp/planning-map-check
 ```
 
-2026-09-14 格式化前快照为工程同级 `pnc_before_brace_style_20260914_192628.tar.gz`，
-其中的 `src/pnc` 已包含用户本次 planning 整理。审查详情见 [review_20260914.md](review_20260914.md)。
-`check_structure.py` 不加 `--format-only` 时仍是 09-12 重构专用检查，保留函数不得删除；
-09-14 用户明确删除的两组调试接口会让该历史模式报出删除，不能将它当作新格式验收命令。
+第三条现行入口明确运行起步左二/安全隔离定向用例。历史完整起步套件仍存在2m测试与
+1m实现的差异，不能把定向结果称为旧完整套件通过。
 
-重构前快照为工程同级的 `planning_before_refactor_20260912_134949.tar.gz`，其中保存
-`src/pnc/` 和 `workflow.md`；解压到单独目录即可提供基线。不要覆盖正在使用的工程。
-
-依赖：Python3（新避障验证另用 PyYAML）、g++、Boost、yaml-cpp、jsoncpp，以及本包的 Eigen 和 x86 OSQP 预编译库。
-本机 Boost 头要求 C++14，因此桩验证使用 `-std=c++14`；生产 CMake 的 C++11 设置保持原样。
-
-## 单点区域限速验证
+需要完整前向安全核心/ASan/UBSan/分配/发布及性能对照时：
 
 ```bash
-PYTHONDONTWRITEBYTECODE=1 python3 src/pnc/tests/planning/verify_point_speed_limit.py \
-  --output /tmp/planning-point-speed-limit-check
+python3 src/pnc/tests/planning/verify_perception_safety.py \
+  --baseline /path/to/baseline/pnc --output /tmp/perception-safety-check
 ```
 
-编译真实 Comply/node 及其公共算法，运行 `point_speed_limit.cpp`、既有闸机和感知集成检查。
-临时 CSV 仅写入输出目录下的 `fixtures`，不修改用户配置。覆盖 CRLF、空文件、非法行、
-零限速、5 m 圆形边界、重叠取小、文件缓存、进出区域、平滑后限速，以及急停/断网/暂停/
-起步/等待区/人工/短路径与闸机安全标志保持。检查完整发布消息，只有 `desireSpeed` 可以变化。
-本机仍使用消息桩及 C++14，不能替代 ROS1/Orin 的编译和运行验证。
+`--baseline` 指向单独展开快照的 **pnc目录**；脚本会校验共享算法是否可复用。
+`--legacy-build` 可省略；提供时必须是与该baseline及当前共享源码匹配的已验证编译产物。
+输出日志和result.json记录源码哈希及检查结果。性能对照不要与其他高负载工作并行。
 
-相对新增功能前的旧业务差分，启动时会多一次 `get:path_dir`，用于读取限速文件；
-未命中限速区域时，其余参数事件、完整消息和状态应保持原样。
-
-09-17 本机验证通过：41 个规划及公共算法单元编译，区域限速 284 项、闸机 1,806 项、
-感知集成 52 项检查通过。修改前后 387 组旧业务快照，在严格核对 11 次夹具初始化各新增一次
-`get:path_dir` 后，其余消息、状态及参数事件逐字节一致；211 个保护文件哈希不变。
-日志与差分结果位于 `/tmp/planning_point_speed_limit_20260917_151638/`。
-
-## 覆盖范围
-
-09-17 后续按用户要求启用紧急三帧确认和车道外过滤。当前测试结果及边界见
-[策略修改验证](obstacle_policy_verification_20260917.md)。核心 4,995 项、ASan/UBSan、
-真实规划发布集成 257 项、区域限速 284 项、闸机 1,806 项均通过；与本轮开工快照的
-387 组既有业务输出一致。六种故意恢复旧错误的隔离变异均被测试检出。
-`perception_safety.cpp` / `perception_safety_integration.cpp` 已同步新规则，后文首期计数为历史记录。
-可用现有 `verify.py` 加 `verify_perception_safety.py` 复现：以
-`planning_policy_before_20260917_164328.tar.gz` 解出的 `src/pnc` 作为 `--baseline`，
-将前者输出目录作为后者的 `--legacy-build`；区域限速继续使用 `verify_point_speed_limit.py`。
-
-- `check_structure.py`：50 个未改实现的原有函数逐 token 比较；检查旧接口和成员声明
-  顺序、消息定义、13 个 `.inc` 包含链，防止漏编译或重复定义。
-- `generate_stubs.py`：ROS 传输/时间/参数桩；robot 消息逐字段从当前 `.msg` 生成，
-  保留数值类型和数组形态，避免手写消息字段与实物不一致。
-- `verify.py`：编译 CMake 中 planning 使用的 39 个共享算法单元，再分别编译原版/当前版
-  Comply 和 node，链接节点及测试程序。算法及头文件的有效 token 相同才允许共享对象，
-  从 09-14 起允许经过独立格式等价检查的空白变化。
-- `../compile_all.py`：从真实 CMake 目标表取得 53 个翻译单元（含 `.cc`），编译并链接六个 PNC 节点。
-  复用真实 `.msg` 生成器，补齐其他节点需要的 ROS/TF 编译桩，不启动 ROS 或车辆节点。
-- `regression.cpp`：起步观察、人工/短路径/结束退化、急停/暂停/断网、前向碰撞与历史窗、
-  后向 2.5 m 边界、ultra 早退边界、真实 CSV 及多段装载、样条连接、重复任务/任务切换、
-  各任务停车阈值、机位临停、等待区、关键点推进、前后扫描转换、旧轨迹复用和固定种子组合。
-- `gantry_safety.cpp`：调用真实闸机回调，并捕获最终发布消息；覆盖消息四种布尔组合、
-  无消息/保持最新消息、开闭/失效切换、正常/倒车/人工/短路径/空路径/起步输出、
-  急停/暂停/断网/已有安全标志及任务复位。逐字段检查仅发布的 `safety` 可变化，
-  内部规划状态、声光、参数事件和发布次数/顺序均保持。由 `verify.py` 一并运行。
-
-测试既有明确业务断言，也有完整状态差分。桩固定时间、记录参数事件，并在每次发布时
-捕获消息，能发现“最后结果相同，但中间多发/漏发一条消息”这类顺序变化。
-
-输出目录中的 `result.json` 保存快照数量和 SHA-256；编译、链接、运行日志分目录保存，
-发生差异时生成 `trace.diff`。保留的历史问题见
-[`robot_path_plan/README.md`](../../src/robot_path_plan/README.md#校验与已知问题)。
-
-## 2026-09-12 最终校验结果
-
-- 39 个共享算法单元和原版/当前版各自的 Comply、node 编译成功；节点及回归程序完整链接
-  成功，并另行确认不使用链接垃圾回收时也无缺失符号。
-- 387 个状态快照、发布消息和参数事件逐字节一致，所有业务断言通过；
-  Comply 编译告警 64 → 62，没有新增编译告警。
-- 50 个原有函数 token 一致；原有成员/接口/消息定义和节点接线、频率保持一致；
-  13 个分片均恰好包含一次。
-- 人工复查了提取函数的输入输出、早退位置、局部变量生命周期和安全覆盖顺序；
-  修正新提取函数的局部变量遮蔽，修正固定 80 点搜索范围等旧注释。
-- cppcheck 全依赖扫描遇到 Eigen 宏解析错误，未将其作为通过依据。另对展开业务分片、
-  排除外部 include 的代码作定向检查，未发现新增 warning/error 级诊断；仍保留原有
-  不可达作业分支、未初始化回退 id 和 printf 类型等诊断，详见模块说明。
-
-本机最终记录：`/tmp/planning_refactor_verify/final_review/result.json` 及同目录编译/运行日志。
-结构变化：`PublishReferPath` 499 → 35 行、`PublishPlanPath` 213 → 50 行、
-`calcuGlobalPath` 137 → 20 行、`LimitSpeedByDistanceToStop` 173 → 26 行；具体计算已按
-任务、参考路径、安全输出职责移入阶段函数。
-
-## 验证边界
-
-ROS 传输和外部消息由桩替代；本测试不覆盖真实 ROS1 消息序列化、catkin 并行生成、
-硬件时序及车辆动态。它验证重构行为与当前基线一致，不证明原有停车规则均正确。
-代码上车前仍需在 ROS1/车载工具链重编并回放/验收关键任务。
-
-## 2026-09-17 闸机接入验证
-
-开工快照：工程同级 `planning_before_gantry_20260917_103937.tar.gz`。
-该快照含一条用户已有的、尚未完成接线的 `gantry_detect/gantry_detect.h` 引用；实际消息
-是 `gantry_state.h`。差分用副本只移除了该未使用的不存在头文件，不改变旧业务代码；
-原始快照完整保留。正式代码仅在节点包含正确的消息头，Comply 接收两个布尔值。
+纯重构的完整消息等价检查入口：
 
 ```bash
 python3 src/pnc/tests/planning/verify.py \
-  --baseline /tmp/planning_gantry_20260917_103937/before/pnc \
-  --output /tmp/planning-gantry-check
+  --baseline /path/to/baseline/pnc --output /tmp/planning-check
 ```
 
-39 个共享算法单元、前后 Comply/node 编译及节点完整链接通过；旧 387 组快照、完整消息
-和参数事件逐字节一致，新增 1,266 项闸机检查通过。真实 PNC CMake 配置的依赖图确认
-只有 `path_plan_node` 增加 gantry 消息目录/生成目标；catkin_pkg 包发现和拓扑排序确认
-`ivlocmsg -> gantry_detect -> robot`，根模块通过 `src/gantry_detect` 相对软链接加入工作空间。
+此脚本不是新需求改变行为后的“全部输出必须不变”证明；baseline必须与比较目的对应。
+格式任务用 `check_structure.py --format-only <格式前pnc> src/pnc` 或格式工具的 `--check`。
+不加 `--format-only` 的结构检查是09-12重构口径，用户后来删除的调试接口会导致历史断言失败。
 
-本机 Boost.Geometry 要求 C++14，桩验证沿用 `-std=c++14`；生产 CMake 仍为 C++11。
-消息从真实 `.msg` 生成；CMake 检查使用模拟 catkin 配置，不代替 ROS1/Orin 构建。
-原始日志：`/tmp/planning_gantry_20260917_103937/`，汇总见
-[`gantry_verification_20260917.json`](gantry_verification_20260917.json)。
+## 测试文件与作用
 
-### 同日复核：无效/开闸不能清除其他 safety
-
-按用户要求再次从原始基线编译差分，387 组状态/消息/参数事件一致。补充 60 个连续交接帧、
-540 项断言，闸机测试共 1,806 项通过。新断言直接给出期望的发布值和内部值，覆盖
-“关闸期间其他安全原因出现 → 开闸/失效 → 其他原因解除”，防止对照实例与被测实例
-同时误清零却比较相同。隔离副本中三种错误（无效时直接赋 0、发布后恢复为 0、输入回调
-清零已有标志）均被测试检出；正式业务源码保持原样。
-
-同时核对 ROS Noetic `publish(const M&)` 的同步序列化调用链，确认发布后的内部原值恢复
-不会改写本次已序列化消息。检查依据、适用边界和日志见
-[`gantry_safety_review_20260917.md`](gantry_safety_review_20260917.md)。
-
-## 2026-09-17 感知避障与性能验证
-
-本次开工快照为工程同级 `planning_perception_before_20260917_140441.tar.gz`，解压后使用其中的 `src/pnc`。
-先运行上述 `verify.py` 得到基线结果和公共算法对象，再执行：
-
-```bash
-PYTHONDONTWRITEBYTECODE=1 python3 src/pnc/tests/planning/verify_perception_safety.py \
-  --baseline /path/to/before/src/pnc \
-  --legacy-build /tmp/planning-check \
-  --output /tmp/perception-safety-check
-
-PYTHONDONTWRITEBYTECODE=1 python3 src/pnc/src/robot_perception_convert/tests/verify_publish.py \
-  --output /tmp/perception-publish-check
-```
-
-`--legacy-build` 可省略，此时自行编译公共算法，只执行新功能及性能测试，不重跑旧快照/闸机检查。
-性能测试顺序交替执行旧、新版本各三轮；测试时应避免其他编译或高 CPU 工作并行运行。
-
-| 检查 | 最终结果 |
+| 文件 | 验证内容 |
 |---|---|
-| 独立 C++11 核心及 ASan/UBSan | 各 4,762 项通过 |
-| 实际规划回调/发布/安全覆盖 | 31 项通过 |
-| 基线旧业务完整消息/状态/参数事件 | 387 组逐字节一致 |
-| 原闸机安全覆盖 | 1,806 项通过 |
-| 感知真实 CMake C++11、SDK 动态链接与发布集成 | 4,414 项通过，同样通过 ASan/UBSan |
-| 300 目标、1000 次预热后观测更新＋判断 | 堆分配 0 次，缓存 4,133,888 bytes |
-| 新核心 cppcheck warning/performance/portability | 无诊断 |
+| `perception_safety.cpp` | 核心、独立几何对照、真实帧确认、输入失效、D减速及时间序列 |
+| `perception_safety_integration.cpp` | 实际适配器/最终消息、多个安全来源与D/R隔离 |
+| `perception_allocations.cpp` / `perception_benchmark.cpp` | 热循环分配与旧/新真实路径耗时 |
+| `startup_observation.cpp` / `startup_observation_integration.cpp` | 自动切入、车身周边、退出与挡位；`--gear-only`可单独检查挡位范围 |
+| `startup_removal.cpp` | 完成起步后不重入，不恢复旧T区/固定等待 |
+| `terminal_stop.cpp` / `terminal_control.cpp` | 规划与控制分进程交接，末点、短路径、D/R末端与停车 |
+| `map_speed_limit.cpp` / `gantry_safety.cpp` | 四列限速与文件写回、旧区域文件无效、闸机只叠加安全、不清其他来源 |
+| `path_csv.cpp` / `path_csv_upgrade.cpp` | 严格四列解析、自动补列/截列保存、失败原文件不变、重复读取不写回 |
+| `regression.cpp` | 业务状态、完整消息及参数顺序差分 |
+| `generate_stubs.py` | 从真实消息生成桩；不能手写字段代替实际协议 |
 
-核心测试包含独立凸多边形相交判据校对 2,000 个随机连续运动样本，不能只靠被测算法与自身比较。
-业务覆盖真实帧确认、一次误检、历史鬼影、同向超车/切入、物理朝向与运动朝向不一致、
-空车/载荷外廓、输入失效、急停解除迟滞、减速度/jerk 边界，以及已有零速/安全标志保持。
-发布测试直接把实际 converter 输出喂给实际核心，验证两边角点轴向契约。
+## 已删除的单点区域限速验证
 
-三轮中位数，真实旧/新规划代码输入更新＋前向检查耗时（主机，ms）：
+原point_speed_limit测试和入口随对应业务删除；历史报告中的284项只代表当时版本。
+现行map_speed_limit测试确认旧区域文件缺失、零限速或损坏都不再影响发布，并验证第四列
+地图限速及其他safety来源保持。终点控制仍单独进程链接，避免planning/control的不同Pose2d布局冲突。
 
-| 目标数/分布 | 旧 P50 | 新 P50 | 旧 P99 | 新 P99 |
-|---|---:|---:|---:|---:|
-| 20/稀疏 | 0.059870 | 0.002784 | 0.067343 | 0.004066 |
-| 100/稀疏 | 0.212085 | 0.011262 | 0.244614 | 0.014013 |
-| 300/稀疏 | 0.678485 | 0.031853 | 0.794205 | 0.036788 |
-| 300/密集 | 0.674334 | 0.025646 | 0.772244 | 0.028459 |
-| 1000/稀疏 | 2.181631 | 0.051226 | 2.445566 | 0.055987 |
-| 1000/密集 | 2.261661 | 0.080792 | 2.613327 | 0.089334 |
+## 注意事项与容易疏忽的点
 
-另以实际旧/新 converter 回调运行 20/100/300 目标、20/100 Hz、部分目标频繁新生共 6 组场景，
-原 `/perception` 的 id/x/y/vx/vy/heading/confidence/type 输出校验和一致。
-原始数据、源码 SHA 和适用边界见 [perception_safety_verification_20260917.json](perception_safety_verification_20260917.json)，
-临时构建日志保存在 `/tmp/planning_perception_20260917_140441/`。
+- 最近一次成功的测试数字属于对应源码/哈希，不是本次文档整理重新运行的结果。
+- D新需求必须单独证明R不变；R基线要取09-19首次改动前，不能用中间R也补刹版本。
+- 旧2m起步期望、已删除的旧等待逻辑、后续业务变更与旧快照差异要逐项解释，不能批量改期望消除失败。
+- 减速检查要覆盖连续周期、重复/不等时间间隔和最终发布，不能只验证某个内部限速函数。
+- 多个停车来源必须检查交接过程；两份实例都犯同一个错误时，仅“对照一致”不够。
+- 本机Boost可能需C++14，核心/控制保留C++11验证，生产标准不变。
+- 桩不验证真实ROS1传输、硬件时序及液压响应；理想跟随模型不证明实车停止距离。
+- `/tmp`是临时证据目录，可能失效；重跑前核对baseline、依赖和源码哈希。
 
-这里只证明覆盖场景与测量代码路径：未测 ROS1 序列化/调度、Orin 总 CPU 或整车响应。
-旧快照一致性不涵盖工作区同时存在的相机心跳判断、任务 YAML 和路线 CSV 变更；这些变更未由本次回滚。
-空车/载荷实际尺寸及最差载荷减速能力仍需实测标定，详见
-[参数和部署边界](../../src/robot_path_plan/safety/README.md#参数与部署)。
+## 按时间归纳的历史
+
+| 日期 | 保留结论与证据 |
+|---|---|
+| 09-19 | D限定、积分后dec×50、起停调柔；控制244项；[D起停报告](d_comfort_verification_20260919.md)，该报告早于当天最终参数，现值查控制README |
+| 09-19 | 起步观察及诊断；[原报告](startup_observation_verification_20260919.md)仍含历史2m设计，当前1m差异见上文 |
+| 09-18 | 末点/短路径/R末端转向复核；[报告](today_review_20260918.md)，不再重复多轮中间计数 |
+| 09-18 | 左一动态对向过滤、原固定观察删除；[过滤](left_lane_motion_verification_20260918.md)、[删除验证](startup_removal_verification_20260918.md) |
+| 09-17 | 三帧/车道外过滤；[策略报告](obstacle_policy_verification_20260917.md)；近距例外在09-19新增 |
+| 09-17 | 闸机1806项及错误清零变异检出；[复核](gantry_safety_review_20260917.md)；当前包已在src实体目录 |
+| 09-17 | 前向感知与性能；[报告](perception_safety_verification_20260917.json)，旧缓存/计数不是当前值 |
+| 09-14 | 格式与业务分开验证；[报告](review_20260914.md) |
+| 09-12 | 首期重构387组输出一致、50函数token保持；原过程见归档 |
+
+完整整理前记录见 [归档](../../../../docs/history/2026-09-19-before-docs/src/pnc/tests/planning/README.md)。

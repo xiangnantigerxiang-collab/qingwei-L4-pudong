@@ -335,7 +335,6 @@ namespace planning {
         } else {
             int start_point = getNearstPointLocation(start_s);
             int end_point = getNearstPointLocation(end_s);
-            printf("size = %d\r\n", static_cast<int>(reference_points_.size()));
             removePointFromIndex(start_point, end_point + 1);
         }
     }

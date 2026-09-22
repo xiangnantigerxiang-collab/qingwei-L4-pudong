@@ -33,6 +33,7 @@ void TaskPlanCore::SetNavigationData(const NavStateIn &navigation_msg_t) {
 }
 
 void TaskPlanCore::clearTaskPool() {
+    recived_cloud_task = true;  // 停车/拒绝也必须下发清空后的终态任务。
     mCurTaskNum = 0;
     mExecuteTaskNum = -1;
     mTaskList.clear();
@@ -73,6 +74,8 @@ void TaskPlanCore::SetTaskInfo(const TaskInfoIn &task_info,
         mTaskStatus.fail_code = 0;
         mTaskStatus.fail_reason = "";
         mTaskInfoMsg = task_info;
+        mFenceRejected = false;
+        mFenceAck = false;
 
         std::string cs_task_id = std::to_string(task_info.task_id);
         std::string file = "task" + cs_task_id + ".yaml";
@@ -92,7 +95,17 @@ void TaskPlanCore::SetTaskInfo(const TaskInfoIn &task_info,
             mTaskStatus.task_info = task_info;
             return;
         }
-        printf("mTaskPool.size() = %d\n", (int)mTaskPool.size());
+        if(task_info.task_id == 1000 && !mTaskPool.empty()) {
+            mTaskPool[0].tXAxis = RunningtXAxis;
+            mTaskPool[0].tYAxis = RunningtYAxis;
+            mTaskPool[0].tAngle = RunningtAngle;
+        }
+        if(!ValidateTaskPoolWithFence(mTaskPool)) {
+            mTaskStatus.vehicle_id = task_info.vehicle_id;
+            mTaskStatus.task_info = task_info;
+            RejectFenceTask(mFenceError);
+            return;
+        }
         for(int i = 0; i < (int)mTaskPool.size(); i++) {
             TASKINFO_S task_info = mTaskPool[i];
             printf("i:%d, type:%d, id:%lld action:%d, stopX,:%.1f stopY:%.1f, desireSpeed:%.1f\n",
@@ -103,28 +116,6 @@ void TaskPlanCore::SetTaskInfo(const TaskInfoIn &task_info,
 
         mCurTaskNum = 0;
 
-        recived_cloud_task = true;
-        mTaskList = mTaskPool;
-    }
-
-    if(task_info.task_id == 1000) {  // follow cloud command
-        mTaskStatus.procedure = 1;
-        mTaskInfoMsg = task_info;
-
-        std::string cs_task_id = std::to_string(task_info.task_id);
-        std::string file = "task" + cs_task_id + ".yaml";
-
-        mTaskPool = ParseTaskFile(file, task_info.task_id, task_file_dir);
-
-        // 空任务文件守卫(文件缺失/坏 yaml 被拒后 mTaskPool 为空,
-        // 原 mTaskPool[0] 直接越界写是 UB)
-        if(mTaskPool.size() > 0) {
-            mTaskPool[0].tXAxis = RunningtXAxis;
-            mTaskPool[0].tYAxis = RunningtYAxis;
-            mTaskPool[0].tAngle = RunningtAngle;
-        }
-
-        mCurTaskNum = 0;
         recived_cloud_task = true;
         mTaskList = mTaskPool;
     }
@@ -173,6 +164,15 @@ void TaskPlanCore::TaskPlanProcess(TaskPlanSink sink) {
 
 void TaskPlanCore::PublishTaskPlanMsg(float max_vehicle_speed,
                                       TaskPlanSink sink) {
+    // 每个块发布前重验文件版本和当前接入点；运行循环不读盘。
+    if(mCurTaskNum < (int)mTaskList.size() && FenceDriving(mTaskList[mCurTaskNum].tTaskType)) {
+        std::vector<TASKINFO_S> block(1, mTaskList[mCurTaskNum]);
+        if(!ValidateTaskPoolWithFence(block)) RejectFenceTask(mFenceError);
+        else {
+            mTaskList[mCurTaskNum] = block[0];
+            mTaskPool[mCurTaskNum] = block[0];
+        }
+    }
     int size = (int)mTaskList.size();
 
     if(size != 0 && mCurTaskNum < size) {
@@ -213,16 +213,18 @@ void TaskPlanCore::PublishTaskPlanMsg(float max_vehicle_speed,
         mTaskPlanData.desireSpeed = 0;
         mTaskPlanData.desireGear = GEAR_N;
     } else {
-        printf(">>>> task size:%d,cur_num:%d task type:%d, hookcmd:%d <<<<<<\n", size, mCurTaskNum,
-               mTaskPlanData.taskType, mTaskPlanData.hookCmd);
     }
     // 完成时同样发布: 0 速/N 挡终态指令 + procedure=2 状态
     // (原实现在此 return, 云端永远收不到任务完成)
+    PrepareFenceGuard();
     emitPublish(sink, TP_PUBLISH_TASK_PLAN);
     emitPublish(sink, TP_PUBLISH_TASK_STATUS);
 }
 
 void TaskPlanCore::ClearTASKINFO_S(TASKINFO_S &tTaskInfo) {
+    tTaskInfo.fenceTruncated = false;
+    tTaskInfo.fenceRouteVersion = 0;
+    tTaskInfo.fenceStartIndex = tTaskInfo.fenceStopIndex = 0;
     tTaskInfo.tTaskType = NOTHING;
     tTaskInfo.tPathList.clear();
     tTaskInfo.tPathX.clear();
@@ -319,6 +321,7 @@ bool TaskPlanCore::OperationStateJudge(TASKINFO_S tTask) {
 
 bool TaskPlanCore::JudgeArrivedDestination(TASKINFO_S tTask) {
     // printf("executestatus: %d\n", mPathPlanStatus.taskExecuStatus);
+    if(mFenceRuntime && FenceDriving(tTask.tTaskType) && (!mFenceAck || !mFenceComplete || mFenceGuard.stop)) return false;
     if(mPathPlanStatus.taskExecuStatus != TASKFINISHED)
         return 0;
 
@@ -364,6 +367,10 @@ void TaskPlanCore::TaskManage(int &tCurTaskNum,
         if(task_type >= TRACKPATH && task_type <= ADAPTIVEPARK) {
             int state = JudgeArrivedDestination(tTaskList.at(tCurTaskNum));  // 检查是否达到终点
             if(state == 1 && (mTimerCount++ > 20)) {
+                if(task_info.fenceTruncated) {
+                    RejectFenceTask("fence stop reached; remaining task cancelled");
+                    return;
+                }
                 mTimerCount = 0;
                 tCurTaskNum++;
             }
@@ -593,3 +600,5 @@ void TaskPlanCore::emitLogInfo(TaskPlanSink sink, const char *text) {
     ev.text = text;
     sink(ev);
 }
+
+#include "task_fence.inc"

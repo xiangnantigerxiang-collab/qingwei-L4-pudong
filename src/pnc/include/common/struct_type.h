@@ -7,6 +7,7 @@
 #define MIN_ 0.0001
 #include <array>
 #include <string>
+#include <limits>
 
 using Vec_f = std::vector<float>;
 using Poi_f = std::array<float, 2>;
@@ -39,6 +40,8 @@ typedef struct xyz_coor_s {
     float curvature;
     float velocity;
     float dist_origin;  //Distance from the origin
+    // CSV地图限速(m/s)随路径点复制；内部生成的点默认不限速，避免残留上一条路线的限速。
+    float map_speed_limit = std::numeric_limits<float>::infinity();
 } XYZ_COOR_S;
 
 typedef enum work_status {
@@ -64,6 +67,7 @@ typedef enum subActionValue {
     GEAR_N = 2,
     GEAR_R = 3,
     GEAR_D = 4,
+    GEAR_P = 1,
     HOOKOPERATION = 5,
     DECOUPLING = 6,
     WAITING = 7,

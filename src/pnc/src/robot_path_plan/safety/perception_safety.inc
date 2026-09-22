@@ -23,6 +23,12 @@ namespace planning_perception {
             if(!std::isfinite(positive[i]) || positive[i] <= 0) return false;
         }
         if(!std::isfinite(tConfig.lateral_margin) || tConfig.lateral_margin < 0 ||
+           !std::isfinite(tConfig.static_obstacle_extra_time) || tConfig.static_obstacle_extra_time < 0 ||
+           tConfig.static_obstacle_extra_time > 5 ||
+           !std::isfinite(tConfig.static_stop_min_distance) || tConfig.static_stop_min_distance < 0 ||
+           tConfig.static_stop_min_distance > 10 ||
+           !std::isfinite(tConfig.front_no_confirmation_distance) || tConfig.front_no_confirmation_distance < 0 ||
+           tConfig.front_no_confirmation_distance > 20 ||
            !std::isfinite(tConfig.prediction_margin_rate) || tConfig.prediction_margin_rate < 0 ||
            !std::isfinite(tConfig.low_score) || tConfig.low_score < 0 || tConfig.low_score > 1 ||
            tConfig.empty_front > tConfig.empty_length || tConfig.loaded_front > tConfig.loaded_length ||
@@ -103,7 +109,8 @@ namespace planning_perception {
         }
     }
 
-    bool PerceptionSafety::Observe(const robot::perception& tMessage, double tNow) {
+    bool PerceptionSafety::Observe(const robot::perception& tMessage, double tNow,
+                                  const LaneMotionFilter& tLaneFilter) {
         const double stamp = tMessage.header.stamp.toSec();
         if(!std::isfinite(tNow) || !std::isfinite(stamp) || stamp < 0 || stamp > tNow + 0.01 ||
            tNow - stamp > mConfig.input_timeout) return false;
@@ -118,8 +125,8 @@ namespace planning_perception {
         // 完整校验后才提交；坏 ID/角点不能造成“半帧更新、另一半被认为消失”。
         for(std::size_t i = 0; i < tMessage.objs.size(); ++i) {
             const robot::object& object = tMessage.objs[i];
-            // 车道外目标直接忽略；有效整帧提交时还须删除该 ID 的旧框，不能继续漏检外推。
-            if(object.type == 3 || object.type == 4) {
+            // 左二/车道外/左一对向目标忽略；整帧有效后删除该 ID 旧框，不能继续漏检外推。
+            if(object.type == 2 || object.type == 3 || object.type == 4 || tLaneFilter.Ignore(object)) {
                 if(object.id > 0) {
                     if(mValidationMarks[object.id] == mValidationGeneration) return false;
                     mOutsideMarks[object.id] = mValidationGeneration;
@@ -141,6 +148,7 @@ namespace planning_perception {
             observed.vx = object.vx;
             observed.vy = object.vy;
             observed.score = std::isfinite(object.confidence) ? object.confidence : 0;
+            observed.own_lane = object.type == 0;
             mObservations.push_back(observed);
         }
         ++mFrame;
@@ -171,6 +179,7 @@ namespace planning_perception {
             track.vx = observed.vx;
             track.vy = observed.vy;
             track.score = observed.score;
+            track.own_lane = observed.own_lane;
             track.last_seen = stamp;
             track.frame = mFrame;
             const bool low_score = track.score > 0 && track.score < mConfig.low_score;
@@ -186,8 +195,99 @@ namespace planning_perception {
 
     double PerceptionSafety::Lookahead(double tSpeed) const {
         const double speed = std::max(0.0, tSpeed);
-        const double reaction = mConfig.reaction_time + mConfig.comfort_deceleration / mConfig.jerk;
-        return std::min(60.0, std::max(8.0, speed * reaction + speed * speed / (2 * mConfig.comfort_deceleration) + mConfig.stop_margin + 4.0));
+        double extra_time = 0;
+        double minimum_distance = 0;
+        for(std::size_t i = 0; i < mActiveIds.size(); ++i) {
+            const TRACK_S& track = mTracks[mActiveIds[i]];
+            if(track.own_lane && track.vx == 0 && track.vy == 0) {
+                extra_time = mConfig.static_obstacle_extra_time;
+                minimum_distance = mConfig.static_stop_min_distance;
+                break;
+            }
+        }
+        // 检查路径也覆盖提前减速距离，不能限速公式已提前而前视范围仍然过短。
+        const double reaction = mConfig.reaction_time + mConfig.comfort_deceleration / mConfig.jerk + extra_time;
+        return std::min(60.0, std::max(std::max(8.0, minimum_distance + 4.0),
+                                     speed * reaction + speed * speed / (2 * mConfig.comfort_deceleration) + mConfig.stop_margin + 4.0));
+    }
+
+    PerceptionSafety::FORWARD_LIMIT_S PerceptionSafety::ForwardObstacleSpeedLimit(
+        const EGO_S& tEgo, double tTargetSpeed, double tNow) const {
+        FORWARD_LIMIT_S limit;
+        limit.approach_speed = limit.hard_speed = std::max(0.0, tTargetSpeed);
+        // 无效/失效输入仍由原 Evaluate 的 safety 逻辑处理，本项不产生新 safety。
+        if(!mStarted || !std::isfinite(tNow) || tNow < mFrameTime || tNow - mFrameTime > mConfig.input_timeout ||
+           !std::isfinite(tEgo.x) || !std::isfinite(tEgo.y) || !std::isfinite(tEgo.heading) ||
+           !std::isfinite(tEgo.speed) || tEgo.speed < 0 || tEgo.speed >= 20 ||
+           !std::isfinite(tTargetSpeed) || tTargetSpeed <= 0 || tTargetSpeed > 20) return limit;
+
+        const double advance_time = 3.0;   // s，在制动距离之外额外预留 3 秒行驶距离。
+        const double slow_distance = 6.0; // m，车头外廓到障碍物近边的前向净距。
+        const double stop_distance = 3.0; // m，仅限制目标速度为零，不新增或清除 safety。
+        const double slow_speed = 0.4;    // m/s，低速段参考速度，另留时间平滑的收敛余量。
+        const double hard_slow_speed = 0.45; // m/s，6 m 处不可超过的上限，严格小于 0.5 m/s。
+        const double speed = std::max(tEgo.speed, tTargetSpeed);
+        const double deceleration = mConfig.comfort_deceleration;
+        const double near_deceleration = slow_speed * slow_speed / (2 * (slow_distance - stop_distance));
+        const double near_av = near_deceleration * advance_time;
+        const double near_entry_speed = std::sqrt(near_av * near_av + slow_speed * slow_speed) - near_av;
+        const double lookahead = slow_distance + speed * advance_time +
+                                 std::max(0.0, speed * speed - slow_speed * slow_speed) / (2 * deceleration);
+        const double length = tEgo.loaded ? mConfig.loaded_length : mConfig.empty_length;
+        const double width = tEgo.loaded ? mConfig.loaded_width : mConfig.empty_width;
+        const double front = tEgo.loaded ? mConfig.loaded_front : mConfig.empty_front;
+        const double heading = (90 - std::fmod(tEgo.heading, 360.0)) * 3.14159265358979323846 / 180;
+        SEGMENT_S forward;
+        BOX_S& vehicle = forward.box;
+        vehicle.ux = std::cos(heading);
+        vehicle.uy = std::sin(heading);
+        vehicle.hx = length * 0.5;
+        vehicle.hy = width * 0.5;
+        vehicle.x = tEgo.x + (front - vehicle.hx) * vehicle.ux;
+        vehicle.y = tEgo.y + (front - vehicle.hx) * vehicle.uy;
+        forward.dx = lookahead * vehicle.ux;
+        forward.dy = lookahead * vehicle.uy;
+
+        for(std::size_t i = 0; i < mActiveIds.size(); ++i) {
+            const TRACK_S& track = mTracks[mActiveIds[i]];
+            const double age = tNow - track.last_seen;
+            if(!track.active || !track.own_lane || age < 0 || age > mConfig.coast_time) continue;
+            const double object_speed = std::hypot(track.vx, track.vy);
+            const double closing_speed = tEgo.speed - track.vx * vehicle.ux - track.vy * vehicle.uy;
+            if(!(closing_speed > 1.0 || object_speed < 0.5)) continue;
+
+            BOX_S box = track.box;
+            box.x += track.vx * age;
+            box.y += track.vy * age;
+            const double along = (box.x - vehicle.x) * vehicle.ux + (box.y - vehicle.y) * vehicle.uy;
+            const double extent = std::abs(box.ux * vehicle.ux + box.uy * vehicle.uy) * box.hx +
+                                  std::abs(-box.uy * vehicle.ux + box.ux * vehicle.uy) * box.hy;
+            if(along + extent < vehicle.hx - 1e-8) continue;
+            // 真实外廓沿当前前进方向扫掠，要求横向相交；侧后方目标不能仅凭 type=0 限速。
+            // 不复用动态预测相交距离，也不扩展 Evaluate 的路径，保持原 safety 判据不变。
+            double enter = 0;
+            std::size_t axis_tests = 0;
+            if(!Sweep(forward, box, 0, 0, 1e-8, 1, enter, axis_tests)) continue;
+            const double distance = enter * lookahead;
+            double obstacle_limit = 0;
+            double hard_limit = 0;
+            if(distance > slow_distance) {
+                // d-6 = v*3 + (v²-0.4²)/(2a)，反解提前减速目标，交给时间域 a/jerk 平滑。
+                const double av = deceleration * advance_time;
+                obstacle_limit = std::max(near_entry_speed, std::sqrt(av * av + slow_speed * slow_speed +
+                                                    2 * deceleration * (distance - slow_distance)) - av);
+                hard_limit = std::sqrt(hard_slow_speed * hard_slow_speed + 2 * deceleration * (distance - slow_distance));
+            } else if(distance > stop_distance) {
+                // 6→3 m 的硬上限按 v² 递减；减速目标另预留时间，防止平滑滞后撞上硬上限。
+                const double ratio = std::sqrt((distance - stop_distance) / (slow_distance - stop_distance));
+                obstacle_limit = std::sqrt(near_av * near_av + 2 * near_deceleration * (distance - stop_distance)) - near_av;
+                hard_limit = hard_slow_speed * ratio;
+            }
+            limit.approach_speed = std::min(limit.approach_speed, obstacle_limit);
+            limit.hard_speed = std::min(limit.hard_speed, hard_limit);
+            if(limit.hard_speed == 0) break;
+        }
+        return limit;
     }
 
     bool PerceptionSafety::BuildSegments(const std::vector<PATH_POINT_S>& tPath, const EGO_S& tEgo) {
@@ -320,8 +420,24 @@ namespace planning_perception {
         return tRisk && tTrack.emergency_hits >= 3;
     }
 
+    bool PerceptionSafety::IsNearForwardObstacle(const BOX_S& tBox, std::size_t& tAxisTests) const {
+        if(mSegments.empty() || mConfig.front_no_confirmation_distance <= 0) return false;
+        SEGMENT_S forward = mSegments.front();
+        const BOX_S& vehicle = forward.box;
+        const double along = (tBox.x - vehicle.x) * vehicle.ux + (tBox.y - vehicle.y) * vehicle.uy;
+        const double extent = std::abs(tBox.ux * vehicle.ux + tBox.uy * vehicle.uy) * tBox.hx +
+                              std::abs(-tBox.uy * vehicle.ux + tBox.ux * vehicle.uy) * tBox.hy;
+        if(along + extent < vehicle.hx - 1e-8) return false;
+        // 用当前物理框与车头朝向判断 6 m 范围；不能把动态预测的未来相交距离当成当前距离。
+        // 零速度扫掠同时要求横向真实重叠，避免仅凭 type=0 将侧后方目标纳入免确认范围。
+        forward.dx = vehicle.ux * mConfig.front_no_confirmation_distance;
+        forward.dy = vehicle.uy * mConfig.front_no_confirmation_distance;
+        double enter = 0;
+        return Sweep(forward, tBox, 0, 0, 1e-8, 1, enter, tAxisTests);
+    }
+
     RESULT_S PerceptionSafety::Evaluate(const std::vector<PATH_POINT_S>& tPath, const EGO_S& tEgo,
-                                        double tTargetSpeed, double tNow) {
+                                        double tTargetSpeed, double tNow, bool tForward) {
         RESULT_S result;
         result.speed_limit = std::max(0.0, tTargetSpeed);
         const bool valid_ego = std::isfinite(tEgo.x) && std::isfinite(tEgo.y) && std::isfinite(tEgo.heading) &&
@@ -339,15 +455,15 @@ namespace planning_perception {
             ResetMotion();
             return result;
         }
-        const double dt = mLastEvaluation < 0 ? 0.1 : std::max(0.001, std::min(0.2, tNow - mLastEvaluation));
+        // D 挡按实际时间推进；同一时刻重复计算不应继续减速，周期中断仍沿用原 0.2 s 上限。
+        const double dt = mLastEvaluation < 0 ? 0.1 : std::max(tForward ? 0.0 : 0.001, std::min(0.2, tNow - mLastEvaluation));
         if(mLastEvaluation >= 0 && tNow - mLastEvaluation > 0.5) mSpeedValid = false;
         mLastEvaluation = tNow;
         Prune(tNow, false);
         double limit = result.speed_limit;
         const double emergency_distance = tEgo.speed * mConfig.reaction_time +
-                                          tEgo.speed * tEgo.speed / (2 * mConfig.emergency_deceleration) + mConfig.emergency_margin;
+                                                  tEgo.speed * tEgo.speed / (2 * mConfig.emergency_deceleration) + mConfig.emergency_margin;
         const double comfort_delay = mConfig.reaction_time + mConfig.comfort_deceleration / mConfig.jerk;
-        const double av = mConfig.comfort_deceleration * comfort_delay;
         bool risk = false, emergency = false, pending_emergency = false;
         for(std::size_t i = 0; i < mActiveIds.size(); ++i) {
             const int id = mActiveIds[i];
@@ -366,11 +482,14 @@ namespace planning_perception {
             ++result.candidates;
             // 上游已经对小速度归零；非零分量都使用同一个有界时间域，避免阈值舍入不一致。
             const bool moving = track.vx != 0 || track.vy != 0;
+            const double stop_distance = track.own_lane && !moving
+                                             ? std::max(emergency_distance, mConfig.static_stop_min_distance)
+                                             : emergency_distance;
             bool soft_risk = false, hard_risk = false;
             double distance = 10000, ttc = 10000;
             for(std::size_t j = 0; j < mSegments.size(); ++j) {
                 const SEGMENT_S& segment = mSegments[j];
-                if(soft_risk && segment.s > emergency_distance) break;
+                if(soft_risk && segment.s > stop_distance) break;
                 if(moving && segment.time > mConfig.prediction_time) break;
                 const double fraction = moving ? std::min(1.0, (mConfig.prediction_time - segment.time) / segment.duration) : 1.0;
                 const double end_time = segment.time + segment.duration * fraction;
@@ -388,25 +507,34 @@ namespace planning_perception {
                 }
                 // 普通相交和紧急相交可能在相邻段；不能在首个软余量相交后漏查下一段。
                 double hard_enter = 0;
-                if(soft_risk && distance <= emergency_distance &&
+                if(soft_risk && distance <= stop_distance &&
                    Sweep(segment, box, track.vx, track.vy, segment.rotation_margin + 0.05,
                          fraction, hard_enter, result.axis_tests) &&
-                   segment.s + hard_enter * segment.length <= emergency_distance) hard_risk = true;
-                if(hard_risk || (soft_risk && distance > emergency_distance)) break;
+                   segment.s + hard_enter * segment.length <= stop_distance) hard_risk = true;
+                if(hard_risk || (soft_risk && distance > stop_distance)) break;
             }
-            const bool confirmed_emergency = ConfirmEmergency(track, hard_risk);
+            const bool immediate_confirmation = hard_risk && track.own_lane && track.frame == mFrame &&
+                                                IsNearForwardObstacle(box, result.axis_tests);
+            const bool confirmed_emergency = ConfirmEmergency(track, hard_risk) || immediate_confirmation;
             if(!soft_risk) continue;
             risk = true;
             if(distance < result.distance) {
                 result.distance = distance;
                 result.ttc = ttc;
                 result.object_id = id;
+                result.emergency_distance = stop_distance;
+                result.emergency_hits = track.emergency_hits;
+                result.immediate_confirmation = immediate_confirmation;
                 result.reason = (hard_risk && !confirmed_emergency) || !track.confirmed ? CONFIRMING : SLOWING;
             }
             if(hard_risk) {
                 emergency = emergency || confirmed_emergency;
                 pending_emergency = pending_emergency || !confirmed_emergency;
             } else {
+                // 上游已将低速噪声归零；静态沿用 vx/vy 均为零的现有判据。
+                // 额外预留只作用于本车道的普通减速，不扩大急停距离或解除保持范围。
+                const double extra_time = track.own_lane && !moving ? mConfig.static_obstacle_extra_time : 0.0;
+                const double av = mConfig.comfort_deceleration * (comfort_delay + extra_time);
                 const double usable = std::max(0.0, distance - mConfig.stop_margin);
                 const double safe_speed = std::max(0.0, std::sqrt(av * av + 2 * mConfig.comfort_deceleration * usable) - av);
                 limit = std::min(limit, safe_speed);
@@ -414,9 +542,10 @@ namespace planning_perception {
             }
         }
         if(emergency) mEmergencyLatched = true;
-        // 风险已退到正常停车余量外时可解除满制动，继续由舒适限速管理；
+        // 仍有紧迫风险（包括新 ID 等待确认）时保持已触发的急停。
+        // 风险退到紧急范围及停车余量外后，继续由舒适限速管理；
         // 不能因另一远处目标仍在路径上而永久保持此前的紧急制动。
-        if(emergency || (risk && result.distance <= mConfig.stop_margin + mConfig.emergency_margin)) {
+        if(emergency || pending_emergency || (risk && result.distance <= mConfig.stop_margin + mConfig.emergency_margin)) {
             mClearSince = -1;
         } else if(mClearSince < 0) {
             mClearSince = tNow;
@@ -432,7 +561,21 @@ namespace planning_perception {
             mAcceleration = 0;
             mSpeedValid = true;
         } else {
-            result.speed_limit = SmoothLimit(limit, std::max(0.0, tTargetSpeed), tEgo.speed, dt, risk);
+            FORWARD_LIMIT_S forward;
+            forward.approach_speed = forward.hard_speed = std::max(0.0, tTargetSpeed);
+            if(tForward) forward = ForwardObstacleSpeedLimit(tEgo, tTargetSpeed, tNow);
+            const bool forward_slowing = forward.approach_speed < tTargetSpeed;
+            // 新目标仍走唯一的时间域减速度/jerk 状态，避免叠加两个平滑器或逐帧硬切速度。
+            result.speed_limit = SmoothLimit(std::min(limit, forward.approach_speed), std::max(0.0, tTargetSpeed),
+                                             tEgo.speed, dt, risk || forward_slowing);
+            if(result.speed_limit > forward.hard_speed) {
+                // 首次发现过近或跟踪落后时，6 m 低速/3 m 零速上限优先，不能用平滑延后停车。
+                // 只压目标速度，不写 emergency、确认票数或 safety 解除状态。
+                result.speed_limit = forward.hard_speed;
+                mSpeed = result.speed_limit;
+                mAcceleration = 0;
+            }
+            if(forward_slowing && result.reason == CLEAR) result.reason = SLOWING;
             if(pending_emergency) {
                 // 前两帧立即限制为当前实际车速的 60%；其他更低速度优先，不新增 safety。
                 result.speed_limit = std::min(result.speed_limit, tEgo.speed * 0.6);

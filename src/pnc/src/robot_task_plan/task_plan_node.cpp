@@ -24,8 +24,11 @@
 // 全部回调运行在单线程 spinner, 无需加锁。
 // ===========================================================================
 #include <string>
+#include <chrono>
+#include "robot/task_fence_guard.h"
 
 #include <boost/date_time/posix_time/posix_time.hpp>
+#include <ros/package.h>
 #include <ros/ros.h>
 
 #include "robot/TaskInfo.h"
@@ -50,10 +53,28 @@ static bool g_rcv_p_p_flag = false;
 static bool g_rcv_can_data = false;
 
 static ros::Publisher g_task_plan_pub;
+static ros::Publisher g_fence_guard_pub;
 static ros::Publisher g_task_status_pub;
 static ros::Publisher g_v2n_heartbeat_pub;
 static ros::Publisher g_v2n_command_fb_pub;
 static ros::Publisher g_v2n_running_fb_pub;
+
+static void PublishFenceGuard() {
+    const auto &in = g_core.GetFenceGuard();
+    robot::task_fence_guard msg;
+    msg.header.stamp = ros::Time::now();
+    msg.revision = in.revision; msg.task_key = in.task_key;
+    msg.fence_version = in.fence_version; msg.route_version = in.route_version;
+    msg.start_index = in.start_index; msg.stop_index = in.stop_index;
+    msg.fence_file = in.fence_file; msg.stop = in.stop;
+    msg.truncated = in.truncated; msg.reason = in.reason;
+    msg.alarm = g_core.GetFenceAlarm();
+    g_fence_guard_pub.publish(msg);
+}
+
+static void FenceFeedbackCallBack(const robot::task_fence_guard::ConstPtr &msg) {
+    g_core.SetFenceFeedback(msg->revision, msg->task_key, msg->stop, msg->reason, msg->completed);
+}
 
 // ---- core 镜像 <-> ROS 消息, 逐字段 1:1 拷贝 ----
 static void TaskInfoToCore(const robot::TaskInfo &m, TaskInfoIn *out) {
@@ -171,6 +192,7 @@ static void CoreEventToRos(const TaskPlanEvent &ev) {
         case TP_PUBLISH_TASK_PLAN: {
             robot::task_plan_msg m;
             TaskPlanMsgToMsg(g_core.GetTaskPlanMsg(), &m);
+            PublishFenceGuard();
             g_task_plan_pub.publish(m);
             break;
         }
@@ -228,7 +250,7 @@ static void CanMsgCallBack(const robot::can_msg::ConstPtr &msg) {
     g_rcv_can_data = true;
     CanStateIn c;
     c.controlPanelState = msg->controlPanelState;
-    c.vehicleSpeed = msg->vehicleSpeed;
+    // 心跳车速经 path_plan_status.curSpeed 取得导航速度，不再复制 CAN 车速。
     c.hookPos = msg->hookPos;
     c.hookStatus = msg->hookStatus;
     c.batteryPower = msg->batteryPower;
@@ -241,6 +263,8 @@ static void NavigationMsgCallBack(const robot::navigation_msg::ConstPtr &msg) {
     n.lat = msg->lat;
     n.lon = msg->lon;
     n.heading = msg->heading;
+    n.xAxis = msg->xAxis; n.yAxis = msg->yAxis;
+    n.received_time = ros::Time::now().toSec();
     n.longitudinal_accelerate = msg->longitudinal_accelerate;
     g_core.SetNavigationData(n);
 }
@@ -249,6 +273,11 @@ static void TaskInfoMsgCallBack(const robot::TaskInfo::ConstPtr &msg) {
     printf("=========received task info from cloud, task_id:%d============\n", (int)msg->task_id);
     std::string task_file = "";
     ros::param::get("task_file", task_file);
+    std::string path_dir = "";
+    if(ros::param::get("path_dir", path_dir) && !path_dir.empty()) {
+        g_core.SetPathDir(path_dir);
+        g_core.LoadFenceFile(path_dir);
+    }
     TaskInfoIn info;
     TaskInfoToCore(*msg, &info);
     g_core.SetTaskInfo(info, task_file);
@@ -267,6 +296,11 @@ static void RunningMsgCallBack(const robot::RunningMsg::ConstPtr &msg) {
     t.heading = msg->values.toPoint.heading;
     std::string task_file = "";
     ros::param::get("task_file", task_file);
+    std::string path_dir = "";
+    if(ros::param::get("path_dir", path_dir) && !path_dir.empty()) {
+        g_core.SetPathDir(path_dir);
+        g_core.LoadFenceFile(path_dir);
+    }
     g_core.OnRunningMsg(t, task_file);
 }
 
@@ -309,6 +343,12 @@ static void T1Callback(const ros::TimerEvent &real) {
 int main(int argc, char **argv) {
     ros::init(argc, argv, "task_plan_node");
     ros::NodeHandle nh;
+    g_core.EnableFenceRuntime(static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::system_clock::now().time_since_epoch()).count()));
+    ros::Subscriber fence_feedback_sub = nh.subscribe("/robot/planning/fence_feedback", 1,
+        FenceFeedbackCallBack, ros::TransportHints().tcpNoDelay());
+    g_fence_guard_pub = nh.advertise<robot::task_fence_guard>("/robot/task_plan/fence_guard", 1);
+    ros::param::set("/alarmcmd", -1);
 
     ros::Subscriber path_plan_sub = nh.subscribe("/path_plan_status", 1,
                                                  PathPlanStatusCallBack, ros::TransportHints().tcpNoDelay());
@@ -348,10 +388,34 @@ int main(int argc, char **argv) {
     ros::param::get("config_file", config_file);
     g_core.InitParameter(config_file.c_str());
 
+    std::string path_dir = "";
+    if(!ros::param::get("path_dir", path_dir) || path_dir.empty()) {
+        std::string task_file = "";
+        ros::param::get("task_file", task_file);
+        if(!task_file.empty()) {
+            size_t pos = task_file.rfind("param");
+            if(pos != std::string::npos) {
+                path_dir = task_file.substr(0, pos) + "path/";
+            }
+        }
+    }
+    if(path_dir.empty()) {
+        std::string pkg_path = ros::package::getPath("robot");
+        if(!pkg_path.empty()) {
+            path_dir = pkg_path + "/path/";
+        }
+    }
+    if(!path_dir.empty()) {
+        g_core.SetPathDir(path_dir);
+        g_core.LoadFenceFile(path_dir);
+    }
+
     ros::param::set("/cloud/suggestspeed", 100.0);
 
     while(ros::ok()) {
         ros::spinOnce();
+
+        g_core.TickFence(ros::Time::now().toSec());
 
         // 挂钩/托盘位置限值: canbus 启动时发布, 此处每圈热读; 读失败时
         // position_limits 保持 NSDMI 初值(=config.cfg 默认值), 不覆盖镜像
@@ -379,6 +443,10 @@ int main(int argc, char **argv) {
             g_core.recived_cloud_task = false;
             g_core.mExecuteTaskNum = g_core.mCurTaskNum;
         }
+        PublishFenceGuard();
+        static int last_alarm = -2;
+        const int alarm = g_core.GetFenceAlarm();
+        if(alarm != last_alarm) { ros::param::set("/alarmcmd", alarm); last_alarm = alarm; }
         loop_rate.sleep();
     }
 

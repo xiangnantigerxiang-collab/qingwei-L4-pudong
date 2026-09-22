@@ -204,7 +204,6 @@ void BoxMsgCallBack(const visualization_msgs::MarkerArray& msg) {
         obj.confidence = std::isfinite(i.color.a) ? std::max(0.0f, std::min(1.0f, i.color.a)) : 0.0f;
         // 感知排除区域过滤：在局部坐标系下判断障碍物是否落在任一多边形内
         if(g_perception_boundary.IsPointInExclusion(obj.x, obj.y)) {
-            printf("Filtered out obstacle inside exclusion zone at local (%.2f, %.2f)\n", obj.x, obj.y);
             continue;  // 剔除落在多边形内的障碍物
         }
         // 首次观测还不能估速，先将框世界朝向换算为北零顺时针方位角。

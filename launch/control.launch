@@ -4,5 +4,6 @@
     <include file="$(find robot)/launch/robot_control.launch"/> 
     <include file="$(find robot)/launch/robot_canbus.launch"/>
     <include file="$(find robot)/launch/robot_navigation.launch"/>
-    <include file="$(find ultra_command)/launch/ultra_command.launch"/>
+    <!-- ultra_command 2026-09-21 起改为 HMI"自定义指令"卡片独立启停,
+         不再随本文件捆绑;救急脚本 start_l4.sh 已单独补一行启动 -->
 </launch>

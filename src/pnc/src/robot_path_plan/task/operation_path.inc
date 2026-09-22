@@ -92,7 +92,6 @@ void PathPlanComply::GenerateHookPath(robot::hook_position hook_pos) {
         xyz_temp.x_axis = temp[0];
         xyz_temp.y_axis = temp[1];
         xyz_temp.heading = temp[2];
-        printf("hook path: %f %f %f\n", xyz_temp.x_axis, xyz_temp.y_axis, xyz_temp.heading);
         mDrivingPath.push_back(xyz_temp);
     }
     mStopIndex = mDrivingPath.size() - 1;
@@ -270,6 +269,11 @@ void PathPlanComply::GenerateLoadPath(robot::task_plan_msg task_plan_t) {
 
     for(auto pathName : task_plan_t.pathList) {
         path_list = LoadPathFile(pathName);
+        if(path_list.empty()) {
+            mDrivingPath.clear();
+            mDesireSpeed = 0.0;
+            return;
+        }
         end_point = path_list.at(0);
     }
 
@@ -303,10 +307,17 @@ void PathPlanComply::GenerateLoadPath(robot::task_plan_msg task_plan_t) {
 void PathPlanComply::UpdateStopPoint(robot::task_plan_msg task_plan_t) {
     std::vector<XYZ_COOR_S> path_list;
 
-    for(auto pathName : task_plan_t.pathList)
+    for(auto pathName : task_plan_t.pathList) {
         path_list = LoadPathFile(pathName);
+        if(path_list.empty()) break;
+    }
 
     size_t size = path_list.size();
+    if(size == 0) {
+        mDrivingPath.clear();
+        mDesireSpeed = 0.0;
+        return;
+    }
 
     mPathPlanStatus.taskExecuStatus = TASKINPROGRESS;
     mPathPlanStatus.stopX = path_list.at(size - 1).x_axis;

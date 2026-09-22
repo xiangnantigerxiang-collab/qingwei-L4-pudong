@@ -1,7 +1,6 @@
-// 场地区域判断与路径坐标/方向辅助。仅由 path_plan_comply.cpp 包含。
+// 矩形构造与路径方向/距离辅助。仅由 path_plan_comply.cpp 包含。
 
 using Dot = std::pair<double, double>;
-const double EPS = 1e-9;
 
 std::vector<Dot> getRectangleVertices(const std::vector<Dot> &centerLine, double width) {
     if(centerLine.size() != 2) {
@@ -37,82 +36,6 @@ std::vector<Dot> getRectangleVertices(const std::vector<Dot> &centerLine, double
         {x2 + nx * halfWidth, y2 + ny * halfWidth},
         {x2 - nx * halfWidth, y2 - ny * halfWidth},
         {x1 - nx * halfWidth, y1 - ny * halfWidth}};
-}
-
-double cross(const Dot &A, const Dot &B, const Dot &P) {
-    double ABx = B.first - A.first;
-    double ABy = B.second - A.second;
-    double APx = P.first - A.first;
-    double APy = P.second - A.second;
-
-    return ABx * APy - ABy * APx;
-}
-
-// 判断点 P 是否在线段 AB 上
-bool onSegment(const Dot &A, const Dot &B, const Dot &P) {
-    if(fabs(cross(A, B, P)) > EPS) {
-        return false;
-    }
-
-    return P.first >= min(A.first, B.first) - EPS &&
-           P.first <= max(A.first, B.first) + EPS &&
-           P.second >= min(A.second, B.second) - EPS &&
-           P.second <= max(A.second, B.second) + EPS;
-}
-
-// 将四个顶点按顺时针或逆时针排序
-void sortRectangleVertices(std::vector<Dot> &rect) {
-    double cx = 0.0;
-    double cy = 0.0;
-
-    for(const auto &p : rect) {
-        cx += p.first;
-        cy += p.second;
-    }
-
-    cx /= rect.size();
-    cy /= rect.size();
-
-    sort(rect.begin(), rect.end(), [cx, cy](const Dot &a, const Dot &b) {
-        double angleA = atan2(a.second - cy, a.first - cx);
-        double angleB = atan2(b.second - cy, b.first - cx);
-        return angleA < angleB; });
-}
-
-// 判断点是否在矩形内
-// 返回值：0 外部，1 内部，2 边上
-int pointInRectangle(std::vector<Dot> rect, const Dot &p) {
-    if(rect.size() != 4) {
-        throw invalid_argument("rect 必须包含四个顶点");
-    }
-
-    sortRectangleVertices(rect);
-
-    bool hasPositive = false;
-    bool hasNegative = false;
-
-    for(int i = 0; i < 4; ++i) {
-        const Dot &A = rect[i];
-        const Dot &B = rect[(i + 1) % 4];
-
-        if(onSegment(A, B, p)) {
-            return 2;
-        }
-
-        double c = cross(A, B, p);
-
-        if(c > EPS) {
-            hasPositive = true;
-        } else if(c < -EPS) {
-            hasNegative = true;
-        }
-
-        if(hasPositive && hasNegative) {
-            return 0;
-        }
-    }
-
-    return 1;
 }
 
 bool PathPlanComply::IsApproach(const double num1, const double num2, const double factor) {
@@ -155,30 +78,6 @@ int PathPlanComply::FindNearestPoint2VehicleID(double x, double y, std::vector<O
     }
 
     return nearest_id;
-}
-
-LidarPos PathPlanComply::local2global2(double ox, double oy, double oheading,
-                                       double lx, double ly, double lheading) {
-    double h = 90.0 - oheading;
-
-    if(h > 360.0)
-        h -= 360.0;
-    if(h < 0.0)
-        h += 360.0;
-
-    double rad = h * M_PI / 180.0;
-    double cosd = cos(rad);
-    double sind = sin(rad);
-    // rotate
-    double dx = cosd * lx - sind * ly;
-    double dy = sind * lx + cosd * ly;
-    // translation
-    LidarPos point;
-    point.x = dx + ox;
-    point.y = dy + oy;
-    point.heading = lheading + oheading;
-
-    return point;
 }
 
 double PathPlanComply::PointDirectionToMe(Point point, Point me) {

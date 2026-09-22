@@ -3,14 +3,37 @@
 替代 simview(rviz)。纯 Python stdlib+rospy，零 pip，部署=拷目录。Three.js r147 vendored（最后保有非 module examples/js 的版本，MIT，离线）。
 功能：车位/朝向/速度、障碍、规划/路由线、停车点、托盘、地图三线、2 路 2D 补盲、4 路 3D 感知点云（rviz 未有过）；Orbit 视角+俯视 2D/3D 环视/跟随三预设；图层开关默认态照抄 robot.rviz。
 
-## 部署
+## 注意事项与容易疏忽的点
+
+- 本模块只显示，颜色/框存在与否不等于规划是否接收了有效 `/perception/planning`。
+- `/ehb_msg`已有dashboard消费者，can_msg字段变化还需同步CAN_LABELS/CAN_ENUMS。
+- 前端坐标是 `(x_ros,z_ros,-y_ros)`，rotation.y不取负；目标运动heading不等于检测框物理朝向。
+- 2D补盲缺少完整tf时依赖本模块外参，图上错位要先核对外参，不能修改规划距离补偿显示。
+- 改前端后强制刷新；性能测试的SwiftShader和无点云场景不能当作Orin整栈帧率。
+- 8081/8082同进程，仪表板端口失败不应拖垮主视图；无新消息显示停滞而非假健康。
+- 下文测试和排障命令在 `monitor/` 目录执行；车端启动在工程根执行。
+
+## 最近变化
+
+09-22新增"电子围栏"图层（当日按用户确认改版）：`fence/` 目录（与轨迹地图 `map/` 分离）
+下全部 csv 各为一个围栏（x/y/heading，heading 不参与几何）；**围栏本体红线+向外扩张
+2.5m 红线+栏外黄色斜线警示带**；判定基准=自车定位中心点，中心在任一围栏本体内=安全，
+越出本体变红（2.5m=车头前伸 2.3m+余量，中心在栏内时整车视觉不越线）；判定不受图层
+勾选影响。对抗校验轮（29 agent）修正：围栏 csv 兼容 Excel BOM（utf-8-sig）；
+开口<5m 窄凹槽自动停用外扩线/斜纹带（判定用本体不受影响）；开发机 Chromium 真浏览器
+已实证建栏/变色三态/2D 降级。改围栏 csv 需重启。
+09-17增加 `/gantry_state` 展示，active/open与规划消费语义需一致。
+09-16文字使用共享字形纹理与批量绘制，避免目标增多时反复上传纹理；本机资源下降不代表Orin控制延迟已解决。
+09-15以来障碍物type按车道关系着色。更早dashboard开发过程保留在归档，当前显示契约见下文。
+
+## 使用方法
 
 ```bash
 scp -r monitor/ nvidia@<orin-ip>:/home/nvidia/qingwei-L4-No2/
 bash monitor/monitor.sh                # 0.0.0.0:8081 + dashboard 8082 同进程起；MONITOR_PORT/DASHBOARD_PORT 改端口；与 hmi(8080) 并存
 ```
 
-## dashboard 仪表板（8082，2026-09-07 起，当日瓦片化瘦身+布局紧凑化）
+## dashboard 仪表板现行用法（8082）
 
 - `/`（static/dashboard.html，2Hz 轮询）+ `/api/dashboard`；与主服务**同进程**同一 rospy 节点，复用 RosVisualizer 订阅与 stash（ros_visualizer `/ehb_msg` 订阅与 `latest()/master_ok()/ros_available()` 取数接口）；绑定失败仅告警不影响 8081；`DASHBOARD_PORT=0` 关闭
 - **布局**：两卡靠左不拉伸（can ~160px 瓦片单列微缩、ehb ~575px 瓦片 4 列小号），右侧大片留白预留给未来新增信息面板（窄屏 flex-wrap 自动换行）；卡片带 `can/ehb` 变体类，JS 改 className 时须保留
@@ -27,19 +50,29 @@ bash monitor/monitor.sh                # 0.0.0.0:8081 + dashboard 8082 同进程
 ## 与 simview 语义对照（差异即约定）
 
 - yaw=(90°−heading) 一致；障碍 dx/dy 互换一致（半透明+抬 h/2 为有意改进）；路径 x/y 不等长整帧丢弃一致；停车点 stopAngle 用于朝向（C++ 恒指东，增强）；托盘不含 C++ 死偏移 hook_xg−2.8
-- **障碍物按 `/perception` objs 的 type 着色（3D CUBE 与降级 2D 同规则）**：0=红 / 1=橙 / 2=黄 / 其余（含字段缺失）墨绿 `0x339999`（历史默认色）。type 语义由上游决定：hdmap `LaneMapServer::ClassifyPerception`（09-15）车道占用 0-本道/1-左一/2-左二/3-左外/4-右外（外道落墨绿）；object.msg 旧注释为 0-车/1-行人/2-骑行/3-未知——两套语义下本配色均成立
+- **障碍物按 `/perception` objs 的 type 着色（3D CUBE 与降级 2D 同规则）**：0=红 / 1=橙 / 2=黄 / 其余（含字段缺失）墨绿 `0x339999`（历史默认色）。type 语义由上游决定：hdmap `LaneMapServer::ClassifyPerception`（09-15）车道占用 0-本道/1-左一/2-左二/3-左外/4-右外（外道落墨绿）；当前object.msg注释已同步为车道关系，不能再按车/行人类别解释颜色
 - **置信度文字（09-16 字号减半）**：`object.msg` 的 `confidence` 以白色文字显示在框上方，保留目前减半后的显示尺寸和 `h+0.3` 锚点；缺失时不显示。3D 与运动信息共用字形纹理和一个绘制批次，2D 降级为 18px 直立文字。
 - **障碍运动信息（09-16）**：在 confidence 上方从上到下显示 `id`、`speed`、`heading` 三行白字，只保留数值和单位（如 `42` / `5.00 m/s` / `36.87°`）。`speed=hypot(vx,vy)`，单位 m/s；heading 显示上游方位角，单位度。速度和航向保留两位小数，与 confidence 字号一致。3D 字形为 42px，按原来半字号的世界尺寸显示，行距仍为 0.9m；偏移在相机平面内计算，俯视/环视均保持直立和上下顺序。2D 字号为 18px，行距为 22px；随 lidar 图层显隐，confidence 缺失仍显示运动信息。
 - 地图：map/ 下全部 .csv 按名排序全画；rosparam /robot/mapfile 指单文件时只画该张
+- 电子围栏：fence/ 下全部 .csv 各为一个围栏（FENCE_PATH，与 map/ 分离避免当道路线画；
+  兼容 Excel "CSV UTF-8" 的 BOM）；每围栏**本体红边界线 + 向外扩张 2.5m 红线 + 两线间
+  黄色斜线警示带**（带在栏外）。判定基准=**自车定位中心点**（用户确认）：中心在任一
+  围栏本体内=安全黄框；越出本体（进入外侧斜线带或更远）变红（无围栏数据不变色；
+  **判定持续生效，不受图层勾选影响**）。2.5m=车头前伸 2.3m+0.2m 余量——中心在栏内时
+  车头伸出的部分仍落在外扩红线之内，视觉上整车未越线不变红。多围栏为"任一本体内=
+  安全"并集语义（用户确认），围栏间转移全程红；开口<5m 的窄凹槽自动停用外扩线/斜纹带
+  （只画本体红线，判定用本体不受影响）。显示与变色只在本模块，不参与规划/控制
 - 2D 补盲按通道左蓝右绿（intensity 未参与着色）；不订阅 /planning/obstacles（死话题）
 
 ## 2D 补盲外参（上实车一次）
 
-lakibeam 两路 frame_id 同为 `laser` 且工程内无 tf → 服务端外参变换，配置在 `monitor_config.py` 的 `SCAN_EXTRINSICS`（x/y 米 + yaw_deg）。标定：已知距离障碍对照页面弧位调至吻合。
+两路lakibeam的frame_id应以实际launch/消息为准（当前根挂接launch写robot），不能沿用早期统一laser的假定。
+缺少相应tf时由服务端做外参变换，配置在 `monitor_config.py` 的 `SCAN_EXTRINSICS`（x/y 米 + yaw_deg）。标定：已知距离障碍对照页面弧位调至吻合。
 
 ## CPU/带宽（monitor_config.py 的 CLOUD 段）
 
 4 路 PointCloud2 typed 订阅空转 12-40MB/s 是 CPU 大头，故：活动门控（30s 无浏览器拉取自动退订）/每路 1s 解析（parse_interval）/解包前 stride 预抽稀（默认 2）/0.2m 体素每路上限 8000 点。总 ≈380KB/帧@1Hz。占用偏高→调大 stride/parse_interval 或调粗 voxel；实测 `top`+hmi 面板 CPU。
+电子围栏开销有界：服务端加载/内缩一次缓存（O(围栏点数)，随 /api/map 一次性下发）；前端每帧对自车点做射线法判定 O(围栏点数)（当前 29 点 ≈60 次比较，远小于点云渲染），斜纹纹理只建一张。
 
 09-16 实车卡顿排查后，障碍四行文字改为**单张静态字形纹理、单个批量绘制对象**。数值变化仅更新复用的顶点和 UV 缓冲，不再按障碍重画 canvas 或上传整张纹理。100 个障碍的本机浏览器对照：文字 RGBA 像素数据量由约 74.9MiB 降到约 0.90MiB，文字绘制调用由 200 次降至 1 次；纹理大小不随障碍数量增长。数字、单位、白色/描边、字号及位置保持现有要求。测试场景不含地图/点云，浏览器使用 SwiftShader；此结果说明资源开销下降，不代表 Orin 实测帧率或整车控制时延。纯前端更新，部署后强制刷新页面以替换缓存。记录见 [performance_verification_20260916.json](tests/performance_verification_20260916.json)。
 
@@ -80,7 +113,8 @@ python3 tests/fuzz_proto.py     # 协议双解码对账 fuzz（50 轮）
 bash monitor.sh                 # 起服务（8081+8082），无 ROS 环境横幅
 ```
 
-注：测试的伪 master 端口已改 21111~21113（本机 11311 被 root 的真实 rosmaster 占用，见 workflow 09-07）。
+测试伪master使用21111～21113，避免占用默认11311。上文计数来自对应历史验证，
+本轮文档整理未重跑；当前端口占用应现场核对，不照搬09-07的机器状态。
 
 ## 文件
 

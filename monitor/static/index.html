@@ -167,6 +167,22 @@ var MM = {
     };
   },
 
+  /* 射线法点在多边形内(闭合多边形,不重复首点;边界上的点结果
+   * 不定——仅用于电子围栏闯入显示判定,不参与安全停车) */
+  pointInPoly: function (x, y, poly) {
+    var inside = false;
+    if (!poly || poly.length < 3) { return false; }
+    for (var i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      var xi = poly[i][0], yi = poly[i][1];
+      var xj = poly[j][0], yj = poly[j][1];
+      if ((yi > y) !== (yj > y) &&
+          x < (xj - xi) * (y - yi) / (yj - yi) + xi) {
+        inside = !inside;
+      }
+    }
+    return inside;
+  },
+
   /* 二进制帧解码 -> {ts, total, channels:[{id, count, pts:Float32Array}]}
    * 点 12B:x_mm(i32) y_mm(i32) z_mm(i16) intensity(u8) pad(u8);米制输出 */
   decodeBin: function (buf) {
@@ -216,6 +232,7 @@ var grpVehicle, grpScan, grpCloud;            // scan/cloud 挂车辆组(车体�
 var meshObstacles = [], linePlan, lineRefer, mapGroup = null;
 var meshStop, meshPallet, grid, layers = {};
 var meshGantry = null, gantryClosed = false;
+var fenceGroup = null, vehOutlineMat = null, vehFenceState = -1;
 
 function buildScene() {
   var view = document.getElementById("view");
@@ -248,9 +265,10 @@ function buildScene() {
     var t = MM.rosToThree(p[0], p[1], 1.0);   /* rviz 画在 z=1 */
     return new THREE.Vector3(t[0], t[1], t[2]);
   });
+  /* 车辆轮廓材质单独持有:闯入电子围栏缓冲带时改红(见 updateVehicleColor) */
+  vehOutlineMat = new THREE.LineBasicMaterial({ color: 0xffff00 });
   grpVehicle.add(new THREE.Line(
-    new THREE.BufferGeometry().setFromPoints(corners),
-    new THREE.LineBasicMaterial({ color: 0xffff00 })));
+    new THREE.BufferGeometry().setFromPoints(corners), vehOutlineMat));
   grpVehicle.add(new THREE.Mesh(
     new THREE.SphereGeometry(0.15, 10, 10),
     new THREE.MeshBasicMaterial({ color: 0xff0000 })));
@@ -291,9 +309,11 @@ function buildScene() {
   meshGantry.visible = false; scene.add(meshGantry);
 
   mapGroup = new THREE.Group(); scene.add(mapGroup);
+  fenceGroup = new THREE.Group(); scene.add(fenceGroup);
   var reg = { vehicle: grpVehicle, lidar: null, routing: lineRefer,
               planning: linePlan, loadpos: meshPallet, stoppose: meshStop,
-              map: mapGroup, scan: grpScan, cloud: grpCloud, grid: grid };
+              map: mapGroup, fence: fenceGroup, scan: grpScan, cloud: grpCloud,
+              grid: grid };
   layers = reg;
 }
 
@@ -346,6 +366,120 @@ function setLinePoints(line, pts) {
   var g = new THREE.BufferGeometry();
   g.setAttribute("position", new THREE.BufferAttribute(arr, 3));
   line.geometry = g;
+}
+
+/* ---- 电子围栏(/api/map 的 fences,每个 csv 一个围栏) ----
+ * 围栏本体红边界线 + 向外扩张 2.5m 的红边界线 + 两线之间黄色斜线警示带。
+ * 闯入判定基准=自车定位中心点:中心在任一围栏本体多边形内=安全(黄);
+ * 中心越出本体(进入外侧斜线带或更远)才变红。2.5m=车头前伸 2.3m+余量,
+ * 中心在栏内时车头最多伸出的部分仍落在外扩红线之内,视觉上整车未越线。
+ * 判定不受图层勾选影响;围栏与普通轨迹地图分离(monitor/fence/)。 */
+
+function closedPts(pts) {
+  if (!pts || !pts.length) { return []; }
+  return pts.concat([pts[0]]);   /* 前端负责闭合到最后一点 */
+}
+
+var _hatchTex = null;
+function hatchTexture() {
+  /* 32px 透明瓦片上三条 45° 黄线(含跨边补线保证无缝);repeat 0.5
+   * => 一块瓦片 2m,斜线间距约 1.4m。只建一次,重建围栏时共享复用 */
+  if (_hatchTex) { return _hatchTex; }
+  var cv = document.createElement("canvas");
+  cv.width = 32; cv.height = 32;
+  var c = cv.getContext("2d");
+  c.clearRect(0, 0, 32, 32);
+  c.strokeStyle = "#ffff00";
+  c.lineWidth = 5;
+  c.beginPath();
+  c.moveTo(-8, 8); c.lineTo(8, -8);
+  c.moveTo(0, 32); c.lineTo(32, 0);
+  c.moveTo(24, 40); c.lineTo(40, 24);
+  c.stroke();
+  _hatchTex = new THREE.CanvasTexture(cv);
+  _hatchTex.wrapS = THREE.RepeatWrapping;
+  _hatchTex.wrapT = THREE.RepeatWrapping;
+  _hatchTex.repeat.set(0.5, 0.5);
+  return _hatchTex;
+}
+
+function buildFences(m) {
+  if (!fenceGroup) { return; }
+  while (fenceGroup.children.length) {
+    var old = fenceGroup.children.pop();
+    if (old.geometry) { old.geometry.dispose(); }
+    /* 斜纹纹理全局共享,不随单个 mesh 释放 */
+    if (old.material) { old.material.dispose(); }
+  }
+  var list = (m && m.fences) || [];
+  for (var i = 0; i < list.length; i++) {
+    var f = list[i];
+    if (!f.fence || f.fence.length < 3) { continue; }
+    var fl = makeLine(0xff0000);
+    setLinePoints(fl, closedPts(f.fence));
+    fl.position.y = 0.05;
+    fenceGroup.add(fl);
+    /* 外扩线与斜纹带仅在偏移结果有效时绘制(服务端退化时 outer 为空,
+     * 只剩本体红线,判定不受影响) */
+    if (f.outer && f.outer.length >= 3) {
+      var ol = makeLine(0xff0000);
+      setLinePoints(ol, closedPts(f.outer));
+      ol.position.y = 0.05;
+      fenceGroup.add(ol);
+      /* 警示带 = 外扩多边形挖去围栏本体(ShapeGeometry 支持洞);
+       * 其 UV 即形状坐标(米),纹理 repeat 0.5 -> 2m 瓦片;
+       * rotation.x=-90° 把 shape(x,y) 落到 scene(x,0,-y),与地图同口径 */
+      var shape = new THREE.Shape(f.outer.map(function (p) {
+        return new THREE.Vector2(p[0], p[1]); }));
+      shape.holes.push(new THREE.Path(f.fence.map(function (p) {
+        return new THREE.Vector2(p[0], p[1]); })));
+      var mesh = new THREE.Mesh(new THREE.ShapeGeometry(shape),
+        new THREE.MeshBasicMaterial({ map: hatchTexture(),
+          transparent: true, depthWrite: false, side: THREE.DoubleSide }));
+      mesh.rotation.x = -Math.PI / 2;
+      mesh.position.y = 0.02;
+      fenceGroup.add(mesh);
+    }
+  }
+}
+
+/* ---- 电子围栏三态视觉语义 ----
+ * 0 = 安全态 (中心在围栏本体内, 车体黄框 #ffff00)
+ * 1 = 预警态 (中心越出本体红线, 进入外侧 2.5m 黄色斜线警示带, 车体橙框 #ff8c00)
+ * 2 = 违规报警态 (中心完全越出外扩 2.5m 红线, 车体红框 #ff0000)
+ * 独立于图层勾选; 无围栏数据按安全态处理 */
+function fenceState(x, y) {
+  var fs = (lastData.map && lastData.map.fences) || [];
+  if (!fs.length) { return 0; }
+  // 1. 若中心落在任一围栏本体多边形内，属于安全状态
+  for (var i = 0; i < fs.length; i++) {
+    if (MM.pointInPoly(x, y, fs[i].fence)) { return 0; }
+  }
+  // 2. 若不在本体内，但处于任一外扩缓冲带(outer)内，属于预警状态
+  for (var i = 0; i < fs.length; i++) {
+    if (fs[i].outer && fs[i].outer.length >= 3 && MM.pointInPoly(x, y, fs[i].outer)) {
+      return 1;
+    }
+  }
+  // 3. 既不在本体内，也不在任何外扩带内，属于严重违规报警状态
+  return 2;
+}
+
+function fenceViolation(x, y) {
+  return fenceState(x, y) !== 0;
+}
+
+var FENCE_VEH_COLORS = [0xffff00, 0xff8c00, 0xff0000];
+var FENCE_VEH_HEX = ["#ffff00", "#ff8c00", "#ff0000"];
+
+function updateVehicleColor(p) {
+  /* 只在状态变化时改材质,避免每帧分配新 Color;无定位按安全态复位 */
+  var st = p ? fenceState(p.x, p.y) : 0;
+  if (st === vehFenceState) { return; }
+  vehFenceState = st;
+  if (vehOutlineMat) {
+    vehOutlineMat.color = new THREE.Color(FENCE_VEH_COLORS[st]);
+  }
 }
 
 function setPointsBuf(grp, decoded, colorFn, size) {
@@ -583,6 +717,25 @@ function setup2d() {
   return true;
 }
 
+/* 2D 斜线纹理:16px 瓦片三条 45° 黄线,屏幕空间平铺(缩放时保持
+ * 视觉密度);绑定 ctx2d(2D 降级唯一画布),只建一次 */
+var _hatchPat2d = null;
+function hatchPattern2d() {
+  if (_hatchPat2d) { return _hatchPat2d; }
+  var cv = document.createElement("canvas");
+  cv.width = 16; cv.height = 16;
+  var c = cv.getContext("2d");
+  c.strokeStyle = "#ffff00";
+  c.lineWidth = 4;
+  c.beginPath();
+  c.moveTo(-4, 4); c.lineTo(4, -4);
+  c.moveTo(0, 16); c.lineTo(16, 0);
+  c.moveTo(12, 20); c.lineTo(20, 12);
+  c.stroke();
+  _hatchPat2d = ctx2d.createPattern(cv, "repeat");
+  return _hatchPat2d;
+}
+
 function ly2d(key) {          /* 图层开关在 2D 下的读取(缺省=开) */
   return layers["_2d_" + key] !== false;
 }
@@ -602,6 +755,15 @@ function render2d() {
   /* 世界(米,已减 origin,x 东 y 北) -> 屏幕(x 右,y 上为北) */
   function px(x) { return W / 2 + (x - cx) * zoom2d; }
   function py(y) { return H / 2 - (y - cy) * zoom2d; }
+  /* 围栏环带 Path2D 子路径(外环+内环,配合 evenodd 填充) */
+  function ringPath(p2, pts) {
+    if (!pts || pts.length < 3) { return; }
+    p2.moveTo(px(pts[0][0]), py(pts[0][1]));
+    for (var i = 1; i < pts.length; i++) {
+      p2.lineTo(px(pts[i][0]), py(pts[i][1]));
+    }
+    p2.closePath();
+  }
   function line(pts, color, w) {
     if (!pts || pts.length < 2) { return; }
     ctx2d.strokeStyle = color;
@@ -620,6 +782,25 @@ function render2d() {
       line(mlist[mi].center, "#ffffff", 1);
       line(mlist[mi].left, "#ff00ff", 1);
       line(mlist[mi].right, "#ff00ff", 1);
+    }
+  }
+  /* 电子围栏:本体红边界+外扩 2.5m 红线,两线之间黄色斜线警示带
+   * (屏幕空间纹理;环带 = 外扩 path 挖本体 path,evenodd 填充;
+   * 服务端外扩退化时只剩本体红线,判定不受影响) */
+  if (ly2d("fence")) {
+    var flist = (m && m.fences) || [];
+    for (var fi = 0; fi < flist.length; fi++) {
+      var ff = flist[fi];
+      if (!ff.fence || ff.fence.length < 3) { continue; }
+      if (ff.outer && ff.outer.length >= 3 && ctx2d.createPattern) {
+        var ring = new Path2D();
+        ringPath(ring, ff.outer);
+        ringPath(ring, ff.fence);
+        ctx2d.fillStyle = hatchPattern2d();
+        ctx2d.fill(ring, "evenodd");
+      }
+      line(closedPts(ff.fence), "#ff0000", 2);
+      line(closedPts(ff.outer), "#ff0000", 1);
     }
   }
   /* 路径 */
@@ -694,7 +875,9 @@ function render2d() {
     ctx2d.save();
     ctx2d.translate(px(v.x), py(v.y));
     ctx2d.rotate(-v.yaw);
-    ctx2d.strokeStyle = "#ffff00";
+    /* 电子围栏三态着色: 0=安全黄, 1=警示带预警橙, 2=完全越界红, 与 3D 同口径 */
+    var st = fenceState(v.x, v.y);
+    ctx2d.strokeStyle = FENCE_VEH_HEX[st];
     ctx2d.lineWidth = 2;
     ctx2d.strokeRect(VEH_SHAPE[1] * zoom2d, -VEH_SHAPE[2] * zoom2d,
                      (VEH_SHAPE[0] - VEH_SHAPE[1]) * zoom2d,
@@ -774,6 +957,8 @@ function tick(now) {
     grpCloud.rotation.y = grpVehicle.rotation.y;
     lastPose = p;
   }
+  /* 电子围栏闯入判定随外推位姿走(无定位 p=null 按不闯入复位) */
+  updateVehicleColor(p);
   /* 闸机关闭箱随外推位姿平滑:中心=车辆参考点前向 2.5m(近端面 2m+半厚
    * 0.5m),朝向=车头(箱体 x 沿车头=1m 厚,z 横向=3m 跨度);scene 系
    * (x, y_up, -y_ros) 与障碍物同口径;无定位(p 为空)时隐藏 */
@@ -912,6 +1097,7 @@ function loadMapOnce() {
       mark2dDirty();
       if (sceneOk) {
         buildMapLines(m);
+        buildFences(m);
       }
       layerDefault = m.layers || null;
       if (layerDefault) { applyLayerDefaults(); }
@@ -921,7 +1107,8 @@ function loadMapOnce() {
 /* ---- 图层面板 ---- */
 var LAYER_NAMES = { vehicle: "车辆", lidar: "感知障碍物", routing: "路由路径",
   planning: "规划路径", loadpos: "托盘位置", stoppose: "停车点",
-  map: "地图", scan: "2D 补盲激光", cloud: "3D 感知点云", grid: "参考网格" };
+  map: "地图", fence: "电子围栏", scan: "2D 补盲激光", cloud: "3D 感知点云",
+  grid: "参考网格" };
 
 function buildLayerPanel() {
   var box = document.getElementById("layerList");

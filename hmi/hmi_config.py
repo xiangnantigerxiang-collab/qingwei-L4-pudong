@@ -201,6 +201,10 @@ CONFIG = {
         },
         {
             "name": "pnc",
+            # 节点数按 control.launch 递归展开后的 <node> 标签实数:
+            # task_plan/path_plan/control/navigation 各1 + canbus launch 含
+            # perception_msg_convert 与 can_comm_node 两节点 = 6(不含 ultra 卡)。
+            # 旧标题"6节点"在捆绑 ultra 时期实际拉起 7 个节点,同为差一错误。
             "title": "规划控制(6节点)",
             "group": 3,
             "cmd": ["roslaunch", "./launch/control.launch"],
@@ -212,6 +216,25 @@ CONFIG = {
             ],
             "start_timeout": 60,
             "stop_pat": "launch/control.launch",
+        },
+        {
+            "name": "ultra_command",
+            "title": "自定义指令",
+            "group": 3,
+            # 312 任务族监控矩形障碍物检测(2026-09-21 由 control.launch 捆绑改为
+            # 独立卡片):节点不发话题,10Hz 写 rosparam /ultra/status/safe 供
+            # planning 消费,故健康检查用 master 节点表计数(fms 同款)。
+            # launch 内 respawn=true,进程崩溃由 roslaunch 1s 拉起。
+            # 与 pnc 组内并行启动无碍:path_dir 参数缺失时节点每周期重试加载。
+            "cmd": ["roslaunch", "ultra_command", "ultra_command.launch"],
+            "cwd": "$ROOT",
+            "setup": ["$ROOT/devel/setup.bash"],
+            "health": [{"type": "nodes", "pattern": "/ultra_command_node", "min": 1}],
+            # 同时匹配 launch 与节点二进制名(centerpoint 卡同款):roslaunch 被
+            # SIGKILL/OOM 单击杀后节点孤儿仍可被残留检测/外部识别/重启清理看见,
+            # 避免新旧两个 ultra_command_node 竞态双写 /ultra/status/safe。
+            # [e] 写法防 stop_cmd 类 shell 包装自匹配。
+            "stop_pat": "ultra_command\\.launch|ultra_command_nod[e]",
         },
         {
             "name": "pnc_bags",

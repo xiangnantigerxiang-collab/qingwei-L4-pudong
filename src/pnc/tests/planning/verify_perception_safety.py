@@ -40,7 +40,7 @@ def main():
         raise RuntimeError("Planning launch does not load perception safety configuration")
     parameters = yaml.safe_load((pnc / "param/perception_safety.yaml").read_text())
     parameters = parameters["/robot/planning/perception_safety"]
-    if len(parameters) != 23 or any(not isinstance(value, (int, float)) for value in parameters.values()):
+    if len(parameters) != 26 or any(not isinstance(value, (int, float)) for value in parameters.values()):
         raise RuntimeError("Incomplete or nonnumeric perception safety configuration")
     source_hashes = {str(path.relative_to(pnc)): hashlib.sha256(path.read_bytes()).hexdigest()
                      for folder in ("src/robot_path_plan", "src/robot_perception_convert")

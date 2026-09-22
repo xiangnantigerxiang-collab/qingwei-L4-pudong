@@ -1,21 +1,33 @@
-# 感知发布前车道分类校验
+# 感知测试入口与历史HDMap接入夹具
 
-在工程根执行：
+更新：2026-09-19。本目录是09-15仅接入HDMap阶段的测试，当前转换链已加入空观测历史、
+跟踪速度与专用规划输出，因此旧夹具不再代表完整现行发布语义。
+
+## 使用方法
+
+现行发布/跟踪验证，在工程根执行：
 
 ```bash
-python3 src/pnc/tests/perception/verify.py --output /tmp/pnc_hdmap_publish_verify
+python3 src/pnc/src/robot_perception_convert/tests/verify_publish.py --output /tmp/perception-publish-check
+python3 src/pnc/src/robot_perception_convert/tests/verify_tracking.py --output /tmp/perception-tracking-check
 ```
 
-默认链接 `src/hdmap/sdk/lib/libhdmap_server.so`，可用 `--hdmap-sdk` 指定其他已安装 SDK。
-SDK 必须先按 HDMap README 在本机架构编译安装。
+仅在复现旧HDMap接入阶段、并使用对应源码基线时执行本目录入口：
 
-测试从真实 `robot/*.msg` 生成消息桩，CMake 编译实际 `perception_msg_convert` 目标。
-ROS 的传输、包目录和 catkin 消息生成用桩模拟；分类计算使用真实动态库。
-SDK 的命名空间导出目标和 catkin 的传统 include/library 变量分别编译、检查动态链接。
+```bash
+python3 src/pnc/tests/perception/verify.py --output /tmp/pnc-hdmap-historical-check
+```
 
-`integration.cpp` 直接包含生产转换节点，捕获调用 `publish` 时传入的消息副本。
-71 项检查覆盖五种 type、跨车道最大覆盖、逆向行驶、自车离道、不同框朝向、
-排除区域与 CUBE 过滤、原有空输入行为、错误帧停止发布与恢复、启动地图目录覆盖，
-以及加载后移开 CSV 仍能查询。脚本同时检查包依赖、重建顺序和脚本语法。
+默认链接 `src/hdmap/sdk/lib/libhdmap_server.so`，`--hdmap-sdk`可指定已安装SDK。
+SDK必须先按 [HDMap README](../../../hdmap/README.md) 在本机架构构建；消息桩从真实.msg生成。
 
-日志及 `result.json` 写入指定输出目录。本机桩验证不包含 ROS1 通信和车载运行。
+## 注意事项与容易疏忽的点
+
+- 旧71项检查包含“空MarkerArray不发布”期望，已被后续有效空观测入窗需求取代；
+  不要把旧计数称为当前整链通过，也不要为跑通旧测试回退当前业务。
+- 使用真实SDK与消息桩验证API，不包括ROS1传输、Orin构建或车辆响应。
+- x86_64 SDK不能复制给aarch64运行；变更地图后需要重启消费者加载新缓存。
+- 输出目录只放临时日志和result.json，不改用户地图或标定。
+
+详细现行规则见 [转换模块](../../src/robot_perception_convert/README.md)。
+09-15原始验证过程见 [归档](../../../../docs/history/2026-09-19-before-docs/src/pnc/tests/perception/README.md)。

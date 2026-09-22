@@ -15,6 +15,10 @@ void TaskPlanCallBack(const robot::task_plan_msg::ConstPtr &msg) {
     pathPlanComply.SetTaskPlanData(*msg);
 }
 
+void FenceGuardCallBack(const robot::task_fence_guard::ConstPtr &msg) {
+    pathPlanComply.SetFenceGuard(*msg);
+}
+
 void CanMsgCallBack(const robot::can_msg::ConstPtr &msg) {
     pathPlanComply.SetCanData(*msg);
 }
@@ -34,7 +38,8 @@ void GantryStateCallBack(const gantry_detect::gantry_state::ConstPtr &msg) {
 }
 
 void PlanningPerceptionCallBack(const robot::perception::ConstPtr &msg) {
-    if(pathPlanComply.AccSwitch) return;
+    // 起步观察仅 D 挡启用；常规入口内部按挡位保留原 ACC 输入开关。
+    pathPlanComply.SetStartupPerceptionData(*msg);
     pathPlanComply.SetPlanningPerceptionData(*msg);
 }
 
@@ -114,6 +119,10 @@ void T1Callback(const ros::TimerEvent &real) {
 int main(int argc, char **argv) {
     ros::init(argc, argv, "path_plan_node");
     ros::NodeHandle nh;
+    pathPlanComply.EnableFenceGuard();
+    ros::Subscriber fence_guard_sub = nh.subscribe("/robot/task_plan/fence_guard", 1,
+        FenceGuardCallBack, ros::TransportHints().tcpNoDelay());
+    ros::Publisher fence_feedback_pub = nh.advertise<robot::task_fence_guard>("/robot/planning/fence_feedback", 1);
     ros::Subscriber task_plan_sub = nh.subscribe(
         "/task_plan_msg", 1, TaskPlanCallBack, ros::TransportHints().tcpNoDelay());
     ros::Subscriber can_msg_sub = nh.subscribe(
@@ -183,10 +192,11 @@ int main(int argc, char **argv) {
         nh.getParam("/canbus/palletposition/max", pathPlanComply.PalletPosMax);
 
         // 调用顺序属于现役数据流：先更新任务进度和速度上限，再生成参考路径，
-        // 最后叠加人工/急停/断网/等待区等安全条件并发布最终路径与状态。
+        // 最后叠加人工/急停/断网等安全条件并发布最终路径与状态。
         pathPlanComply.PathPlanProcess();  // 这里从task读取任务数据包括:挡位，轨迹，速度
         pathPlanComply.PublishReferPath(refer_path_pub);
         pathPlanComply.PublishPlanPath(plan_path_pub, sound_light_sub);
+        pathPlanComply.PublishFenceFeedback(fence_feedback_pub);
         pathPlanComply.PublishPathPlanStatus(plan_status_pub);
 
         loop_rate.sleep();

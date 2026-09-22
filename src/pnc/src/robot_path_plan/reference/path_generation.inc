@@ -1,21 +1,49 @@
 // 参考点采样、R 挡路径和前向路径生成。由 path_plan_reference.inc 包含。
 
 void PathPlanComply::BuildReferencePathPoints(std::vector<float> &x, std::vector<float> &y,
-                                              std::vector<float> &heading, int &LaneChangeSwitch) {
-    // 从最近点向前每隔两点采样，点距不足 0.3 m 则跳过，最多保留 20 点。
+                                              std::vector<float> &heading) {
+    // D 挡保持原采样密度，向前取最多 60 点；其他挡位保留原 1.5 倍前视里程。
+    // 剩余路线不足时只取到真实末端，不通过加密或外推凑齐点数。
     int size = mDrivingPath.size();
-    std::vector<XYZ_COOR_S> extend_path;
+    if(FenceTaskRequired()) size = std::min(size, mStopIndex + 1);
+    if(mKeypoint < 0 || mKeypoint >= size)
+        return;
+
+    const bool forward = mVehicleData.curGear == GEAR_D;
+    const size_t forward_point_count = 60;
+    if(forward) {
+        // 三个数组各预留一次容量，避免延长轨迹时反复扩容和复制。
+        x.reserve(forward_point_count);
+        y.reserve(forward_point_count);
+        heading.reserve(forward_point_count);
+    }
 
     XYZ_COOR_S xyz_last = mDrivingPath.at(mKeypoint);
     x.push_back(xyz_last.x_axis);
     y.push_back(xyz_last.y_axis);
     heading.push_back(xyz_last.heading);
 
-    LaneChangeSwitch = xyz_last.z_axis;
-
-    // load path section from refernce path
-    for(int i = mKeypoint + 1; i < size - 2; i += 2) {
+    double distance = 0.0;
+    double lookahead = -1.0;
+    bool reached_horizon = false;
+    for(int i = mKeypoint + 1; i < size; ++i) {
         XYZ_COOR_S xyz_temp = mDrivingPath.at(i);
+        if(!forward) {
+            const auto &previous = mDrivingPath.at(i - 1);
+            const double segment = hypot(xyz_temp.x_axis - previous.x_axis,
+                                         xyz_temp.y_axis - previous.y_axis);
+            if(lookahead > 0.0 && segment > 0.0 && distance + segment >= lookahead) {
+                const double ratio = (lookahead - distance) / segment;
+                x.push_back(previous.x_axis + ratio * (xyz_temp.x_axis - previous.x_axis));
+                y.push_back(previous.y_axis + ratio * (xyz_temp.y_axis - previous.y_axis));
+                heading.push_back(previous.heading);
+                reached_horizon = true;
+                break;
+            }
+            distance += segment;
+        }
+        if((i - mKeypoint) % 2 == 0)
+            continue;
 
         double dx = xyz_temp.x_axis - xyz_last.x_axis;
         double dy = xyz_temp.y_axis - xyz_last.y_axis;
@@ -30,39 +58,29 @@ void PathPlanComply::BuildReferencePathPoints(std::vector<float> &x, std::vector
 
         xyz_last = xyz_temp;
 
-        if(x.size() >= 20)
+        if(forward && x.size() >= forward_point_count) {
+            reached_horizon = true;
             break;
+        }
+        if(!forward && x.size() == 20)
+            lookahead = distance * 1.5;
     }
 
-    // generate extended path
-    // 这里添加延长路径是为了精准停靠
-    if(x.size() < 20) {
-        XYZ_COOR_S xyz_temp = mDrivingPath.at(size - 2);
-        // printf("last point: x:%f, y:%f, heading:%f\n", xyz_temp.x_axis, xyz_temp.y_axis, xyz_temp.heading);
-        float head_extend = xyz_temp.heading;
-        printf("xyz heading:%f\n", head_extend);
-        if(mVehicleData.curGear == GEAR_R) {
-            head_extend += 180.0;
+    const auto &endpoint = mDrivingPath[size - 1];
+    if(!reached_horizon && hypot(endpoint.x_axis - x.back(), endpoint.y_axis - y.back()) > 1e-4) {
+        x.push_back(endpoint.x_axis);
+        y.push_back(endpoint.y_axis);
+        heading.push_back(endpoint.heading);
+    }
 
-            if(head_extend > 360.0)
-                head_extend -= 360.0;
-            // if (head_extend > 0.0)
-            //     head_extend += 360.0;
-        }
-        printf("head extend is:%f\n", head_extend);
-        extend_path = pubalgor.GenerateExtendedPath(
-            xyz_temp.x_axis, xyz_temp.y_axis, head_extend, 30);
-
-        size = extend_path.size();
-
-        for(int i = 0; i < size; i += 6) {
-            xyz_temp = extend_path.at(i);
-            x.push_back(xyz_temp.x_axis);
-            y.push_back(xyz_temp.y_axis);
-            heading.push_back(head_extend);
-
-            if(x.size() >= 20)
-                break;
+    // 控制侧至少接收 10 点；临近路线末端时补入路线内已走过的点供拟合，
+    // 不再沿末端航向虚构延长线。最近点仍由控制器按车辆位置匹配。
+    for(int i = mKeypoint - 1; i >= 0 && x.size() < 10; --i) {
+        const auto &point = mDrivingPath.at(i);
+        if(hypot(point.x_axis - x.front(), point.y_axis - y.front()) >= 0.3) {
+            x.insert(x.begin(), point.x_axis);
+            y.insert(y.begin(), point.y_axis);
+            heading.insert(heading.begin(), point.heading);
         }
     }
 }
@@ -86,7 +104,6 @@ void PathPlanComply::UpdateReverseReferencePath(const std::vector<float> &x, con
             backdist = d;
     }
 
-    printf("R挡检测: objs数量=%d, backdist=%.3f\n", (int)mPerceptionBackScan.objs.size(), backdist);
 
     if(backdist < 2.5) {
         printf("R挡, 障碍物距离 < 2.5, 停车，障碍物距离: %f\n", backdist);
@@ -98,7 +115,7 @@ void PathPlanComply::UpdateReverseReferencePath(const std::vector<float> &x, con
 }
 
 void PathPlanComply::UpdateForwardReferencePath(const std::vector<float> &x, const std::vector<float> &y,
-                                                const std::vector<float> &heading, int LaneChangeSwitch) {
+                                                const std::vector<float> &heading) {
     // gear D
     lidarobjs_global_.clear();
     lidarobjs_global_ = Obj_Projecte_Map(mPerception, lidarobjs_global_);
@@ -131,7 +148,7 @@ void PathPlanComply::UpdateForwardReferencePath(const std::vector<float> &x, con
     if(!mPerceptionSafety.HasInput()) {
         double dist = Distance2PerceptionObjs(mNavData.xAxis, mNavData.yAxis);
         dist = std::max<double>(1.0, dist / 2.0);
-        if(dist < 3 && mVehicleData.vehicleSpeed > 3.0) {
+        if(dist < 3 && mNavData.gpsSpeed > 3.0) {
             planspeed = std::min<double>(planspeed, dist);
         }
     }
@@ -151,7 +168,6 @@ void PathPlanComply::UpdateForwardReferencePath(const std::vector<float> &x, con
     mReferPath.safety = 0;
     mReferPath.planspeed = planspeed;
     mReferPath.desireSpeed = std::min<double>(planspeed, mDesireSpeed);
-    printf("=======task_id:%d\n", mTaskPlanData.task_id);
     if(mTaskPlanData.task_id == 4) {  // 测试分段限速
         //double cur_lane_speed = mReferPath.desireSpeed;
         //double next_lane_speed = std::max(1.0,  mReferPath.desireSpeed - 1.5);
@@ -159,16 +175,13 @@ void PathPlanComply::UpdateForwardReferencePath(const std::vector<float> &x, con
         double limit_speed = getLaneLimitSpeedTest(3.0, 1.5);
         mReferPath.desireSpeed = std::min(double(mReferPath.desireSpeed), limit_speed);
     }
-    // printf("ref path id:%d, lane change switch:%d\n", mReferPath.Path_Id, LaneChangeSwitch);
-    // LaneChangeSwitch = 1; // 绕障
-    if(mReferPath.Path_Id == 5 || LaneChangeSwitch == 0) {
-        mReferPath.x = x;
-        mReferPath.y = y;
-    }
+    // 现役前向路径固定使用采样参考线；不再读取CSV变道标志。
+    mReferPath.x = x;
+    mReferPath.y = y;
 }
 
 void PathPlanComply::ReusePreviousTrajectory() {
-    // 旧轨迹超过 20 点、起步检查已通过且无碰撞时，才可能从当前位姿裁剪复用。
+    // 旧轨迹超过 20 点且无碰撞时，才可能从当前位姿裁剪复用。
     // 即便不复用，函数末尾也要更新 path_final_last，保持下一周期的比较基准。
     // check last trajectory collision
     int collision_check = 0;
@@ -185,7 +198,7 @@ void PathPlanComply::ReusePreviousTrajectory() {
 
     int size = path_final_last.size();
 
-    if(size > 20 && InitSafetyCheck == 1) {
+    if(size > 20) {
         for(auto i : mPerception.objs) {
             path_dist = 100.0;
             // 计算障碍物与路径的最近距离

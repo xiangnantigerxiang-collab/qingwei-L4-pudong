@@ -20,6 +20,7 @@ catkin_make --pkg rslidar_sdk -DENABLE_TRANSFORM=ON
 catkin_make -j"$JOBS" --pkg ivlocmsg || die "ivlocmsg 编译失败"
 catkin_make -j"$JOBS" --pkg auto_couple || die "auto_couple 编译失败"
 catkin_make -j"$JOBS" --pkg lidar_perception || die "lidar_perception 编译失败"
+catkin_make -j"$JOBS" --pkg hdmap || die "hdmap 编译失败"
 catkin_make -j"$JOBS" --pkg robot  || die "robot(pnc) 编译失败"
 catkin_make -j"$JOBS" --pkg canbus || die "canbus 编译失败"
 # ⚠ --pkg 会把 CATKIN_WHITELIST_PACKAGES 写进 CMake 缓存,

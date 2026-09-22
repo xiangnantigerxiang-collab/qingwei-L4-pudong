@@ -1,5 +1,6 @@
 // 同一组业务输入分别驱动重构前后实现；输出完整消息、参数事件及跨帧状态供逐字节比较。
 #include "test_access.h"
+#include "navigation_feedback.h"
 #include "test_trace.h"
 #include <cassert>
 #include <fstream>
@@ -46,7 +47,15 @@ struct Fixture {
         robot::can_msg can;
         can.curGear = GEAR_D;
         can.controlPanelState = 1;
-        plan->SetCanData(can);
+        // 旧业务差分从已完成起步观察的自动会话开始，专门的手动切自动另有测试。
+        can.vehicleSpeed = 0.3;
+        ros::testTime() = 99.8;
+        SetVehicleFeedback(*plan, can);
+        ros::testTime() = 99.9;
+        SetVehicleFeedback(*plan, can);
+        can.vehicleSpeed = 0;
+        ros::testTime() = 100.0;
+        SetVehicleFeedback(*plan, can);
         for(int i = 0; i < 160; i++) {
             XYZ_COOR_S point{};
             point.x_axis = 100.0 + i * 0.2;
@@ -99,14 +108,12 @@ struct Fixture {
         TraceValue(trace, plan->mPerceptionBackScan);
         trace << '\n';
         for(double value : {double(plan->mKeypoint), double(plan->mStopIndex), double(plan->mDesireSpeed),
-                            double(plan->remain_distance_), double(plan->command_state), double(plan->InitSafetyCheck),
+                            double(plan->remain_distance_), double(plan->command_state),
                             double(plan->emergencyStop), double(plan->HornFlag), double(plan->backdist_flag),
                             double(plan->safety_check_counter_refer), double(plan->safety_check_counter_percep),
                             plan->sysTime.vehicleStop, plan->sysTime.vehicleRun, plan->sysTime.taskStart})
             TraceValue(trace, value);
         TraceValue(trace, plan->history_risk_vec);
-        TraceValue(trace, plan->unsafe_vec);
-        TraceValue(trace, plan->history_unsafe);
         trace << '\n';
         for(auto point : plan->mDrivingPath) {
             TraceValue(trace, point.x_axis);
@@ -153,10 +160,7 @@ void TestStartupAndStops() {
     Fixture f;
     for(int i = 0; i < 35; i++) {
         f.Tick("startup-" + std::to_string(i));
-        if(i < 24)
-            assert(f.plan->mPlanPath.desireSpeed == 0.0);
-        else
-            assert(f.plan->InitSafetyCheck == 1 && f.plan->mPlanPath.desireSpeed > 0.0);
+        assert(f.plan->mPlanPath.desireSpeed > 0.0);
     }
     for(int reason = 0; reason < 4; reason++) {
         f.plan->emergencyStop = reason == 0;
@@ -178,7 +182,6 @@ void TestStartupAndStops() {
 
 void TestCollisionAndReverse() {
     Fixture f;
-    f.plan->InitSafetyCheck = 1;
     f.plan->mPerception.objs = {ObstacleAt(103, 100)};
     for(int i = 0; i < 3; i++) {
         f.Tick("collision-" + std::to_string(i), false);
@@ -207,11 +210,11 @@ void TestCollisionAndReverse() {
     assert(f.plan->mReferPath.desireSpeed > 0.0);
 
     f.plan->mVehicleData.curGear = GEAR_R;
-    f.plan->mKeypoint = 155;  // 触发末端补点和 R 挡航向翻转
+    f.plan->mKeypoint = 155;  // 触发末端轨迹适配，仍满足控制侧至少 10 点的要求。
     for(double distance : {2.49, 2.5, 2.51, 8.0}) {
         f.plan->mPerceptionBackScan.objs = {ObstacleAt(100 + distance, 100)};
         f.Tick("reverse-" + std::to_string(distance), false);
-        assert(f.plan->mReferPath.x.size() == 20);
+        assert(f.plan->mReferPath.x.size() >= 10);
         assert(f.plan->mReferPath.safety == (distance < 2.5));
     }
 }
@@ -226,15 +229,14 @@ void TestTaskSwitchAndPaths() {
     f.plan->mNavData.xAxis = 0;
     f.plan->mNavData.yAxis = 0;
     f.plan->command_state = 1;
-    f.plan->history_unsafe.assign(30, false);
     f.plan->SetTaskPlanData(task);
     f.Snapshot("same-task");
-    assert(f.plan->command_state == 1 && !f.plan->history_unsafe.front());
+    assert(f.plan->command_state == 1);
     f.plan->emergencyStop = 1;
     task.task_id++;
     f.plan->SetTaskPlanData(task);
     f.Snapshot("new-task");
-    assert(f.plan->command_state == 2 && f.plan->history_unsafe.front());
+    assert(f.plan->command_state == 2);
     assert(f.plan->emergencyStop == 1);
     assert(f.plan->mDrivingPath.size() > 20);
     f.plan->SetTaskPlanData(task);
@@ -337,16 +339,13 @@ void TestTaskSpeedRules() {
 
 void TestWaitingAreaAndProgress() {
     Fixture f;
-    f.plan->InitSafetyCheck = 1;
-    f.plan->history_unsafe.assign(30, false);
-    f.plan->unsafe_vec.assign(4, false);
     f.plan->mNavData.xAxis = 0;
     f.plan->mNavData.yAxis = 0;
-    assert(f.plan->checkIsInWaiting());
+    // 原固定等待区不再叠加区域停车；路径碰撞仍由参考路径阶段判断。
     f.plan->mPerception.objs = {ObstacleAt(5, 0)};
     f.Tick("waiting-area", false);
-    assert(f.plan->mPlanPath.desireSpeed == 0);
-    assert(ros::param::values()["/canbus/light"] == "7");
+    assert(f.plan->mPlanPath.desireSpeed > 0);
+    assert(ros::param::values()["/canbus/light"] != "7");
 
     f.plan->mNavData.xAxis = 100;
     f.plan->mNavData.yAxis = 100;
@@ -377,7 +376,6 @@ void TestInputAndTrajectoryReuse() {
     f.plan->SetBackScanData(scan);
     f.plan->SetPerceptionData(perception);
     f.Snapshot("scan-input");
-    f.plan->InitSafetyCheck = 1;
     f.plan->mPerception.objs.clear();
     for(int i = 0; i < 40; i++) {
         OriginalInsData point{};
@@ -395,11 +393,12 @@ void TestSeededScenarios() {
     // 固定种子覆盖障碍物位置、挡位、暂停/急停和加速平滑组合，并保留连续帧历史。
     std::mt19937 random(20260912);
     Fixture f;
-    f.plan->InitSafetyCheck = 1;
     for(int i = 0; i < 250; i++) {
         f.plan->mVehicleData.curGear = i % 11 == 0 ? GEAR_R : GEAR_D;
-        f.plan->mVehicleData.vehicleSpeed = (random() % 45) / 10.0;
-        f.plan->mPathPlanStatus.curSpeed = f.plan->mVehicleData.vehicleSpeed;
+        f.plan->mNavData.gpsSpeed = (random() % 45) / 10.0;
+        // 改前/改后都使用同一实测速度；来源冲突由 navigation_speed 专项单独覆盖。
+        f.plan->mVehicleData.vehicleSpeed = f.plan->mNavData.gpsSpeed;
+        f.plan->mPathPlanStatus.curSpeed = f.plan->mNavData.gpsSpeed;
         f.plan->mVehicleData.linkPallet = i % 3 == 0;
         f.plan->mVehicleData.hookStatus = i % 2 ? ACTUATOR_UP_END : ACTUATOR_DOWN_END;
         f.plan->command_state = i % 17 == 0 ? 1 : 2;

@@ -79,6 +79,7 @@
 
 - /box: 0
 - /perception: 1
+- /perception/planning: 0
 - /lidar_pointcloud_rear: 0
 - /lidar_pointcloud_rear_left: 0
 - /lidar_pointcloud_rear_right: 0
@@ -223,7 +224,8 @@
 ### 3D 感知与兼容链路
 
 - /box: 0
-- /perception: 0
+- /perception: 1
+- /perception/planning: 1
 - /lidar_pointcloud_rear: 0
 - /lidar_pointcloud_rear_left: 0
 - /lidar_pointcloud_rear_right: 0

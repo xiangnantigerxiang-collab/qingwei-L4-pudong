@@ -70,7 +70,7 @@ def main():
     generate(pnc, work / "stubs")
     fixtures = work / "fixtures"
     fixtures.mkdir(exist_ok=True)
-    (fixtures / "straight.csv").write_text(''.join(f"{100 + i * 0.2:.1f},100,90,0\n" for i in range(200)))
+    (fixtures / "straight.csv").write_text(''.join(f"{100 + i * 0.2:.1f},100,90,10\n" for i in range(200)))
     common_sources = sources(pnc, "path_plan_comply")[1:] + sources(pnc, "pubalgor") + sources(pnc, "spline")
     # 格式统一允许空白变化；有效 token 不同仍拒绝共享对象，不能掩盖算法改动。
     for source in common_sources:

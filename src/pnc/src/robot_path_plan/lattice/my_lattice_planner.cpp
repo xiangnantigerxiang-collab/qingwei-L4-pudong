@@ -58,7 +58,6 @@ void MyLatticePlanner::loadParams() {
 std::vector<Pose2d> MyLatticePlanner::plan(const std::vector<Pose2d> &reference_path,
                                            const Pose2d &ego_pose,
                                            std::vector<ObstaclePtr> obstacles) {
-    printf("=========================== 进入lattice规划 ===========================\n");
     TimeLogger timer;
     timer.start();
     if(reference_path.empty()) {
@@ -75,16 +74,13 @@ std::vector<Pose2d> MyLatticePlanner::plan(const std::vector<Pose2d> &reference_
         auto foot_pose = math_utils::getFootPose(ego_pose, last_path_);
         // 计算拼接点
         double base_length = std::max(ego_pose.v * 0.5, 2.0);
-        printf("轨迹拼接, 拼接长度: %f\n", base_length);
         // 裁剪拼接路径
         for(auto &pose : last_path_) {
             double delta_s = pose.s - foot_pose.s;
-            printf("foot_s:%f, pose_s:%f\n", foot_pose.s, pose.s);
             if(delta_s >= 0 && delta_s <= base_length) {
                 base_path.push_back(pose);
             }
         }
-        printf("base path size:%d\n", base_path.size());
         Pose2d stitch_pose = base_path.back();
         matched_pose = findMatchedPoint(stitch_pose, ref_path);
         sfre_pose = toFrenet(stitch_pose, matched_pose);
@@ -97,12 +93,9 @@ std::vector<Pose2d> MyLatticePlanner::plan(const std::vector<Pose2d> &reference_
     auto lpoly_vec = latPlan(sfre_pose, end_ref_pt);
     // printf("frenet 匹配点dist:  %f", dist);
     // sfre_pt.printSelf();
-    printf("拼接横纵向轨迹\n");
     auto fre_ls_vec = combineSLTrajectory(lpoly_vec, sfre_pose.s, end_ref_pt.s);
     // auto fre_ls_vec = combineSLTrajectory(spoly_vec, lpoly_vec, end_ref_pt.s);
-    printf("拼接轨迹数量为:%d\n", fre_ls_vec.size());
     auto cs_paths = filterValidPaths(fre_ls_vec, ref_path, obstacles);
-    printf("筛选出的轨迹数量为: %d\n", cs_paths.size());
     std::vector<Pose2d> result = base_path;
     if(!cs_paths.empty()) {
         auto stitch_path = cs_paths.front();
@@ -111,7 +104,6 @@ std::vector<Pose2d> MyLatticePlanner::plan(const std::vector<Pose2d> &reference_
     math_utils::computePoseAttr(result);
     // drawSampledPath(cs_paths);
     //  drawOptimalPath(cs_paths.front());
-    printf("================Lattice 规划完成， 耗时: %f ms\n", timer.duration());
     last_path_ = result;
     return result;
 }
@@ -163,7 +155,6 @@ std::vector<LPolyParam> MyLatticePlanner::latPlan(const FrenetPoint &sfre_pt, co
     double a0 = sfre_pt.l;
     double a1 = sfre_pt.dl_s;
     double a2 = 0.5 * sfre_pt.d2l_s;
-    printf("起始状态s: %f, l:%f, 终止状态: s:%f\n", sfre_pt.s, sfre_pt.l, end_ref_pt.s);
     // 2. 采样末状态
     // c0 = (l_i - 0.5s_j^2*d2l_s_0 - dl_ds_0 *s_j - l_0)/s_j^3
     // std::array<double, 3> end_l_states = {0, -3.0, 3.0};
@@ -177,7 +168,6 @@ std::vector<LPolyParam> MyLatticePlanner::latPlan(const FrenetPoint &sfre_pt, co
     std::vector<double> end_s_states;
     for(int i = 1; i <= end_s_sample_num_; i++) {
         double end_s = end_s_min_ + s_step * i;
-        printf("i:%d, end_s:%f, max_s:%f\n", i, end_s, max_s);
         end_s_states.push_back(end_s);
     }
     // std::array<double, 2> end_s_states = {8, 15};
@@ -340,7 +330,6 @@ std::vector<Path2d> MyLatticePlanner::filterValidPaths(std::vector<FrenetPath> &
             }
         }
     }
-    printf("min idx: %d\n", min_idx);
     last_fre_path_ = fre_paths.at(min_idx);
     // 排序
     std::sort(results.begin(), results.end(), [](Path2d &left, Path2d &right) { return left.cost < right.cost; });

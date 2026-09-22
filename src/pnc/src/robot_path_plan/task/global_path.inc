@@ -1,8 +1,15 @@
 // CSV 路径装载、连接段生成与全局路径索引。由 path_plan_task.inc 包含。
 
+double PathPlanComply::GetMapSpeedLimit() const {
+    if(mKeypoint < 0 || static_cast<size_t>(mKeypoint) >= mDrivingPath.size())
+        return std::numeric_limits<double>::infinity();
+    // 复用本周期已有最近点索引；不重新读文件或扫描路径。0限速也必须生效。
+    const double limit = mDrivingPath[mKeypoint].map_speed_limit;
+    return std::isnan(limit) || limit < 0.0 ? 0.0 : limit;
+}
+
 void PathPlanComply::calcuGlobalPath(robot::task_plan_msg task_plan_t) {
     // 空任务/动作任务不生成行驶路径；其余任务依次装载、定位起点、接入路径、定位终点。
-    printf("=============calcuGlobalPath keyIndex and stopIndex==============\n");
     if(task_plan_t.taskType == NOTHING)
         return;
     if(task_plan_t.taskType == DOACTION)
@@ -22,14 +29,27 @@ void PathPlanComply::calcuGlobalPath(robot::task_plan_msg task_plan_t) {
 void PathPlanComply::LoadTaskPaths(const robot::task_plan_msg &task_plan_t) {
     std::vector<XYZ_COOR_S> path_list;
 
-    // 按 pathList 原顺序拼接，每段保留 CSV 装载时的里程值；此处不重新计算整条里程。
+    // 按 pathList 原顺序拼接并累计整条路线里程，避免跨 CSV 时距离重置导致提前判到位。
     mDrivingPath.clear();
     for(auto pathName : task_plan_t.pathList) {
         path_list.clear();
         path_list = LoadPathFile(pathName);
+        if(path_list.empty()) {
+            // 一段读取失败时不能拼接剩余文件，避免跨越缺失路线或沿用旧路径。
+            mDrivingPath.clear();
+            return;
+        }
         for(auto path_point : path_list) {
             // printf("Load path point: x=%.2f, y=%.2f, heading=%.2f\n", path_point.x_axis,
             //         path_point.y_axis, path_point.heading);
+            path_point.p2pDistance = 0.0;
+            path_point.dist_origin = 0.0;
+            if(!mDrivingPath.empty()) {
+                const auto &previous = mDrivingPath.back();
+                path_point.p2pDistance = hypot(path_point.x_axis - previous.x_axis,
+                                             path_point.y_axis - previous.y_axis);
+                path_point.dist_origin = previous.dist_origin + path_point.p2pDistance;
+            }
             mDrivingPath.push_back(path_point);
         }
     }
@@ -37,53 +57,68 @@ void PathPlanComply::LoadTaskPaths(const robot::task_plan_msg &task_plan_t) {
 
 std::vector<XYZ_COOR_S> PathPlanComply::LoadPathFile(string tPath) {
     std::vector<XYZ_COOR_S> vector_list;
-    std::vector<XYZ_COOR_S> incsv;
     float distance_temp = 0;
     std::string file_dir = "";
     ros::param::get("path_dir", file_dir);
-    XYZ_COOR_S intp;
-
-    FILE *fp;
+    if(!file_dir.empty() && file_dir.back() != '/') file_dir += '/';
     std::string path_dir = file_dir + tPath + ".csv";
     ROS_INFO("path_dir:%s", path_dir.c_str());
-    fp = fopen(path_dir.c_str(), "r");
-    if(fp == NULL) {
+    struct stat source_info;
+    if(::stat(path_dir.c_str(), &source_info) != 0) {
+        ROS_ERROR("Path CSV stat failed: %s", path_dir.c_str());
+        return vector_list;
+    }
+    std::ifstream input(path_dir.c_str());
+    if(!input.is_open()) {
         printf("路径文件打开失败: %s\n", path_dir.c_str());
         return vector_list;
     }
-
-    while(!feof(fp)) {
-        fscanf(fp, "%f,%f,%f,%f", &intp.x_axis, &intp.y_axis, &intp.heading, &intp.z_axis);
-        incsv.push_back(intp);
-    }
-    fclose(fp);
-    if(incsv.empty()) {
-        printf("incsv is empty\n");
-        return vector_list;
-    }
-    XYZ_COOR_S intp_last = incsv.at(0);
-    for(auto i : incsv) {
+    std::string line;
+    std::size_t line_number = 0;
+    bool needs_upgrade = false;
+    while(std::getline(input, line)) {
+        ++line_number;
+        path_csv::ROW_S row;
+        bool changed = false;
+        const auto status = path_csv::NormalizeMapRow(line, row, changed);
+        if(status == path_csv::SKIP_ROW) continue;
+        if(status == path_csv::INVALID_ROW) {
+            ROS_ERROR("Invalid path CSV row: %s:%zu", path_dir.c_str(), line_number);
+            return std::vector<XYZ_COOR_S>();
+        }
+        needs_upgrade = needs_upgrade || changed;
         XYZ_COOR_S xyz_temp;
-        xyz_temp.heading = i.heading;
-        xyz_temp.x_axis = i.x_axis;
-        xyz_temp.y_axis = i.y_axis;
-        xyz_temp.z_axis = i.z_axis;
+        xyz_temp.heading = row.values[2];
+        xyz_temp.x_axis = row.values[0];
+        xyz_temp.y_axis = row.values[1];
         xyz_temp.velocity = 5;
-        double dx = xyz_temp.x_axis - intp_last.x_axis;
-        double dy = xyz_temp.y_axis - intp_last.y_axis;
-        xyz_temp.p2pDistance = hypot(dx, dy);
+        xyz_temp.map_speed_limit = row.values[3];
+        if(!vector_list.empty()) {
+            const auto &previous = vector_list.back();
+            xyz_temp.p2pDistance = hypot(xyz_temp.x_axis - previous.x_axis,
+                                        xyz_temp.y_axis - previous.y_axis);
+        }
         distance_temp += xyz_temp.p2pDistance;
         xyz_temp.dist_origin = distance_temp;
-        intp_last = xyz_temp;
         vector_list.push_back(xyz_temp);
     }
-
+    if(input.bad()) {
+        ROS_ERROR("Path CSV read failed: %s", path_dir.c_str());
+        return std::vector<XYZ_COOR_S>();
+    }
+    if(needs_upgrade) {
+        std::string error;
+        if(!path_csv::SaveFourColumnMap(path_dir, source_info, error)) {
+            ROS_ERROR("Path CSV upgrade failed: %s: %s", path_dir.c_str(), error.c_str());
+            return std::vector<XYZ_COOR_S>();
+        }
+        ROS_INFO("Path CSV saved as x/y/heading/speed: %s", path_dir.c_str());
+    }
     return vector_list;
 }
 
 void PathPlanComply::FindTaskStartPoint() {
     // 起始搜索排除最后 10 点，与周期推进时的前向 80 点窗口是两套规则。
-    printf("111111mKeyPoint:%d\n", mKeypoint);
     {
         // 程序启动时，查找起始点
         double dist_with_first = 0.0;
@@ -99,8 +134,6 @@ void PathPlanComply::FindTaskStartPoint() {
                 min_dist = dist;
             }
         }
-        printf("first_dist: %f\n", dist_with_first);
-        printf("mKeyPoint:%d, size:%d, min_dist:%f\n", mKeypoint, mDrivingPath.size(), min_dist);
     }
 }
 
@@ -130,17 +163,24 @@ void PathPlanComply::ConnectVehicleToPath() {
     if(distance2loadpos > 1.0 && distance2loadpos < 2.5) {
         // generate connect path
         printf("Distance to path is %.2f, generating connect path...\n", distance2loadpos);
+        // 连接段会越过原路径后续5个点，保留这一小段的最低限速。
+        float connection_limit = xyz.map_speed_limit;
+        const int connection_end = std::min<int>(mKeypoint + 5, mDrivingPath.size() - 1);
+        for(int i = mKeypoint + 1; i <= connection_end; ++i)
+            connection_limit = std::min(connection_limit, mDrivingPath[i].map_speed_limit);
         XYZ_COOR_S xyz_temp;
         std::vector<XYZ_COOR_S> connect_path;
         xyz_temp.x_axis = x0;
         xyz_temp.y_axis = y0;
         xyz_temp.heading = h0;
+        xyz_temp.map_speed_limit = connection_limit;
 
         connect_path.emplace_back(xyz_temp);
 
         for(int i = 0; i < 10; ++i) {
             xyz_temp = pubalgor.CalculNextPointByAngle_P(
                 connect_path.back().x_axis, connect_path.back().y_axis, h0, 0.2);
+            xyz_temp.map_speed_limit = connection_limit;
 
             connect_path.emplace_back(xyz_temp);
         }
@@ -152,17 +192,37 @@ void PathPlanComply::ConnectVehicleToPath() {
         // smooth
         auto bak = connect_path;
         connect_path.clear();
-        for(int i = 0; i < bak.size() - 1; i += 6)
-            connect_path.emplace_back(bak[i]);
+        for(int i = 0; i < bak.size() - 1; i += 6) {
+            auto point = bak[i];
+            // 抽稀不能丢失短限速区：当前采样段保存被跨过各点的最低限速。
+            const int end = std::min<int>(i + 6, bak.size() - 1);
+            for(int j = i + 1; j <= end; ++j)
+                point.map_speed_limit = std::min(point.map_speed_limit, bak[j].map_speed_limit);
+            connect_path.emplace_back(point);
+        }
         connect_path.emplace_back(bak.back());
 
+        // 与SplinePointSet的弧长参数一致；仅接入路径时构建，不在10Hz循环重新匹配。
+        float source_s = 0.0f;
+        connect_path.front().dist_origin = 0.0f;
+        for(size_t i = 1; i < connect_path.size(); ++i) {
+            source_s += hypot(connect_path[i].x_axis - connect_path[i - 1].x_axis,
+                              connect_path[i].y_axis - connect_path[i - 1].y_axis);
+            connect_path[i].dist_origin = source_s;
+        }
         CSpline spline;
         spline.SplinePointSet(connect_path, mDrivingPath, 0.1);
+        size_t speed_index = 0;
+        for(size_t i = 0; i < mDrivingPath.size(); ++i) {
+            const float sample_s = i + 1 == mDrivingPath.size() ? source_s : i * 0.1f;
+            while(speed_index + 1 < connect_path.size() &&
+                  connect_path[speed_index + 1].dist_origin <= sample_s) ++speed_index;
+            mDrivingPath[i].map_speed_limit = connect_path[speed_index].map_speed_limit;
+        }
         // 计算path
         calcuPath(mDrivingPath);
         mKeypoint = pubalgor.FindKeyPointByTargetPoint_P(
             mDrivingPath, mNavData.xAxis, mNavData.yAxis);
-        printf("3333mKeyPoint:%d\n", mKeypoint);
     }
 }
 
@@ -181,7 +241,6 @@ void PathPlanComply::FindTaskStopPoint(const robot::task_plan_msg &task_plan_t) 
                 min_dist = dist;
             }
         }
-        printf("4444mStopIndex:%d, dist:%f\n", mStopIndex, min_dist);
     }
 }
 
@@ -230,11 +289,12 @@ void PathPlanComply::UpdatePathInfo() {
     float distance_temp = 0.0;
     if(mDrivingPath.size() == 0)
         return;
-    if(mKeypoint > (size - 1))
+    if(mKeypoint < 0 || mKeypoint > (size - 1))
         return;
     // printf("------------keypoint:%d-----------\n", keyPoint);
     for(int k = keyPoint; k < keyPoint + 80; ++k) {
-        if(k >= (size - 1))
+        // 必须检查真实末点；末段距离 >= 0.5 m 时，跳过末点会永远无法判定到位。
+        if(k >= size)
             break;
 
         xyz_temp = mDrivingPath.at(k % size);

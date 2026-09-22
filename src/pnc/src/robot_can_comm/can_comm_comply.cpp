@@ -43,9 +43,4 @@ void CanCommComply::CanCommProcess() {
     CanCommMsg.wheelAngle = ControlMsg.wheelAngle * ratio;
     CanCommMsg.brakePercent = ControlMsg.brakePercent;
     CanCommMsg.throttlePercent = ControlMsg.throttlePercent;
-
-    if(ControlMsg.throttlePercent - CanCommMsg.throttlePercent > 1.0) {
-        CanCommMsg.throttlePercent += 1;
-    } else
-        CanCommMsg.throttlePercent = ControlMsg.throttlePercent;
 }

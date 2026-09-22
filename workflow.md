@@ -1,269 +1,206 @@
-# workflow.md — 工作延续文档（基线版 2026-09-05）
+# 工作进展与当前状态
 
-> 开工先读。**基线声明：本树=实车部署版（用户 09-05 确认运行未发现问题），此后一切修改以此为准。**
-> **09-10 基线重置（用户宣言「忘掉过去，今后在这个版本的基础上改动」）：pnc 以本树现态为新基底**（=09-05 基线 + 感知排除区重写 + config 两 csv + 312 任务族 yaml；**09-08~09-09 pnc 轮整体作废**）。pnc 快照 `../pnc_userbase_20260910.tar.gz`（9.7M/1630 文件）。
-> 基线快照 `../baseline_vehicle_deployed_20260905.tar.gz`（838 文件）；6 路深读原始报告 `../baseline_sweep_reports_20260905.md`（file:line 细节以此为准）。
-> 完成工作在「日志」追加结论级条目，同步「现状」「待办」。非 git，回滚靠 `../` 快照。本机无 ROS：C++ 桩编译验证（方法见「设施」）。
+更新：**2026-09-22**。供后续任务延续使用：保留当前有效结论、近期重点、部署入口和未解决问题；
+被替代方案及重复过程移入[整理前原文归档](docs/history/2026-09-22-before-roadtest-log-cleanup/README.md)。
+工程用法见[根 README](README.md)，编码前完整阅读[风格记忆](docs/CODING_MEMORY.md)和模块 README。
 
-## 一、工程速览
+## 当前基线与有效约束
 
-机场 L4 无人电动牵引车整车软件（浦东机场，云端 FMS→循迹→自动挂/脱托盘）。车载 Jetson Orin（aarch64，ROS1+Py3.8，`/home/nvidia/qingwei-L4-No2`），本目录为其重建副本。
+**最新实车反馈：2026-09-22，用户确认“本轮修改的control减速刹车，刚刚实车测试效果很好”。**
+最新 D 挡减速刹车版本已获用户实车效果确认，作为后续修改基线。此前“未完成新算法实车验收”的状态已更新；
+本次反馈为定性结论，没有新增 bag、制动距离或舒适性量化数据，不扩大为其他模块或全部工况验收。
+详细参数、原有本机验证与本次反馈统一见[当前 control 专项报告](src/pnc/tests/control/forward_speed_smooth_20260922.md)。
 
-数据流：
-- FMS ─MQTT(39.105.47.169:1883)→ fms_agent(8 节点,VehicleId=A03) → /cloud/... → pnc（task_plan 20Hz → path_plan 10Hz → control 20Hz → can_comm → canbus）
-- 5×RoboSense → 拼接 → CenterPoint(TensorRT) → /box → perception_convert(100Hz) → /perception → pnc
-- 2×LakiBeam → auto_couple → /hook_position（倒车对挂）；ASENSING RTK/IMU → /localization → navigation(50Hz) → /navigation_msg
-- canbus：socketcan can0 250k（socketcan_bridge 桥 /can_send、/can_recv），发 0x184/0x284，收 0x185/0x285/0x0C02A0A2
-- 入口两条：start_l4.sh（12 终端串行，救急；第 10 步 simview 指向工程外 /home/nvidia/zyd/0522）或 HMI（14 组件 5 分组，日常）
-
-关键事实：纯路径跟踪（lattice/速度规划休眠）；throttle=speed_cmd×18（R 挡 ×10 上限 45）；路径=预录 CSV（pnc/path/，launch 参数 path_dir）；安全兜底=sensorstate 故障位缓停/急停、fence.csv 围栏、横向偏差>5.5m 停、急停闩锁；车辆 1680kg/轴距 1.6m/15km/h/传动比 22/限角 ±22°；CenterPoint 须在其 build/ 启动（模型 `../model/`）。
-
-包：robot(pnc 6 节点,45 消息)｜CUDA-CenterPoint(独立 cmake,非 catkin)｜driver(rslidar/lakibeam/ASENSING/cam_geac/lidar_perception)｜canbus(18 消息)｜fms_agent(24 消息+Python,env/ venv 必需)｜auto_couple(GBK)｜simview(包名 view)｜ivlocmsg（必留）。
-
-关键文件：pnc 主链=path_plan_comply.cpp（几何辅助+5 个业务入口分片，task/reference/safety 按职责细分，同一翻译单元）+task_plan_core.{h,cpp}+control_comply.cpp；canbus=canbus_comply.{h,cpp}+canbus_node.cpp；**can_msg/can_comm_msg 三份 .msg（canbus/pnc/simview）必须同步改**（md5 变→所有订阅节点整体重编）。
-
-## 二、现状（2026-09-17 planning 感知避障优化、HMI/monitor/planning 接入闸机）
-
-- **planning 紧急三帧确认/车道外过滤（09-17 最新用户规则）**：同 ID 连续三帧真实紧急碰撞才置 safety；前两帧将目标速度限制为当前 CAN 车速的 60%，其他更低限速优先。普通目标确认参数与低分数策略保持，紧急单独固定三帧，重复规划/旧时间戳/漏检外推不能加票。两个 perception 入口均忽略 type=3/4，保留 0/1/2；同 ID 分类出车道立即移除旧轨迹和兼容风险历史，起步/T 区接收过滤后对象。同步修复下条相邻路径段漏查，其他停车源/解除迟滞、前后扫描、control/converter/monitor/参数/CSV 保持。四个 planning 生产文件变化；核心 C++11 4,995、同套 ASan/UBSan、发布集成 257、区域限速 284、闸机 1,806、旧业务 387 组差分均过，六个错误变异被检出；300 目标 1000 次热循环零堆分配，核心缓存约 4.57MiB，含旧入口新标记表总增约 0.75MiB。详见 `src/pnc/tests/planning/obstacle_policy_verification_20260917.md`；需重编/重启规划节点，未部署 Orin。
-
-- **planning/converter 再次交叉审查（09-17，部分待修复）**：原有回归仍通过，审查当时新增反例复现两项 P1：①新碰撞检查在首个软余量相交段提前 break，漏查后续段紧急物理碰撞——已随上条策略修改修复，同一直线密/疏点距均前三帧按 60%/60%/停车执行；②新链激活后 AccSwitch=1 阻断输入却继续检查超时，0.7s 新空帧被丢弃并误置 safety=1，仍待处理。另确认非默认 ADAPTIVEHOOK/PalletType!=0 的局部定位使地图单点限速失配；运动 heading 被 monitor/旧兼容碰撞当框朝向；前后扫描纵向偏移固定减地图 x，均未修改。起步/T 区仍独立消费旧历史，最新车道外过滤会去除 3/4，但其他旧历史目标仍可能停车。详见 `src/pnc/tests/planning/planning_convert_review_20260917.md`，原审查反例及日志 `/tmp/planning_convert_review_20260917_152858/`。
-
-- **planning 单点区域限速（09-17）**：初始化经现有 `path_dir` 加载 `speed_limit.csv`（每行 x,y,speedlimit，米/m/s），缓存为向量；当前定位距配置点 ≤5m 时，在最终发布前对 desireSpeed 取小，重叠取最低值。空文件不增加约束，坏行跳过并汇总提示；无周期文件/参数访问、无开方或新增分配，单周期 O(N)、缓存 O(N)。其他零速/safety/闸机及参考路径保持，用户 CSV 内容未改；文件变更需重启规划节点。284 项限速、1,806 项闸机、52 项感知集成通过；387 组旧业务对照只增加初始化一次 path_dir 读取，其余输出/状态/事件一致，211 保护文件未变。本机 ROS 桩，尚未部署 Orin。
-
-- **planning 细长框过滤（09-17，阈值按用户后续要求由 4 改为 3）**：当前条件为 `dx>1 && dy>1 && (dx/dy>3 || dy/dx>3)`，planning 的 `/perception` 与 `/perception/planning` 入口同步处理。严格大于，尺寸等于 1 或比例等于 3 不因本规则剔除；乘法比较复用原循环，单目标 O(1)、无额外分配。被滤目标不建立/刷新轨迹，之前正常的已确认观测仍沿用原漏检保持策略；转换节点、参数及独立前后扫描不改。阈值 3 版本编译、核心 4,795 项、集成 52 项、闸机 1,806 项通过，旧业务 387 组差分一致；172 保护文件哈希不变。
-
-- **planning 真实观测避障与空间换时间（09-17）**：converter 新增 `/perception/planning`，复用当前真实帧跟踪 ID/速度/物理四角，稳定输出最多 12.5 Hz、空/非空切换即时；原 `/perception` 历史/置信度/空角点语义保持。规划队列 1，固定 ID 表和复用几何缓存，按真实帧确认、连续相对运动碰撞、普通风险舒适限速，紧迫碰撞保留单帧急停，短时漏检外推/断流停车/解除迟滞。新前向链叠加原安全来源，不清掉已有 safety/零速；独立前扫描和倒车原规则保留，新前向链超声参数改为独立缓存读取。主机 300 目标稀疏路径 P50 0.678485→0.031853 ms，缓存 4,133,888 bytes，1000 次预热后无堆分配。最终核心 4,762、集成 31、原业务 387 组差分、闸机 1,806、发布 4,414 检查及两套 ASan/UBSan 通过。配置 `src/pnc/param/perception_safety.yaml`，空车/载荷均暂留宽 3.4m、长 3.6m；需实测外廓/减速能力并在 Orin 重编两节点验收，不能等同整车 CPU 实测降幅。control/monitor/消息等 152 保护文件哈希不变；工作区另有相机心跳/任务配置/路线改动，未覆盖。报告 `src/pnc/tests/planning/perception_safety_verification_20260917.json`。
-
-- **planning 闸机 safety 复核（09-17，业务代码未改）**：用户重点要求确认无效/开闸不清除其他 safety。规则等价于“原规划 safety OR 有效关闸”，回调仅改独立布尔，发布后恢复原值。重新编译差分 387 组一致，新增安全原因连续交接独立断言后共 1,806 项闸机检查通过；三种故意清零变异均被测试检出。原有输出/输入/节点 token 和其他模块哈希核对一致；Noetic 官方发布调用链确认该 const 引用重载在返回前完成所需序列化。无 ROS1/Orin 实测。报告 `src/pnc/tests/planning/gantry_safety_review_20260917.md`。
-
-- **planning 订阅闸机（09-17）**：`/gantry_state`（gantry_detect/gantry_state，队列 1/TCP_NODELAY）更新 Comply 布尔输入；仅 `active && !gantry_open` 时在最终 `/plan_path_msg` 发布时覆盖 `safety=1`（实际字段名 safety），发布后恢复内部原值，正常与手动/短路径早退都覆盖。开闸/失效保留其他安全原因；无消息默认不生效，采用最新状态且不另加超时。速度、路径、声光、任务及原有时序保持。修正已有错误头引用；gantry 头目录/消息生成依赖仅挂 path_plan_node，补运行依赖，新增 `src/gantry_detect -> ../gantry_detect` 让根包参与 catkin 编译，检测模块/参数及启动脚本未改。387 组旧业务差分一致、1,266 项闸机检查通过，39 个共享算法单元和前后节点编译链接通过；CMake 依赖图及 catkin_pkg 拓扑检查通过。本机 ROS 桩/C++14（本机 Boost 要求），生产 C++11 保持，未部署 Orin。记录 `/tmp/planning_gantry_20260917_103937`。
-
-- **gantry_detect 新增模块审查（09-17，未改代码）**：根目录独立 ROS1/C++14/PCL 包，实际订阅 front+mid 点云与 /localization，由 mid 回调驱动，0.1m 降采样后按高反点二维聚类，ROI 内连续 3 帧输出 /gantry_state(active/gantry_open)。已确认定位无超时、front 缓存无老化、mid 断流无定时失效；默认 min_cluster_pts=1000 与降采样组合的合成闸杆用例出现 5000→26 点、第三帧误判打开。上游 dense_points=false 保留 NaN，模块降采样前不清理；本机 PCL 1.14 单 NaN 用例触发 float-cast-overflow。ROI 外仍转换/合并/降采样。包未在 src/、未接启动或状态消费链；CSV 路径和世界坐标可视化有移植残留。10 文件哈希不变，XML/原函数+真实 PCL 定向复现已做，无 ROS1/Orin 完整构建运行。报告 `/tmp/gantry_review_20260917_103013/review.md`。
-
-- **robot_perception_convert 第二轮性能优化（09-16）**：按用户“空间换时间”要求，增加复用的 4 米空间索引、连通分量匹配、每轨迹门限/方差缓存、ID 位图和 128KiB 历史索引表。单线程临时缓存每次重建，不改变运动估计或发布规则。本机三轮对照的跟踪 P50：100 持续目标 0.0961→0.0131ms，300 目标/每帧一半新生 2.0439→0.1463ms；后者完整回调 P50 4.0663→1.9684ms。19,733 项跟踪、4,366 项发布、ASan/UBSan、cppcheck、C++11 节点编译/SDK 链接通过；1,000 帧混合场景十项字段及六组完整回调输出摘要一致。生产修改仅本模块两个 .inc，monitor/控制等保持原样。未部署 Orin，仍待停车核对实际控制时延。
-
-- **monitor / robot_perception_convert 性能（09-16 晚）**：用户报全部运行于 Orin，整车响应变慢、转向抖动和滞后。已修复两处本机可复现的资源开销：monitor 四行文字改为共享字形纹理和一次批量绘制，100 目标文字纹理约 74.9→0.90MiB、文字绘制调用 200→1；感知保留全局一对一匹配，增加等价粗筛、只为可行轨迹建代价列、去掉无可行边的搜索行列并使用独立新生列。100 目标/每帧一半新生的本机压力场景中跟踪平均 5.757→0.254ms，回调计算 P50 6.450→0.930ms；速度参数、两秒窗口和 20% 车道门槛保持。91 项前端、3,911 项跟踪、4,366 项发布检查、两套 ASan/UBSan、C++11 编译/链接及实际浏览器俯视/环视验证通过。未部署实车，尚不能认定转向问题已消除，待核对 Orin 负载与控制/定位周期。
-
-- **log_online 定时器（09-16）**：实车 Noetic 报 `AttributeError: 'float' object has no attribute 'to_sec'`，原因是 `Recorder.run()` 把浮点秒数直接传给 `rospy.Timer`。已改为 `rospy.Duration(1.0 / SAMPLE_HZ)`，默认仍为 10Hz；测试桩同步要求 `to_sec()`，新增启动路径和采样回调检查，模块 37 项测试通过。需同步 `log_online/recorder.py` 并重启记录器验证实车采样。检查期间另有改动将状态页服务接入 `main()`，已保留。
-
-- **log_online 事件数据记录与在线监控（09-16 新增，根目录 monitor 同级）**：独立 Python 模块（零编译，车载 Py3.8/noetic）。10Hz 采集七类数据（编号 A03/控制模式/位置/挡位速度加速度[自算 EMA]/感知+响应/灯光信号/视频链路状态）入 120s 环形缓冲；急停/故障类触发（emergencyStop∨sensorstate∨netcheck∨faultCode，0.5s 去抖，None 不触发）落盘**前 ≥90s+事件+后 ≥90s** 事件目录（metadata.json+records.jsonl）；1GiB 磁盘上限轮转（关闭后+启动时，删除失败复查告警）；HTTP 状态页 8083（`LOG_ONLINE_PORT` 可改，绑定失败不阻断记录；仅内网严禁公网映射）。writer 四个 IO 点全部 OSError 防护（失败 stderr+丢弃事件+仍轮转，防 Timer 线程被打死）；NaN/inf 落盘与 API 双侧消毒。入口 `bash log_online/log_online.sh`。spec/计划见 `log_online/DESIGN.md`/`PLAN.md`；终态 46 用例 8 文件+冒烟全绿。快照 `../log_online_delivered_20260916_212704.tar.gz`；SDD 全程审计链（20 次子代理派发/8 处计划缺陷拦截/终审修复波）在 `../sdd-log-online/progress.md`。**车载未部署**：同步整目录→`rostopic list | grep compressed` 核对 `TOPIC_CAMERA`（默认 /cam0/compressed）→手动接入 start_l4.sh/HMI（保护清单未动）→按 README 四条验收。
-
-- **control D 挡速度给定斜坡（09-16 用户纠正后）**：用户确认底层为速度环，油门与最终车速比例已标定。已按修改前备份回滚此前三个参数方案，保留 D 挡 ×18、R 挡 ×10（上限 45%）及 0.5m/s 跟随间隙；新增 `/robot/control/launch_speed_slope`，默认 0.3m/s²，20Hz 下每周期给定增加 0.015m/s。用 double 保存速度给定，小增量不因 uint8 油门量化丢失；只限上升，下降和停车即时通过，各停车分支及非 D 挡清除状态。原 5% 保底仅作为斜坡目标，起步不直接跳到 5%。详见 robot_control/README.md；此前三个旧参数不再读取。
-
-- **hdmap 障碍物车道判断（09-15 新增）**：`LaneMapServer::LoadMap` 一次加载所有车道，`ClassifyPerception(navigation, perception)` 返回仅改 `objs[i].type` 的 `robot::perception`。按用户确认的 4m 中心线带和最大矩形交面积分类，0 本车道/1 左一/2 左二/3 左外/4 右外，逐项中文枚举；自车离道只返回 3/4。适配真实字段 xAxis/yAxis/zAxis，按转换节点公式还原框世界角 `Hobj-2*Hego`；定位应与感知转换时配对。Boost.Polygon 初始化并集、分块缓存、线段/区域 BVH；按局部横断面排邻道，对向平行车道也计入，横穿道路不作邻道。154 车道检查、600 消息适配、12537 真实中心线位置、5362 GEOS 独立场景通过，ASan/UBSan 和 cppcheck 通过。本机完整接口 100 障碍物 P99 0.2375ms，300 个 P99 0.6408ms，初始化约 289ms。新头文件与 `.so` 位于 SDK；PNC 感知发布已接入，见下条。原图与已处理 CSV 保持原值。规则与边界见 `src/hdmap/docs/lane_occupancy.md`；当前库仍为 x86_64，Orin 须重编。
-
-- **PNC 感知发布接入 HDMap（09-15）**：`perception_msg_convert.cpp` 在发布前执行 `mPerception = mLaneMap.ClassifyPerception(mGPS, mPerception)`，坐标转换与分类共用定位。启动通过 roslib 定位 `hdmap/map_processed`，支持 `/hdmap/map_processed_dir`，地图/索引只加载一次；加载失败报错退出，帧分类失败报错并跳过发布。`object.msg` 仅把 type 注释改为 0 本道/1 左一/2 左二/3 左外/4 右外，字段不变。PNC 补 hdmap/roslib 依赖，感知目标链接 SDK，重建脚本先 hdmap 后 robot；catkin install 包含处理图。真实 CMake 感知目标 C++11 编译、SDK 导出目标及 catkin 传统变量的动态链接、71 项真实回调检查通过；本机 ROS 桩，不代表 ROS1/Orin 实测。运行 `python3 src/pnc/tests/perception/verify.py --output /tmp/pnc_hdmap_publish_verify` 复现。
-
-- **hdmap 地图（09-15 更新）**：调用现有 `sdk/bin/hdmap_process` 处理用户更新的 7 个源 CSV，参数 `--heading pnc --direction auto --anchor-interval 1 --sample-interval 0.5`。25277 原始点生成 12537 点，7 个 `*_spline.csv` 已写入 `src/hdmap/map_processed`，均为前进。独立 SciPy 全点复核坐标、heading、曲率和实际弧长间距通过，最大间距误差 9.913e-9m；源图 SHA256 不变。`src/hdmap/tests/map_verification.json` 为本批报告；下述 09-14 的 10 条地图数量与验证结果属于首期历史记录。
-
-- **PNC 风格与用户 planning 整理复核（09-14 晚）**：用户删除未调用的 `pubLatticeTrajs`/`pubObstacles` 及其声明、两个调试 advertise、若干 printf/注释并调整排版与订阅声明位置。对 09-12 Comply 留档逐 token 核对，扣除两个调试函数及三个 printf 后业务源码完全一致，头文件仅少对应声明；现役回调/话题参数/周期不变，387 组状态、发布与参数事件一致，未发现本次用户整理引入业务逻辑错误。按用户新风格统一 PNC 自有 C/C++：4 空格、`if(condition) {`、`} else {`，193 个文件检查、192 个排版变化；第三方及地图/参数/配置/消息等 1188 文件保持原样。53 个 TU 编译、六节点完整链接通过，格式后重编回归再次与格式前 387 组一致。规范与 `.clang-format` 已更新，`tools/format_cpp.py` 可复现且检查 token/指令；新 `tests/compile_all.py` 按真实 CMake 目标编译全包。快照 `../pnc_before_brace_style_20260914_192628.tar.gz`，审查详见 `src/pnc/tests/planning/review_20260914.md`。本机为 ROS 桩+C++14 验证，生产 C++11 与 ROS1/实车验收边界保持。
-
-- **hdmap（09-14 新增）**：`src/hdmap` 为独立 C++11 高精地图 SDK，编译生成 `sdk/lib/libhdmap_server.so`，按门面/轨迹处理/样条/CSV/PNC 适配分层并补中文核心注释。10 条源轨迹 heading 已是 PNC 方位角，保留其中 4 条倒车的车头方向；按节点距离 >=1m 抽样、夹持三次样条、真实弧长 0.5m 插值，输出到 `map_processed`（10 文件/10033 点）。默认严格等距并报告未输出尾段，支持保留终点选项。绝对曲率与 PNC 对齐，另存沿点序带符号曲率；`XYZ_COOR_S` 通过模板适配，现役 PNC 加载链未切换。956 项断言、独立 SciPy 全点交叉验证、ASan/UBSan 核心及真实地图、cppcheck、真实 PNC 类型/安装后异地 SDK 动态链接均通过；最大弧长间距误差约 1.004e-8m。当前库为 x86_64/GCC13，Orin 须重编 aarch64；接入须使用 SDK 8 列 CSV 读取接口并核对原控制固定 0.1m 假设。见 `src/hdmap/README.md`、`tests/map_verification.json`。
-
-- **planning（09-12）**：以开工时现树为基线，保留 Allman/4 空格、原有标识符与成员顺序、10Hz 调度、五个业务分片包含顺序。按 `task/`、`reference/`、`safety/` 分职责，核心入口改为阶段编排，补中文业务注释；ROS 云停车处理移入 `SetCommandData`，node 只转发。39 个算法 TU + 前后 Comply/node 编译及完整链接通过，387 个状态快照/完整发布消息/参数事件相同，50 个保留函数 token 相同，新增编译告警为零。快照 `../planning_before_refactor_20260912_134949.tar.gz`；可复现脚本 `src/pnc/tests/planning/`。复查记录了 ultra 早退跳过、作业分支不可达、CSV 分段里程等原有问题，未改业务规则；关键点窗口是随候选点移动的 `keyPoint+80`，并非固定 80 点。详细结构与已知问题见 `src/pnc/src/robot_path_plan/README.md`。**09-12 晚独立对抗校验（四条证据链）判定零行为差异**，残余边界见日志 09-12（晚）条与待办 7。
-
-- **canbus（用户自研版）**：T1 10Hz=EmergencyStop 汇总（sensorstate≠0 ∨ netcheck≠0 ∨ !planning_alive ∨ 指令老化>1.0s）+ hook/pallet 状态机（±5 带 >1s：4=up/3=down；中段 1s 不动→1=block；pallet 无 block；2 永不产出）+发布 /ehb_msg（仅此一者，10Hz）；T2 20Hz=VehicleComm+发布 /can_msg（09-07 晚用户自 T1 移回，恢复基线 20Hz；曾 20→10 引发 HMI 健康误报，hmi_config min_hz 已复位 20）；**0x284 byte2 四分支顺序覆盖**（:90 0x05 需 cmd=5∧status∉{1,4}；:95 0x0A 需 cmd=6∧status≠3；:100 0x01 需 status=4∧pallet≠3；:101 0x02 需 status=3∧pallet≠4；后写覆盖，完整真值表见 src/canbus/README.md）——语义=挂/脱钩两相续接+机构自收敛（:100/:101 不受 hookCmd 门控）；限值 config.cfg（182/254/213/254）成对校验→rosparam 四键；速度=高压公式 25.8/0.66（实车未发现问题）；**EHB**：docs/ehb-can.md 为唯一协议源，九帧旁听/接收解析（EHB 发 3 帧+VCU→EHB 6 帧）入 mEHBMsg，T1 10Hz 发 /ehb_msg（详见 src/canbus/README.md）
-- **pnc（09-11 三 = 车载回滚版已同步回本树）**：现行树=**车载回滚态**＝09-10 基底 + can_comm sleep（在）+ v2 三矩形（left1 D/left2/right D' 微调，right⊂left1 100% 维持、排除区仍零重叠）+ 三条 `_01_01` 轨迹（与对应 `_01` 逐字节相同的副本——同路线双名，yaml 引用哪个名决定 ultra 监控语义；**param/ 尚无任何 _01_01 引用，任务不可下发**）+ perception.inc 一行 bbox 调试 cout（订阅源 /perception_back_bbox 无发布者，不触发，无害）。**09-10 整理轮与 09-11 两修复已随回滚消失**（/task_plan_msg 非 latch、无启动/停车空任务发布、perception_convert 零 markers 早退静默）——整理轮属外观级可接受消失（快照 pnc_before_tidy_20260910 在）；**09-11 两修复是 ultra 依赖项，缺失有行为后果（见 ultra 条），重放均为小改动**。其余既有描述仍有效：判据统一 hookStatus；task_plan 20Hz+心跳 10Hz；path_plan 10Hz（sensorstate 位定义）；SetTaskPlanData 每条消息全量重载；感知排除区新架构与风险 9（trajectory_optimized.csv 仍会被误当排除区）
-- **ultra_command（09-11 已知问题修复+初始化监控新需求）**：312 任务族监控矩形障碍物检测——/task_plan_msg.pathList 精确匹配 pudong_air/312_316_01 或 312_cargo_01（监控 left1+left2）/312_charge_01（监控 right）激活，/perception 障碍物**中心点**射线法判落入→10Hz ZOH 写 `/ultra/status/safe` 1/0；已接入根 `launch/control.launch`，launch respawn=1s，正常退出写 1；任务状态未知/矩形加载失败/感知未收到或>1.0s 均故障安全写 1，已知非目标任务/待命/停止写 0；普通模式障碍即时置 1、连续 3 个新感知空闲帧才清 0；订阅云停车直达退出兼容旧 task_plan；矩形固定三文件（不用 glob，nan/inf 坏行跳过）；02/03 变体不触发。**_01_01 后缀三路径=初始化监控（09-11 新增并修正）**：起步前有效感知帧直接判区内 1/0（不做三帧解除），车速未知/感知或矩形异常写 1；首次 `/can_msg.vehicleSpeed>0.5m/s` 后无条件恒 0。车速先缓存以消除 CAN/task 回调顺序差；闩锁按“完整命中路径+task_id”复位，不同 INIT_LEFT 路径或同路径新任务不会继承旧状态，重复 latch 消息不复位。`/task_plan_msg` latch+启动/停车空任务消除晚启动失明，perception 空帧发布消除空场景静默——**此两句依赖的 09-11 pnc 两修复已随车载回滚消失（09-11 三回滚），在回滚版 pnc 上实际行为见下**。严格桩编译+初始化边界/普通模式回归用例均过；三个 `_01_01.csv` 已存在且分别与对应 `_01.csv` 逐字节一致，**现役任务 YAML 尚未引用新路径名**；仍待确认具体替换块、矩形重叠语义、仓外消费方契约；SIGKILL/失电到 respawn 间 rosparam 仍可能短暂冻结末值。**⚠ 回滚版 pnc 兼容性（09-11 四查明）**：①perception_convert 零 markers 静默不发 × ultra「静默>1.0s=故障写 1」＝**空场景（区内无障碍）safe 恒 1**——连续 _01 任务全程误报 1，_01_01 初始化任务起步前空区恒 1，若消费方以 safe=0 放行则**车辆无法起步**；②/task_plan_msg 非 latch × ultra respawn/晚启动＝任务未知写 1 直到下次块推进（分钟级窗口）。**两修均是 pnc 侧小改动（重放即可恢复配对），在 ultra 侧改语义则会重开故障方向缺口——推荐重放 pnc 修复，待用户拍板**
-- **契约**：hookStatus=HOOKSTATUS_E 两侧锁定；can_msg 三包逐字节一致、can_comm_msg 仅注释差（md5 同）；fms↔pnc 现役 TaskInfo/TaskStatus/v2nCommandFeedback 一致；CommandMsg/v2nHeartBeatValue 副本漂移但死定义；/hook_position pnc↔auto_couple 7 字段 md5 巧合一致（改字段即断）；struct_type 两份仅差无读者的 GEAR_P
-- **已下线（勿恢复）**：一键标定、堵转保护、相机伸缩杆、0x201 蜂鸣、CAN 断流+faultCode 置 1、path_plan_status 订阅+/planning/alive 清零、ADAPTIVEHOOK 循迹 0x0A、param hookstate、control 脱钩缓停、simview(rviz)
-- **死通道群**（写而无读者）：/canbus/horn、/canbus/brake、/sound/play、/cloud/suggestspeed、/acc（/canbus/time 唯一写者已由用户 09-08 晨删除，通道全灭）；无发布者：/camera/tl_status、/palletpos、/cloud/msg/{running,warning,notify,airport}_msg；accswitch 无写者（ACC 分支死，其输出也不回写 mControlData）
-- **待用户决策**：HMI 标定卡片孤儿（超时报失败）；rebuild_all.sh 缺陷修复（风险 14）。~~位置限值管道~~ **已处置（09-10 整理轮）**：pnc 侧死读已拆（task_plan mPositionLimits/PositionLimitsIn + path_plan HookPos*/PalletPos* 热读与成员），canbus 侧 rosparam 生产者保留未动；未来要消费时从快照恢复读取端即可
-- **已验证**：车载编译+部署+运行 OK（09-05 用户确认）；Firefox WebGL 三开关已解；geometry_utils inline 修复有效
-
-## 三、关键风险与边界（现行已知未修；细节与 file:line 见归档报告）
-
-1. **控制双发拆包**：control 油门刹车同>0 时拆两条消息（throttle-only 先、brake-only 后），canbus 整包缓存取最后一条→**该情形油门被消息顺序清零**（control_comply.cpp:456-465+canbus_node.cpp:197-201）
-2. can_comm 忙循环（无 sleep+每圈 param RPC）；control 死亡→最后缓存全速重发，**兜底=canbus 老化 1.0s 急停**（can_comm_node.cpp:34-40；**忙循环已修**：09-10 补主循环尾 loop_rate.sleep()，/can_comm_msg 现规 20Hz[消费方仅 canbus，老化窗口 1.0s 内；HMI/monitor 零引用该话题]。param RPC 每圈热读仍在，属 ZOH 设计保留）
-3. **转向数学**：getNearestIndex 首个距离回升即 break（回折/闭环路径投影错段）；calcSteer cross==0→NaN 直达输出；biaAngle 未 ±180 回卷（西向差值近 360°）
-4. control fence.csv fopen 无判空→缺失即段错误；超速制动峰值仅 5%（brake 每周期 +1 上限 5）
-5. m_acc_last 未初始化→desireAcc 未初始化读（经 /acc，无订阅者未上链）；模糊 PID EC>0.3 误写 indexE=6
-6. **灯光左右疑似反**：canbus 3=左/4=右 vs path_plan 写 3 配注释"目标在右侧"——转向灯方向待实车核对
-7. canbus：desireGear∉{2,3,4} 时 can184[6] 栈未初始化发出；estop 后 N 挡刹车被钳 20；whistle 注释 bit3 vs 夜间代码 +4=bit2
-8. 急停闩锁解除依赖 can_msg.emergencyStop 先归零（rs232 解除分支被闩锁短路）
-9. **感知（09-10 排除区新架构）**：LoadBoundary 无白名单扫 config/ 全部 .csv + catch(...){} 静默——**任何 csv 掉入该目录即成排除区**（trajectory_optimized.csv 轨迹草稿已实际中招：21 点闭环被当多边形、stod 吞第三列尾串不报错 → 312_316 行驶透镜区 ~140×330m 障碍物静默全剔）；目录绝对路径仍写死车载（副本 fail→无过滤放行）；零 MarkerArray 在当前用户基底中仍直接返回（09-11 空帧发布与 stamp 修复未重放，见待办 1）；obj.vx/vy 恒 0（ACC 按静止处理）。**车载部署必删旧 config/perception_boundary.csv**（旧包容区被当排除区加载=作业区感知致盲）；charge.csv 走廊约 700m（(-344,1088)~(-121,384) 折返闭合，312_charge 终点 (-250,1138) 在内）整条充电车道排障，范围是否有意待用户确认
-10. navigation：PalletType 恒 0→挂车反算恒被全局定位覆盖；rtkState 恒 "no_fixed"；断流无限重发旧位姿
-11. path_plan：每条 task_plan_msg 全量重载（CSV 重读+关键点重搜）；task_id=1000 双重 ParseTaskFile；**task_id==4 调用 getLaneLimitSpeedTest 测试限速**（09-12 现树复查没有“清感知”分支，旧描述纠正）。`/ultra/status/safe` 在前向碰撞末尾读取，空感知/无风险/后向角度过滤早退及 R 挡均跳过；若要求全路径强制停车，需调整业务规则。多 CSV 里程未连续化、作业生成的矛盾条件不可达等见 planning README。
-12. MQTT 明文凭据 3 套（公网 39.105.47.169 admin/qw2026MQTT；161.189.186.1 两套）；MqttClient qos=0 无锁；fms 健康计数 6 容 1 且漏统计 2 节点
-13. 心跳字段：hookState=1 永不产出；drivingState 仅 0/3（longitudinal_accelerate 无生产者）；heading−90 可为负；hour+=8 跨日不进位
-14. **rebuild_all.sh**：say/die/$JOBS 未定义、无 set -e、无 cd 锚定、`sudo rm -rf ./build ./devel` 相对路径——**非工程根运行会误删当前目录的 build/devel 且失败分支全部 no-op 继续跑**；CenterPoint 失败时旧 exe 已删
-15. /robot/serial/rs232/ 尾斜杠话题（与发布端名可能不匹配）；robot_canbus.launch 单独启动时 config.yaml 不加载→wheelAngle×ratio=0 转向恒 0
-
-## 四、车载部署（操作）
-
-1. **同步**：hdmap 源码、CMake/package.xml 与 map_processed（库在车载重编）+pnc 整目录（含 .inc 与 geometry_utils.h 的 inline 修复；**09-10 整理轮含删除项——建议 rsync --delete，或手动删车载 msg/{task_plan_status,vehicle_task_status,perception_msg,RoutingPath,Point,object1,obstac,visionObjects}.msg、msg/bak/、launch/robot_start.launch、lib/、src/robot_navigation/gps2plane.h、path/.~lock.4102.csv#，残留无害但不洁**）+canbus 整目录（含 config.cfg/msg/）+ASENSING/auto_couple/lidar_perception 构建修复 6 文件+src/ultra_command 整目录+根 launch/control.launch（已 include ultra_command）。
-2. **重建**：`cd 工程根 && JOBS=4 ./rebuild_all.sh`（现行=用户分级版：rslidar_sdk -DENABLE_TRANSFORM=ON→ivlocmsg→auto_couple→lidar_perception→hdmap→robot→canbus→清白名单全量；CenterPoint 独立 cmake 串行；**必须从工程根跑+导出 JOBS，原因见风险 14**；白名单缓存坑已由末段清空规避）
-3. **编后核对**：7 可执行+centerpoint_ros_node；`rosparam get /canbus/hookposition`=182/254/213/254；`rostopic echo /can_msg`（hookPos/palletPos 随动、epsERR1/2 恒 0）；健康态不急停/故障位+断网急停；kill control→~1s 刹停；挂脱钩全流程（两相续接+到位停发）；云端心跳 4/3；**速度对 GPS 实测**；**转向灯方向核对**（风险 6）；config 改值重启生效；相机/蜂鸣不动作属预期
-4. 入口二选一：start_l4.sh 或 HMI
-5. **pnc 感知排除区（09-10 基线必做）**：同步 src/pnc/src/robot_perception_convert 两文件 + config/charge.csv 后，**必须删除车载 config/perception_boundary.csv**（旧包容区被当排除区加载=作业区感知致盲，且完全静默）；trajectory_optimized.csv 处置定案前**不得**留在车载 config/；编后核对启动日志 `Loaded N exclusion polygons` 数量与预期一致
-
-## 五、设施与方法（本机）
-
-- /tmp/canbus_user_verify（canbus 桩+GATE/EXEC/T1/config 测试）、/tmp/pnc_stub（**09-10 整理轮重建**：gen_msgs.py 从 msg/ 现量 38 个机械生成+ros API 桩+gencpp 机器件桩+tf/tf2/jsk/nav/Marker 外部桩；build.sh 全 52 TU 编译+6 可执行链接并分 base/after 记录告警；tok.py 注释剥离分词 token 等价校验器）——重启即失，旧版重建要点另见 `../workflow_full_backup_20260905.md` 09-04 条目
-- 桩编译要点：`-include cstdint`（个别 `-include array`）；4 个 TU 本机 boost 需 c++14（车载无碍）
-- 快照（`../`）：baseline_vehicle_deployed（09-05 基线）、pnc_userbase_20260910（09-10 pnc 新基底，用户宣言，9.7M/1630 文件）、**pnc_before_tidy_20260910（09-10 整理轮前一刻，10.1M/1633 文件）**、docs_before_slim（09-05）、pnc_before_hookstatus_hb/pnc_before_inline_fix（09-04）、canbus 三枚（09-03）、before_codex_merge（09-02）、pnc_taskplan_*（08-30）；备份 md：workflow_full_backup_20260905、baseline_sweep_reports_20260905；另 `../` 有两个 perception zip（09-10 自 pnc/src 移出）
-
-## 六、待办（优先级）
-
-0. ~~车载编译部署~~ ✅ 09-05 完成；编后精核对（四.3，尤其风险 6 灯光方向）仍建议走一遍
-1. 决策：**车载 pnc 回滚后是否重放 09-11 两修复（task_plan latch+启动/停车空任务、perception_convert 空帧发布+stamp）——ultra 现行语义依赖二者，不重放则空场景 safe 恒 1 且初始化任务无法起步（详见现状 ultra 条 ⚠）**；感知排除区三项（trajectory_optimized.csv 去留/迁移 path/、charge.csv 走廊范围确认、LoadBoundary 白名单+坏行告警加固）；HMI 标定卡片去留；rebuild_all.sh 修缺陷（补 say/die/JOBS/set -e/cd 锚定）；ultra_command 三项——①确认现役 YAML 中哪些任务块改用已存在的 `_01_01` 路径②矩形与作业走廊重叠语义（任务路径自身穿矩形，挂靠目标在区内则作业段 safe 恒 1——回放 rosbag 或重画矩形）③`/ultra/status/safe` 仓外消费方契约（普通模式三帧解除、初始化起步前当前帧 1/0、起步后恒 0、非目标=0）；task5.yaml task_sum:3 与 4 块定义不符（task3 脱钩块永不装载，业务确认后改 4 或删死块）
-2. monitor 实车验收（scan 外参→CPU→下线 start_l4.sh 侧 simview）；09-15 起含障碍物 type 四色验收（本次用户授权在 PNC 发布前接入 HDMap，/perception 已输出 0/1/2/3/4 车道关系；部署新版感知节点后验收四色）
-3. 【需授权】修复候选=PNC_ANALYSIS P0 剩余（can_comm sleep/fence fopen 判空/急停 latch/task_id==4/fence 0517）**+本轮新发现**（风险 1 双发拆包/3 转向数学/5 m_acc_last+indexE）
-4. MQTT 安全整改
-5. 硬编码收敛（红绿灯框恒假可一并清/装载点/UTM 两套）；油门 D×18/R×10 为用户确认的标定值,保持原比例
-6. 休眠代码去留；建议 git init
-7. planning 09-12 重构及 09-14 全包格式统一上车后 ROS1 编译/回放验收；评估 ultra 全路径停车语义、作业路径不可达条件及多 CSV 里程连续化（保持现行业务，仅记录和回归锁定）。校验轮补充：①车载 `catkin_make` 用 `-std=c++11`，本机 Boost 要求 C++14，须在目标环境验证；②可扩 `tests/planning/regression.cpp` fixture（task_id==4 测试限速链/LaneChangeSwitch/horn/右转灯/ADAPTIVE 完整生成链）；③文档旧行号已随重构及格式统一失效，后续更新引用时按函数定位；④`src/pnc/tests/`、`tools/` 及 `__pycache__` 不属于车载运行所需文件；⑤旧 RViz 的 `/planning/obstacles` 显示项可在后续维护时清理，该未启用调试接口已由用户删除。
-
-8. hdmap SDK 上车时重编 aarch64 并验证 ROS1 catkin 导出；后续正式接入 PNC 加载链时使用 `LoadProcessedTrajectory`/`ConvertToPncPath`，核对固定 0.1m 曲率重算、点数窗口和多段累计里程。当前车道分类已接入 perception_msg_convert 的发布链；规划轨迹加载与控制仍使用原逻辑。
-9. log_online 车载部署与验收（本机全绿未上车）：同步整目录→核对 `TOPIC_CAMERA`（`rostopic list | grep compressed`，默认 /cam0/compressed）→接入 start_l4.sh/HMI（保护清单，需用户点头或自改，README 有建议行）→人工触发一次急停验证事件目录前后窗 ≥90s→状态页与 rostopic echo 一致性→建议补一次磁盘满降级演练（对应 DESIGN §12，无自动化测试）。
-
-9. log_online 定时器修复同步实车并重启后，确认不再出现 `float.to_sec` 异常且采样持续运行。
-
-10. monitor/感知性能修复部署与 Orin 验证：monitor 同步后强制刷新浏览器；感知节点重编并重启。先保持停车排查，比较浏览器开/关时 top/tegrastats，核对 /control_msg、/navigation_msg、/perception 发布周期和延迟；本机压力数据不代表实车性能，转向抖动与滞后的实际根因尚待现场数据确认。
-
-11. gantry_detect 检测侧仍待处理闸杆漏检被判开、定位/点云过期、NaN 预清理与 ROI 外处理开销，并核对现场雷达/ROI/点数阈值；09-17 已按用户要求接入 planning 的 safety 输出和 catkin 源目录，检测算法及整车启动未改。需同步相对软链接与根模块、在 ROS1/Orin 重编 gantry_detect/robot，重启规划节点后验证四种 active/open 组合和原有停车条件。
-
-12. 09-17 新感知避障部署：同步新配置与两节点源码、重编/重启 perception_msg_convert 和 path_plan_node；记录实测空车/挂托盘宽长、后轴到前端距离及最差载荷可保证减速度，填写 perception_safety.yaml。当前尺寸保留旧值，尚无铰接托盘模型。回放/实车核对误检、路边静物、侧方超车/切入、近距急停、断流及所有独立停车条件，同时测 Orin 总负载与规划/控制消息时延；本机性能结果不代替车辆验收。
-
-13. 09-17 单点区域限速上车：重编并重启规划节点，确认启动加载点数与 path/speed_limit.csv 一致；核对当前位置进入/离开 5m 圆的 desireSpeed、重叠取小和已有停车条件保持。速度单位 m/s，修改或清空 CSV 需重启生效。
-
-14. 09-17 审查中的分段紧急碰撞漏判已随用户三帧确认规则修复并补独立及真实发布回归；ACC 开关与新链断流停车矛盾仍待处理。再处理非静态挂钩地图限速坐标、运动 heading/物理框契约及扫描外参变换，保持其他停车来源和控制标定。
-
-## 七、保护清单（清理/修改严禁触碰）
-
-| 项 | 原因 |
+| 事项 | 当前有效约束 |
 |---|---|
-| src/fms_agent/env/、.git、data/tmp_path.txt | fms.sh source / 唯一版本史 / 运行时读取 |
-| src/CUDA-CenterPoint/build/ 与 model/ | start_l4.sh 原地启动+相对路径 |
-| src/ivlocmsg/ | pnc 定位消息在用 |
-| src/driver/cam_geac/demo/ 可执行 | rb_camera.sh 按名调用 |
-| src/pnc/path/、param/、3rd-party/arm/*/lib* | 数据/配置/预编译库正本 |
-| 根 record_*.sh、fms.sh、start_l4.sh、launch/ | 启动运维脚本 |
-| 工程外快照与备份 md | 非 git 唯一回滚点 |
+| 修改边界 | 最新减速刹车业务仅改 control 的 D 挡；R 控制、横向算法和其他模块业务保持。后续不得借平顺优化放宽独立安全保护 |
+| 实际速度与液压反馈 | 车速来自 `/navigation_msg.gpsSpeed`；`/can_msg.brakePercent` 是底盘实际液压响应，不能用控制请求替代，也不能假设百分比与减速度线性 |
+| 电机速度接口 | D 挡稳态映射为 `throttlePercent = 13.5 × speed_cmd`，保留当前速度+0.5m/s约束与原5%低速保底；R保留×10、45%上限 |
+| 曲率与直线 | 当前静态曲率标定为参考k=0.04时1.4m/s，k≤0.01区间曲率上限最低约5.378m/s；直线5m/s需求、前后各2m几何抗噪保持，实际仍受规划/安全限制 |
+| 预瞄 | 名义新增距离为导航当前速度×4s；已发现且未驶过的前方曲率按地图位置保留，减速不使其退出扫描。沿程包络提前收速，30项历史只存当前位置曲率 |
+| 普通液压授权 | 积分只由原始规划desireSpeed下降发起；默认门槛0.1m、上限0.2m（运行门槛的两倍）。0.2m是速度误差积分，不能直接换算成固定brakePercent |
+| 液压执行 | 普通首请求3%、上限15%；真实反馈参与接入/释放判断。大需求使用较短观察期和较快增量；独立紧急制动不受普通上限约束 |
+| 横向基线 | D挡曾尝试速度相关融合，经实车反馈已回滚到固定70%/30%；不能把旧试验方案恢复为当前值 |
+| 电子围栏 | control已清除围栏逻辑；task_plan负责任务/实时保护，planning检查实际生成轨迹，HMI显示告警新鲜度。monitor的2.5m视觉预警带不放宽任务安全边界 |
+| 工程纪律 | 非git工程，改前保存快照；PNC自有C/C++为4空格同行括号，保留旧命名/include顺序/绝对话题。车端CPU接近饱和，新增计算需说明复杂度和有界缓存 |
 
-## 八、纪律
+## 2026-09-22：control D挡减速刹车实车确认与当前实现
 
-- 本机≠车载路径，部署需同步；HMI/monitor 无鉴权严禁公网映射；"全部停止"≠硬件急停
-- PNC_ANALYSIS.md 行号为重构前基准；其 §8 qpoases 结论已证伪；其 §0.7/§2.5 部分结论已过时（InitParameter 已删/死代码已清/冻结油门已有老化兜底——见归档报告 deploy-chain 对照）
-- auto_couple GBK：grep 加 `-a`；动 pnc 前必读 src/pnc/README.md（CLAUDE.md 强制）
-- /hook_position 与 auto_couple 消息类型名不同字段同（MD5 巧合，改字段即断链）
-- fms_agent 编译口径：纯消息+Python，catkin_make 自动生成即完成，scripts 原地跑
+用户在最新算法实车测试后明确反馈“效果很好”。本次只更新文档，不再次调参或改源码。
+当前三个生产文件与上轮交付的最终SHA-256一致：
 
-## 九、日志（结论级；细节查备份 md/归档报告）
+- `src/pnc/src/robot_control/control_comply.cpp`
+- `src/pnc/src/robot_control/control_comply.h`
+- `src/pnc/src/robot_control/forward_brake_control.inc`
 
-- **09-17 planning 按用户新要求改为紧急三帧确认并忽略车道外目标**：仅修改 planning 的 perception_safety.h/.inc、path_plan_comply.h、path_plan_perception.inc。紧急风险按每 ID 的独立帧计数，第一/二帧立即给当前 CAN 车速 60% 上限，第三帧置 safety/零速；其他低速、安全来源和解除迟滞保持。type=3/4 两入口提前过滤，明确出车道的 ID 从新链旧轨迹及兼容四帧历史移除，0/1/2 保留；用固定代际标记表避免目标×历史匹配。修复相邻段物理碰撞被首个软余量相交 break 漏掉的问题，仍单次有界遍历。核心 C++11/Werror 与 ASan/UBSan 各 4,995，真实规划集成 257、区域限速 284、闸机 1,806 通过；39 公共单元+前后节点完整编译链接，旧业务 387 组字节一致（SHA f477742d937818704d7062ea14140d17402aa7e140e911312fafc1ce7341143c）。6 个隔离错误变异均被检出，cppcheck 无诊断；300 目标/1000 次预热后核心零堆分配，缓存 4,789,248 bytes，旧入口另加 128KiB。快照 `../planning_policy_before_20260917_164328.tar.gz`，日志 `/tmp/planning_policy_20260917_164328/`，报告见 planning tests。control、converter、monitor、消息、参数与 CSV 未改；ACC/局部定位/旧几何契约等其他审查问题未扩改，无 ROS1/Orin 实测。
+针对上一轮车辆频繁点头、刹车顿挫，最终实现保留以下要点；完整公式、常量与测试命令以
+[专项报告](src/pnc/tests/control/forward_speed_smooth_20260922.md)为准，不再并列旧阶段参数：
 
-- **09-17 planning / robot_perception_convert 交叉复核**：只审查与复现，没有改生产逻辑。重新运行区域限速 284、闸机 1,806、感知集成 52、旧快照 387（与上轮一致），重编 C++11 核心 4,795、跟踪 19,733、发布 4,414，跟踪/发布 ASan+UBSan 与 converter 实际 CMake/SDK 链接全部通过；新增边界用例仍复现两项 P1 和三项 P2，证明旧回归覆盖不足。P1 为新碰撞软相交段 break 漏掉下一段硬碰撞、ACC 输入门控却继续超时决策；P2 为非默认挂钩局部导航与地图限速失配、运动 heading 的旧几何消费、扫描偏移未旋转；另复现 T 区旧历史独立零速。报告 `src/pnc/tests/planning/planning_convert_review_20260917.md`；临时记录 `/tmp/planning_convert_review_20260917_152858/`。开工时规划源码 SHA 与上轮编译一致，原保护清单只有编辑器 `.speed_limit.csv.swp` 已变化，真实 CSV 无变化；本轮检查完 1,502 个 PNC/monitor 既有文件字节均未改。无 Orin/ROS1 运行结果，不把模拟覆盖等同完整实车安全性结论。
+1. 按位置保留尚未经过的预瞄区间，避免车速下降→窗口缩短→限速解除→重新加速的循环。
+   沿程硬包络参考减速度0.8m/s²，舒适包络0.6m/s²；静态C(k)标定和几何抗噪不变。
+2. 电机普通减速参考0.6m/s²、恢复加速0.4m/s²、内部jerk参考0.5m/s³。
+   规划及安全硬上限突降仍立即抢占，不额外恢复普通起步斜坡，也不宣称整车实际jerk受同样约束。
+3. 正常末停在状态回调锁存有效到位证据；同终点、有效定位及位移核验通过时，距离重算为负不单独触发80%。
+   停稳迟滞为进入≤0.03m/s、退出>0.06m/s；连续0.3秒后80%保持，原2秒超时及异常保护保留。
+4. 实际速度高于原规划目标且误差>1.2m/s时，电机观察0.4秒、减速不足确认0.15秒；其他为0.6秒/0.3秒。
+   同时核验近期0.1秒差分和滤波减速度，防止电机刚建立减速时被误判而叠加液压。
+   已响应后大需求每0.6秒最多+3个百分点；轻需求每0.5秒最多+1/-2。未把未经标定的5～8%当成可靠死区。
+5. 已见真实响应，撤请求后新鲜零反馈连续0.15秒、无未决再加压或故障时可恢复驱动；
+   1.8秒只保护未决增压，不再作为所有释放过程固定禁油时间。手动D或N停稳、真实零反馈连续0.5秒可清D专属故障。
+6. 小请求无响应进入未知/禁油，不单凭小请求超时与速度误差升级100%；15%持续无效、强请求失效、
+   实际不释放、液压断流/时钟异常及独立急停保护保留。发布端每秒记录一次D纵向诊断。
 
-- **09-17 planning 单点区域限速**：生产仅修改 Comply 头/编译入口、task 初始化分片和 output 分片，通过 LoadPointSpeedLimits/ApplyPointSpeedLimit 在启动时缓存三列 CSV、最终输出速度阶段按 5m 闭圆取最小值，前进/倒车一致。空文件不加限速；空白行忽略，格式/非有限/负速度行跳过。采用 O(N) 连续缓存遍历与平方距离，不改其他速度或安全来源，不读写用户 CSV、不改参数/launch/消息/control/converter/monitor。补充可复现验证脚本及 284 项文件/边界/发布断言，全部 41 个规划/公共单元编译、三套集成链接通过，闸机 1,806、感知 52 检查通过；单独重编修改前 Comply 与前后回归，387 组快照只有 11 个实例初始化各新增 get:path_dir，其余消息/状态/事件逐字节一致。211 保护文件哈希一致，无 ROS1/Orin 运行结果。备份 `../planning_point_speed_limit_before_20260917_151638.tar.gz`，日志/结果 `/tmp/planning_point_speed_limit_20260917_151638/`；部署及后续文件变更均需重启规划节点。
+上轮已完成的本机验证（本次文档整理没有重跑，不能记为新测试结果）：
 
-- **09-17 planning 长宽比阈值 4→3**：按用户后续要求，同步修改两个感知入口的比例乘数及当前说明；尺寸 `dx>1 && dy>1`、独立宽度上限 4m、漏检历史策略保持。更新现有测试为比值 3 的等于/相邻浮点边界及 3.5 倍被剔除的场景。C++11 核心 4,795 项、真实 Comply 编译与集成 52 项、闸机 1,806 项通过，旧 387 组快照一致，172 保护文件未变；本次未重复内存检查或性能基准。备份 `../planning_aspect3_before_20260917_150447.tar.gz`，结果 `/tmp/planning_aspect3_20260917_150447/result.json`。需重编并重启规划节点生效，未部署 Orin。
+| 验证 | 上轮结果 |
+|---|---|
+| 真实control_node C++11桩编译/链接 | 通过 |
+| 液压反馈 / 执行状态 / 新平顺专项 | 11,288项；20场景10,685项；11场景1,840项断言通过 |
+| R/N差分 | 220场景、8,925条完整消息一致，包含48组D转非D场景 |
+| 静态曲率标定 | 4,901点与冻结原版一致 |
+| 历史bag同输入C++回放 | 主D段8,316帧，大幅电机目标下降129→43次、上升86→9次；两版普通液压请求均零帧 |
 
-- **09-17 planning 增加用户指定尺寸比例过滤**：生产仅修改 `path_plan_perception.inc` 和 `safety/perception_safety.inc`，在旧话题与实际避障观测入口使用同一严格尺寸/长宽比规则。两边大于 1 m 后用 `dx>4*dy || dy>4*dx` 避免除法，原消息不修改，保留目标字段和顺序不变，独立扫描来源不受影响。补充等于/紧邻 1、4 的浮点边界、两种长宽方向、输入快照完整性、全过滤帧心跳、真实新链碰撞效果及既有观测漏检过期回归。核心 C++11 4,795 项（含 ASan/UBSan）、实际 Comply 编译与集成 52 项、闸机 1,806 项通过；旧 387 组消息/参数/状态逐字节一致。复用经源码 SHA 核对的未改公共对象；本机规划整体编译使用 C++14（Boost 要求），未在 Orin/ROS1 部署。备份 `../planning_aspect_filter_before_20260917_145825.tar.gz`，记录 `/tmp/planning_aspect_filter_20260917_145825/result.json`；转换/control/monitor/消息/参数/launch 共 172 保护文件未变。
+回放来自 `20260922_095722_017.bag`，是输出对照，不是闭环仿真；不能将上述比例当成本次实车舒适性改善比例。
+该bag最高规划速度4m/s；本次用户未提供新测试的速度/载荷覆盖，5m/s、急停距离等不新增量化结论。
+缓存增加8N bytes、对象增加240 bytes，路径更新新增O(N)预计算，扫描O(P+30)。本机路径回调有额外开销，
+预热缓存零新增分配不等于整节点零分配，也不能据x86微基准承诺Orin负载。
 
-- **09-17 planning/perception 前向避障实现与 CPU 优化**：按用户授权实现专用真实观测通道，避免两秒历史输出被规划重复计成新检测；真实框四角与运动 heading 分离。新核心固定 32768 项 ID 状态表、活跃列表、输入/路径复用缓存，AABB 粗筛＋连续四轴相交，按 vx/vy 检查超车/切入，路径最多 128 段/扫描 2048 点；普通限速加减速度/jerk 约束，近距物理风险不等待确认。兼容链在新通道首个有效消息前保留，启用后失流 0.6s 停车。去掉新链被旧径向限速绕过的问题；前扫描执行前后保持原安全标志，超声停车在新前向链独立读取缓存；任务/闸机/急停/暂停/断网的既有最终覆盖保持。最终新核心 C++11/Werror、4,762 项及 ASan/UBSan，实际节点集成 31 项，旧业务 387 组 SHA 不变、闸机 1,806 项，发布真实 CMake C++11/HDMap SDK 链接、4,414 项及 ASan/UBSan，cppcheck 无诊断。六组实际 converter 新旧输出字段校验和一致。三轮主机 300 稀疏目标处理 P50 0.678485→0.031853ms，P99 0.794205→0.036788ms，缓存约 3.94MiB，1000 次热循环无分配。保护文件 152 个未变；观察到相机心跳判断、任务 YAML/CSV 并行改动，未回滚。备份 `../planning_perception_before_20260917_140441.tar.gz`，构建/差分日志 `/tmp/planning_perception_20260917_140441/`，报告与算法说明已入 planning tests/safety README。未在 ROS1/Orin 部署；新 launch 参数文件已核对存在，须实测两种工况尺寸与制动标定，不能把原默认长度当成整个托盘列覆盖保证。
+持久证据与冻结交付：`../control_d_smooth_20260922_103950/`；改前包：
+`../control_d_smooth_20260922_103950_before.tar.gz`。重部署仍只需同步上述三个业务文件、重编robot、重启control。
+本轮制动修改不包含并行的planning转向灯或cargo CSV修改；各自交付与验证见下方。
 
-- **09-17（午四）path/ 消费方盘点 + ultra 监控矩形丢失恢复**：应询盘点全工程真实读取 pnc/path/ 下 CSV 点的模块——pnc 内仅 path_plan（LoadPathFile 三链）与 control（fence.csv 围栏，启动一次）；**pnc 外仅 ultra_command 在役**（LoadZones 每周期热读 path/pudong_air/{left1,left2,right}.csv 矩形顶点）。simview 的 LoadMap 虽读点但工程内 launch 指向的 path/view.csv 不存在且 simview 已下线（车载用工程外副本自带 view.csv）；monitor 仅当 /robot/mapfile 参数被设置才读该文件（现无人设置，默认读自家 monitor/map/）；hdmap/gantry_detect 均只碰自家目录。**发现并修复**：三矩形 csv 随 09-11 车载 pnc 回滚整体丢失（before_tidy 快照有、userbase 基底与现行树/github 车载副本均无）——期间 ultra 加载恒失败，312 族任务激活时 safe 恒 1（消费方按 0 放行则任务全程受阻，与 09-11 ⚠ 条目叠加）。已从 `../pnc_before_tidy_20260910.tar.gz` 恢复三文件（各 5 行闭合矩形，v2 坐标）。**车载部署：三文件须随 pnc 同步**（github 车载副本同样缺失）。
-- **09-17（午三）闸机提示箱尺寸朝向修正（用户指出）**：原实现把"长 3m"摆在沿行进方向——几何轴系与车辆轮廓自洽（局部 +X=车头），但闸机关闭的物理语义是闸杆**横拦车道**：3m 应为横向跨度、1m 为纵向厚度。已改：3D `BoxGeometry(1,2,3)`（x=1 沿车头/y=2 高/z=3 横向）、中心=车前 2.5m（近端面 2m+半厚 0.5，原 3.5m 随半长同步改）、2D 降级矩形同口径交换。**测试盲区补齐**：F14 原只锁位置/朝向，THREE 桩 BoxGeometry 不记参数——尺寸互换测不出；桩升级记录 `__dims` 并新增断言 `[1,2,3]`，frontend 103/0。
-- **09-17（午二）HMI/monitor 闸机接入对抗式二验（ultracode 工作流：6 维度审查→每发现 3 镜像反驳多数决→完备性批评家，28 代理/164 万 tokens）**：7 原始发现 → **5 确认**（2 Important 均在 HMI 捆绑生命周期）+2 驳回。**Important①孤儿双起（已修）**：bash/roslaunch 先死时后台 centerpoint 被 reparent 成孤儿——stop() 进程组信号够不着（句柄已死）、残留检测只置标志、CRASHED 直接重启会双起（双 TensorRT 引擎//box 双发布者/GPU OOM）。修复双管：centerpoint 组件加 `stop_cmd`（pkill 括号技巧防自匹配，stop() 第 1 步无条件执行）+ `process_manager.do_start` 在 CRASHED 且 pgrep 检出残留时先 pkill 再启动（~12 行，正常组件零影响）。**Important②健康耦合（未修待拍板）**：/gantry_state 并入非 optional 的 centerpoint 健康后，gantry 起不来/掉频会让该卡 DEGRADED→**一键启动在组 2 中止，pnc/fms/monitor 不再启动**——选项 A 维持（闸机监控必须在线）/B 加 advisory 告警不阻断旋钮（推荐，需动 process_manager+ros_bridge）/C 移除该健康项（违背 2Hz 监控需求）。**批评家补充 Important**：捆绑默认激活 pnc 闸机 safety 覆盖链（09-17 并行接入）而检测算法未实车标定——ROI 内误判"关闭"=规划压 safety 停车（方向安全但阻断运营），**上车标定（offset/ROI/强度/点数阈值）是硬前置**；无消息时链路不生效（planning 侧设计兜底）。Minor：F14 注释笔误已修、t02c"缺字段"断言名失实已改为如实描述、stop_pat 对 vi/grep 编辑会话的 -f 误匹配接受留档（既有组件 stop_pat 含 launch 文件名同款惯例）。修复后回归：hmi 80/0、monitor test_full 80/0 + frontend 102/0。审计链 `../review-gantry2/`（差分基线+工作流 journal）。
+## 2026-09-22：planning转向灯改动复核
 
-- **09-17（午）HMI 捆绑启动 + monitor 闸机显示（用户规格实现）**：HMI"3D 感知"卡片捆绑启动 gantry_detect——`cmd` 改 `bash -c "./centerpoint_ros_node & source $ROOT/devel/setup.bash && exec roslaunch gantry_detect gantry_detect.launch"`（centerpoint 保持 build/ cwd 与 source 前环境；无独立标签页），health 增 `/gantry_state min_hz 2`（与 /box 并列，单进程死亡互不掩盖；ROI 外仍 10Hz 连发不误报），stop_pat 改 `centerpoint_ros_node|gantry_detect_node|gantry_detect\.launch`（停卡杀双进程防孤儿）。monitor：后端 TYPED_SUBS 增 /gantry_state+快照 `gantry{active,open}`（包未编译走既有导入失败降级横幅）；右栏"安全"与"控制"之间新增"闸机"行——active&&open=开启（.v.ok 绿）/active&&!open=关闭（.v.bad 红）/active=false=无效（默认色），数据缺失或龄>5s 显示"--"灰化（用户未定义此态，按 monitor 惯例扩展）；关闭时中央 3D 在车辆前向**近端面 2m**（中心 3.5m 沿航向）显示 3×1×2m 红色提示箱（tick 随外推位姿平滑，不挂感知图层，无定位隐藏），2D 降级画同位置红色矩形；断连 resetIds 含 hGantry 且箱同步隐藏。顺带两件：gantry yaml 的 zyd 死路径 trajectory_csv 置空；hmi 测试 T17 常量同步 config.cfg 新标定 178/252/212/231（09-16 vehicle 1 标定漂移所致既有红，与本次无关，测试注释本身要求与 cfg 同步）。**验证**：monitor test_full 80（新增 t02c 四态）/frontend 102（新增 F14 十一项：三态渲染/源序锁定/箱几何位置显隐）/edge 28/dashboard 110+51/fuzz 2/chaos 11、hmi 全量 80（新增 tests/test_centerpoint_bundle.py 三项）全绿。**更正**：src/gantry_detect 现为实体目录（非软链、根目录无实体），车载同步=整目录，待办 11"同步软链接与根模块"说法作废。**上车**：同步 hmi_config.py、monitor/{ros_visualizer.py,static/index.html}、src/gantry_detect 整目录；HMI 停启"3D 感知"卡验证双进程；检测算法标定项（offset/ROI/强度/点数阈值、NaN 预清理）仍待实车（待办 11）。快照 `../hmi_monitor_gantry_before_20260917_*.tar.gz`。
+涉及三个生产文件：`robot_path_plan/path_plan_output.inc`、`path_plan_comply.h`、`path_plan_task.inc`。
+D挡由单点偏角改为18m前瞻意图：最大偏角≥35°、末端≥20°、反向偏角<15°，候选连续3周期后点亮；
+最短保持1.5秒，偏角收敛到15°内连续5周期熄灭。新增状态在初始化/任务复位/非D时清除。
+R倒车灯5、safety最终覆盖灯值8保持。缓弯不亮及强S弯抑制属于设计意图。
 
-- **09-17 planning 闸机接入二次校验**：再查全部 safety 赋值和两个最终发布入口，未发现无效条件清零他项 safety 的错误；原有业务 token 去掉新增包装后与基线一致。39 算法单元及前后节点重新编译链接，387 组差分一致；在现有测试上新增 60 帧/540 项独立断言，合计 1,806 项，覆盖不同安全原因在关闭→打开/失效时交接。隔离副本的“无效直接写 0”“恢复固定 0”“回调清零”全部被测试拦截，正式业务源码哈希不变。核对 ROS Noetic Publisher/TopicManager 官方实现，const M& 路径先序列化再返回，随后恢复内部值不会改写已发布数据。仅测试/文档更新，原始日志 `/tmp/planning_gantry_review_20260917_105121`；仍无车载 ROS1 验证，消息断流保持末次状态的语义未调整。
+当轮代码复核、C++11/六节点链接及规划域七套件通过，未发现灯光修改错误；仍未收到该功能独立实车反馈。
+**保留的回归差异：** `verify_map_speed_limit.py` 的 `terminal_control` 有1项FAIL，
+还原三个灯光文件后仍复现，归因于并行control末停变更与旧交接断言冲突，不能写成全工程回归全过。
+该断言仍待按当前control契约核对更新，本次不改测试。细节见[规划README](src/pnc/src/robot_path_plan/README.md)。
+改前包：`../planning_turn_light_before_20260922_103000.tar.gz`。
 
-- **09-17 planning 闸机 safety 接入**：用户要求 active=true 时监控 gantry_open=false，并明确不影响其他业务。采用最终发布包装：保存原 safety、按闸机条件置 1、publish 后恢复，避免早退路径残留和灯光/速度等跨帧副作用。回调只传两个布尔，O(1) 更新，无数组复制/新线程/新定时器；最新消息关闭覆盖、开闸或失效解除本项覆盖。仅规划四个源码/分片及包依赖发生生产逻辑改动；正确消息头限节点，补 runtime 依赖与 src 根包软链接。开工备份 `../planning_before_gantry_20260917_103937.tar.gz`；差分副本仅移除基线已有但不存在、且未使用的 gantry_detect.h 引用以使旧版可编译。387 组旧消息/状态/事件 SHA256 一致，新增 1,266 项检查（包含实际节点回调、两条发布路径、其他停车原因和任务复位）通过；39 个共享单元及前后完整节点链接通过。真实 CMake 配置+模拟 catkin 检查消息依赖只挂规划节点，catkin_pkg 确认 ivlocmsg→gantry_detect→robot。gantry_detect/monitor/其他 PNC 业务及消息定义哈希保持。尚未 ROS1/Orin 构建运行；报告 `src/pnc/tests/planning/gantry_verification_20260917.json`。
+## 2026-09-22：pudong_air限速列平滑定稿
 
-- **09-17 gantry_detect 初审**：用户新增根目录模块后要求查看，完整阅读 10 文件并核对雷达/定位上游和工程引用。梳理双点云合并→0.1m 体素→ROI 内强度裁剪/二维聚类→3 帧开闭逻辑，发现数据时效缺失、无目标直接判开、ROI 外仍做点云处理、未接入编译启动消费链及旧 CSV/可视化 frame 配置。直接抽取原函数以本机 PCL 1.14 运行，5000 点合成水平高反闸杆降为 26 点、不满足 1000 点簇门槛，第三帧输出 active/open；单 NaN 的 ApproximateVoxelGrid 调用经 UBSan 复现越界浮点转 int，上游 RSM1/dense_points=false 确会产生 NaN。模块代码/参数全部哈希未变，仅记录结论；未进行 ROS1 节点/Orin 实测。原始记录 `/tmp/gantry_review_20260917_103013`。
+只改 `src/pnc/path/pudong_air/312_cargo_01_01.csv` 与 `312_cargo_02.csv`，共3,299行第四列。
+最终采用两遍线性扫描的锥形包络 `min_j(orig[j]+0.01*abs(i-j))`：含用户限速的文件整列参与，
+相邻速度差≤0.01m/s、不高于原值且不低于0.5m/s；13份全默认10的轨迹不动。
+前三列、行数、CRLF保持。当轮字节/约束检查及CSV专项通过；后续整套交接测试差异见上一条。
 
-- **09-16 感知空间换时间优化**：四米网格把常见稀疏候选查询从 N×T 扫描降为平均 N+T+邻格候选数；仅共享可行轨迹的观测进入同一匈牙利分量，保留精确门限、全局最优及相等代价时的原索引顺序。复用索引/求解缓冲和每帧轨迹常量，ID 位图替代哈希集合，历史统计固定 128KiB 下标表只清已用条目，缓存旧 ID 避免清理悬空观测指针。三轮本机 300 目标/50% 新生跟踪 P50 2.0439→0.1463ms，完整回调 4.0663→1.9684ms。19,733/4,366 项检查及两套 ASan/UBSan、cppcheck、真实 CMake C++11/SDK 链接通过，另有 1,000 帧稀疏/密集/格边界/极端坐标/重复帧/过期差分一致。仅两个感知 .inc 生产代码、模块测试与说明发生改动；速度/heading/20% 规则保持。备份 `../perception_monitor_before_cache_perf_20260916_225148.tar.gz`，原始记录 `/tmp/perception_cache_perf_20260916_225148/`，模块报告 `tests/cache_performance_verification_20260916.json`。容量保留到进程退出，密集极端场景仍可能退化；不是 Orin 时延测量，需重编/重启后停车验收。
+用户已否定较早15点移动平均斜坡，不能再当成当前算法。文件尾长度不足时不强行抬回10。
+生效需重新下发任务重载或重启planning，无需重编。改前包：
+`../pudong_air_speed_smooth_before_20260922_102302.tar.gz`，保留最初原始数据。
 
-- **09-16（夜）log_online 子代理驱动全流程交付**：按用户需求（在线监控+不安全事件前后各 ≥90s+七类数据）经 brainstorming→spec→plan→SDD 交付 `log_online/` 全模块。**四项用户决策**：触发仅急停/故障类；视频只记链路状态不存流；磁盘上限自动轮转；后台记录+状态页。**执行**：10 任务 6 批次、20 次子代理派发（6 实现+6 任务审+4 范围复审+1 终审 opus+3 修复续派），每批独立审查；**拦下 8 处计划缺陷**（含 `robot.msg.object` 内建遮蔽、T7 时间线不足致事件永不关闭、get_status 缺 state 键等——全记录于 sdd workspace 台账）；2 轮任务级修复环（get_status 锁外读共享态→segments 拷贝+scan 容错；段簿记跨事件泄漏→open 时重建段表+初始 metadata 即含首段）。**终审（opus，spec 逐节+车载契约核实）**：0 Critical，2 Important（磁盘写失败可毒化事件机制违背 §12 降级承诺；LOG_ONLINE_PORT 非数字杀整节点）+3 小项（evict 失败复查、NaN 消毒、README），修复波 2 轮后复审通过——writer 四个 IO 点全防护、端口防呆、NaN 双侧消毒。**与并行会话交错**：用户实车试出 rospy.Timer 需 Duration（并行会话 20:30 修复并记录，本流程核验融合，终态回归含之）。**终态验证**：py_compile 3 文件、8 测试文件 46 用例全 OK、SMOKE PASS（1 事件 2 段后窗恰 90.0s）；上游契约（6 个 .msg 字段、cam{n}/compressed、noetic rospy API）经真实源码逐项核实。快照 `../log_online_delivered_20260916_212704.tar.gz`（89.9KB/22 文件）；DESIGN.md 已按终审回改 4 处文本对齐实现。**遗留（留档 sdd workspace，均非阻断）**：无优雅关停收尾（rospy.on_shutdown 可后续加）、Rotator 跨线程加锁、metadata 原子写、mock 与真 rospy 的 data_class 保真度差异、测试卫生若干；车载部署与验收步骤见现状条与 README。
+## 2026-09-22：围栏迁移冲突修复与显示
 
-- **09-16 晚 monitor/感知性能回归修复**：用户反馈 Orin 上整车变慢和转向滞后。monitor 原按障碍重画三行大纹理，改为静态共享字形纹理+相机平面偏移的单批次，保持白字、单位、半字号和位置，100 目标纹理约 75→0.9MiB。跟踪候选粗筛/紧凑代价矩阵/无候选行列剔除/独立新生列减少匹配搜索；100 目标频繁新生的回调计算 P50 6.450→0.930ms，五组对照的 ID/位置/速度/航向/置信度/type 摘要一致。验证 91 项前端、3,911 项跟踪、4,366 项发布及两套 ASan/UBSan、C++11 节点编译/链接通过，真实 Chrome 俯视/环视外观复核。备份 `../monitor_perception_before_perf_fix_20260916_210108.tar.gz`，性能结果分别存于两模块 `tests/performance_verification_20260916.json`，原始记录 `/tmp/perception_monitor_perf_20260916_205319/`。业务代码仅修改 monitor 与 robot_perception_convert，未实车部署或确认控制时延恢复。
+围栏已从control迁至task_plan；最终修复覆盖19个生产文件，完整清单见
+[交付说明](../pnc_fence_fix_delivery_20260922/部署说明.md)。本次刹车实车反馈不替代围栏功能验收。
 
-- **09-16 log_online 实车 Timer 异常修复**：用户提供 Noetic `rospy/timer.py:223` 线程异常，确认周期类型错误。本次生产代码修改为 `Recorder.run()` 的 Timer 周期包装 `self._ros.Duration(...)`，保留配置频率与回调。测试桩原来接受 float，补 Duration/to_sec 契约后，新启动回归先在旧实现下复现相同异常，修复后验证 10Hz/20Hz 两种配置及实际注册回调的快照采样；八个测试文件共 37 项通过，Python 3.8 语法检查与 Bash 语法检查通过。本机无 ROS1 运行环境，尚未实车复验。备份 `../log_online_before_timer_fix_20260916_203000.tar.gz`，测试输出 `/tmp/log_online_timer_fix_20260916_203000/tests.log`。业务修改仅位于 log_online；检查期间另有状态页入口改动写入同一文件，已原样保留。
+- task_plan对加载失败/不可达路径关闭放行，寻找连续安全区间，截停后取消依赖作业；
+  实时保留原车头角点x=2.3m、y=±0.73m保护，ADAPTIVEHOOK/DOACTION例外按原业务保留。
+- planning经新增 `task_fence_guard` 核对任务代次、几何版本、批准索引和实际生成路径；
+  超过0.5秒失联叠加safety停车。同代完成反馈防止旧TASKFINISHED推进新任务。
+- control不再检查围栏，也不再启动写入旧alarmcmd=0。HMI围栏源失联1秒显示未知。
+  迁移本身保持当时D/R算法；后续D平顺修改是独立条目。
+- 缓存有界（16文件/20万点，任务组合20万点），热循环不读盘；缓存命中仍有O(N)检查，旧O(1)结论作废。
 
-- **09-16 control 回滚并按底层速度环重做起步斜坡**：用户确认油门与最终车速成比例且已标定，撤销刚才的三个参数方案。`control_comply.cpp` 与 control README 先按 18:03 哈希基准/18:14 前快照逐字节恢复，再添加 D 挡速度给定斜坡 `/robot/control/launch_speed_slope`（默认 0.3m/s²，20Hz 下 0.015m/s/周期）。D ×18、R ×10/45% 上限及 0.5m/s 跟随间隙保持，5% 最小目标先映射到速度后走斜坡。每对象 double 状态保留小数，仅上升限速，下降即时；全部停车分支及非 D 挡清历史，初次 D 挡已有车速时从反馈衔接。**验证**：真实 `.msg` 生成 ROS 桩、control 六个生产 TU 加节点 C++11 编译和完整链接通过；57 项输入/发布回归覆盖 0.3/0.1 小增量、非法 slope、旧参数无效、速度环反馈跟随、11 种停车/恢复、空路径、实例隔离、D/R 切换、9 组稳定 D/R 标定对照及低速 5% 保底。与回滚基准同为五条既有告警；无新增告警。成果 `/tmp/control_launch_speed_verify/run/`；可复现 `src/pnc/tests/control/verify.py`。监控、感知、规划、canbus、hdmap 哈希未变。备份 `../control_before_speed_ramp_20260916_193657.tar.gz`。部署同步 control_comply.cpp/.h 后重编 robot 包；尚未 ROS1/Orin 实车验证。
+当轮围栏59项、原专项、53单元/六节点构建、HMI及当时control/planning回归通过。
+需完整重编robot并配套重启task_plan/path_plan/control/HMI，不混用新旧消息及节点；不改磁盘任务YAML/CSV。
+完整行为见[task_plan说明](src/pnc/src/robot_task_plan/README.md)及[围栏测试](src/pnc/tests/task_fence/README.md)。
+改前包：`../pnc_fence_fix_before_20260922_092231.tar.gz`。
 
-- **09-16 control 起步平滑旧方案（已按用户要求回滚）**：此前把 0.5 跟随间隙/5% 下限参数化并增加整数油门斜坡。复核实际源码确认：slope=10%/s 时 0.5%/周期被 uint8 截断导致无法起步；N 挡/路径安全停车不更新历史，解除后存在 0→旧油门+1 的跳变。用户明确底层速度环与比例已标定，要求保留标定、改平缓速度给定斜坡；现行实现见上方现状和 robot_control/README.md。原代码快照 `../pnc_before_launch_smooth_20260916_181409.tar.gz`；替换前备份 `../control_before_speed_ramp_20260916_193657.tar.gz`。
+monitor围栏CSV已与PNC对齐；车体显示为围栏内黄、外扩2.5m带内橙、越过带外红，2D/3D一致。
+这是定位中心的视觉提示，不是允许控制驶出围栏2.5m，也不代表全车/挂车扫掠已校验。
+显示加载优先使用PNC配置来源，保留本地回退；用法和边界见[monitor说明](monitor/README.md)。
 
-- **09-15（三）感知发布前调用 HDMap 分类**：按用户指定位置接入 `ClassifyPerception`，地图启动一次加载、全局参数可覆盖路径、异常明确报错；同步 type 中文注释与依赖、默认地图安装、重建顺序。直接包含生产节点进行回调测试，捕获 publish 时消息副本，71 项覆盖五类、最大面积、逆向、离道、朝向转换、过滤、空输入原行为、错误恢复与缓存；真实 PNC CMake C++11 目标在 SDK 命名目标及传统 catkin 变量两种配置下均编译/动态链接通过。更新 PNC/HDMap 说明与本机验证脚本，真实 ROS1/车载运行待部署验证。快照 `../pnc_before_hdmap_publish_20260915_100431.tar.gz`，消息注释另存 `../pnc_object_msg_before_hdmap_publish_20260915_101642.tar.gz`。
+## 2026-09-21：保留的近期结论
 
-- **09-15（四）monitor 置信度文字显示**：用户规格——`/perception` 障碍物显示 object.msg 的 `confidence` 文字，位于障碍框正上方、颜色与该障碍物一致（同 type 四色）。上游链路已就绪：object.msg 已含 `float32 confidence`（pnc 时域滤波 `perception_temporal_filter` 重算，p99 显示真值非 0），simview/canbus 副本仅 type 注释差（md5 兼容）。monitor 实现（零非 monitor 文件改动）：①`ros_visualizer.py` 快照障碍字典增 `"conf"`——**字段缺失（旧消息定义）发 null 而非 0.0**，前端隐藏不显 "0.00"；②`static/index.html` 3D 新增 canvas 纹理 Sprite 文字池（与 mesh 池同步增长；"文本|颜色" 缓存 ≤64 超限整表重置；`depthTest:false` 保证文字可读；随 lidar 图层开关显隐并纳入 `syncLidarLayer` 双保险；位置 `(x, h+0.3, -y)` 框正上方、尺寸 1.6×0.6m）；降级 2D 为**直立** fillText（不随框旋转，画在外接圆上方，取 OBST_STROKE 同色）；③README 语义对照补条目；④测试：mock fixture 补 `confidence: 0.87`、前端 fixture 补 conf/无 conf 两分支，新增 1 后端透传断言+4 前端断言（sprite 池数量/位置 h+0.3/纹理挂载可见/无 conf 隐藏）。**全套回归 344 项绿**：test_full 74、frontend 68、edge 28、dashboard 110+51、fuzz 2、chaos 11（chaos 障碍无 confidence，覆盖 null→隐藏路径）。**复评轮（用户委托二次校验）查出并修复两处实锤**：①2D 文字绘制泄漏 `textAlign="center"` 未恢复，会把比例尺 "10m"（不自设对齐）改成居中错位——已用 save/restore 隔离；②`applyLayer` lidar 分支只恢复 mesh 可见性、sprite 不同步（图层重开文字延迟到下帧数据）——已给 sprite 打 `userData.hasLabel` 标并双向对称恢复；顺带 2D 文字偏移由 `max(l,w)/2` 改为真外接圆 `hypot(l,w)/2`（斜置框不压角）。池长度不变量（两池仅 syncObstacles 同步增长）、Python `conf` 无遮蔽、缓存上限、null→隐藏路径等其余检查项干净；+2 项图层开关 sprite 对称断言，**终态 346 项全绿**（frontend 70）。**黑盒运行时复核（换思路第三轮）**：进程内直跑 + FakeMaster 真服务 + Playwright 真浏览器三层——HTTP 快照 9 障碍边界集（缺失/null→null、"abc"→0.0、0.123→0.12、负值透传、无 type→3）逐项对；真 three.min.js 下 9 mesh 颜色 getHexString 全对、9 sprite 悬高恰 h+0.3、无 conf 的 2 个隐藏；图层开关联动 mesh/sprite 双向同步（7 显 2 隐）；**纹理像素级取证**：7 个有 conf 的 canvas 纹理笔画像素 100% 匹配该障碍颜色（matched==ink，499-580px/字）；20 组随机注入性质测试（数量守恒/conf 三分支/type 透传/无裸 NaN）全过。环境注意：独立 mock 服务必须带 FakeMaster+ROS_MASTER_URI（否则 init_node 连本机 11311 root 真 rosmaster 卡住，typed 订阅不建立——测试环境问题非产品缺陷，test_full 同款机制）。**UX 观察（非 bug）**：默认全景/跟随视角相机距障碍 100m+，1.6×0.6m 文字过小肉眼难辨（DOM/像素证据功能正常）——实车若需肉眼可读可考虑随距离缩放或放大默认尺寸，待用户定夺。**【同日用户采纳：文字改全白 + 3 倍字号、位置不变】**3D：84px 字号/384×144 画布/sprite 世界尺寸 4.8×1.8m、fillStyle 恒 #ffffff（纹理缓存键简化为纯文本）；2D 降级：36px 白色；位置公式 (x, h+0.3, −y) 与外接圆上方均未动（1.8m 高 sprite 的字形带会轻微触到框顶，为"位置不变"的自然结果）。前端桩 canvas ctx 升级 fillText 调用记录器，新增 5 条规格断言（白/84px/384×144/内容/4.8×1.8），**frontend 75**、其余套件不回归（74/28/110/51/2）；真浏览器默认视角截图复核：白色 0.87/0.50/1.00/0.00 全部清晰可读（上一版该距离完全不可见），视觉确认通过。**对抗审查轮（用户再校验，14 代理 4 镜头+逐发现 3 驳斥者+批评家，0 项被驳回）确认 3 问题并当日修复**：①[中]缓存 cap64 整表重置不 dispose——three r147 仅 dispose 事件释放 GL 纹理，3 倍画布后单张 216KB、长班次页面显存滞留无上界，重置前已补逐张 dispose（带 stub 真实 API 对齐）；②[低]白字压白色地图中心线/黄路由线对比度 1.00:1/1.07:1 不可读（改白引入的退化）——3D/2D 均补 #101418 深色描边（strokeText 先描后填，字形仍白、规格不变）；③[低]README 测试段计数陈旧（62/72→78/74）。另修 ros_visualizer 陈旧注释（同色→白色 3 倍）、测试桩 fillText 记录器升级为调用时刻 font/fillStyle 快照（修复"断言读最终态"弱点）+新增 strokeText 记录器，补 3 条断言（3D 描边、2D 白 36px、2D 描边）。**审而不修的 note（知情取舍）**：2D 相邻标签 <14.4m 互叠与跟随模式近距占屏为 3 倍规格固有代价；sprite 字形带触框顶已披露；2D/3D 规格断言此前只盖 3D（本轮已补 2D）；多标签透明互叠为透明 sprite 本性。终态 **frontend 78**、74/28/110/51/2 全绿。
+| 事项 | 最终结论与入口 |
+|---|---|
+| 制动bag辨识 | 两份09-20 bag来自旧控制器，仅用于物理响应参考。8次严格匹配普通制动：接入0.328～0.553秒，撤请求至释放1.012～1.525秒，6/8先撤请求后接入；无独立持续3%死区标定。分析见[历史证据](../brake_validation_20260922/验证结论.md)，后续代码以09-22实车确认版为准 |
+| 曲率多轮调校 | 抗噪版曾获用户实车确认；参考转弯1.0m/s版偏慢，最终静态标定折中为1.4m/s，名义预瞄改为4v。旧固定6m、D×15及比例补刹系数15/50不再是当前完整制动方案。沿程/释放最新变化见本页09-22记录 |
+| 速度来源 | PNC/ultra使用导航实际速度，CAN继续提供挡位/模式/液压等状态；无效导航保留对应安全优先级，不回退CAN车速。[导航专项](src/pnc/tests/navigation_speed/README.md) |
+| 起步与调试输出 | 删除control额外普通起步斜坡，保留planning给定及原速度差上限。临时逐帧转向调试输出已删除；当前D纵向诊断按1Hz输出 |
+| pallet反向标定 | min为上端212、max为下端115，按0～255且绝对差≥20校验，不排序；坏值整对回退213/254，hook保持178/252。122距115为7，不满足abs差<5，palletStatus=0符合规则；需连续11次T1命中才确认，尚未确认122是否机械最低端。34组配置/6,422项T1验证为当轮本机结果。[canbus说明](src/canbus-vehicle-3/README.md) |
+| HMI自定义指令 | ultra_command独立卡片/进程，已从control.launch解绑，start_l4与HMI配套；避免重复启动。监控任务族为pudong_air/312_316、312_cargo、312_charge，保留初始化_01_01。[HMI](hmi/README.md)、[ultra_command](src/ultra_command/README.md) |
+| 备份清理 | 用户授权清理09-10以前确认无用的11份备份，约3.07MiB；本次不重复删除。[当时清单](docs/backup_cleanup_20260921.md) |
 
-- **09-15（二）hdmap 障碍物车道占据 SDK**：用户确认 CSV 为中心线、宽度暂估 4m、多车道覆盖取面积最大、type 保持非负并添加中文注释。实现独立 `LaneMapServer`，地图与热路径分离；全车道区域并集保留孔洞，缓存 1378 个分块和中心线 BVH，SDK 无 ROS/GEOS 动态库依赖。消息模板直收 robot 定位/感知并返回原消息副本，按转换器实际角度编码还原有向框，保留所有其他字段；0/1/2/3/4 枚举中文说明齐全。独立 GEOS 对照发现原分段各自量化接缝导致真实中心线节点误判离道，修为共用斜接端点、原始线段内部快速判定，并增加全 12537 中心线节点回归；所有 5362 独立场景类型/车道一致，最大面积差 6.173e-5m²，4/8/16m 分块结果一致。原 956 断言、154 车道检查、600 真实消息桩适配、ASan/UBSan、cppcheck 全通过；完整接口基准 100 障碍物 P99 0.2375ms。README、调用示例、验证报告及安装 SDK 已更新。备份 `../hdmap_before_lane_occupancy_20260915_091818.tar.gz`；1428 个原图/处理图/PNC 文件 SHA256 保持不变；未接入现役 PNC 节点或执行 Orin/ROS1 实车验证。
+## 2026-09-20：保留的有效行为
 
-- **09-15（二）monitor 障碍物按 type 四色区分（用户纠正后仅改 monitor 模块；同日校验轮修正 type 语义口径）**：用户规格——监控 `/perception` objs 的 type：0=红、1=橙、2=黄、其余=墨绿（墨绿=monitor 历史默认色 0x339999）。**type 语义=hdmap 车道占用（0-本道/1-左一/2-左二/3-左外/4-右外，外道落墨绿，见同日 LaneMapServer 条）；object.msg 旧注释（0-车/1-行人/2-骑行/3-未知）下配色同样成立——monitor 代码语义无关，两套皆适用**。**过程**：第一版误改 pnc `perception_msg_convert.cpp`（从 /box TEXT 标签解析类别填 obj.type）+simview `draw.cpp` 着色，用户明确"仅允许改 monitor、其他模块回滚"——四处编辑已逐字节逆向复原（diff 编辑版副本核验恰为所加改动、grep 零残留），改在 `monitor/` 内实现：①`ros_visualizer.py` 快照障碍字典增 `"type": int(getattr(o,"type",3))`（字段缺失按 3）；②`static/index.html` 3D `syncObstacles` 与降级 2D 渲染按 type 着色（0=0xff0000/1=0xff8000/2=0xffff00/其余 0x339999；THREE.Color 四色缓存共享只读，赋值式兼容前端测试桩的裸数值 color）；③`monitor/README.md` 语义对照补条目；④测试补 2 断言（前端 type=1 橙/type=9 墨绿）+1 断言（快照 type 透传）。**全套回归绿**：test_full 73、frontend 64、edge 28、dashboard 110+51、fuzz 2、chaos 11（chaos 障碍不带 type 覆盖缺省分支）。**已知边界（如实告知用户）**：hdmap ClassifyPerception 尚未接入 `/perception` 发布链、perception_msg_convert 也不填 type，实车 type 恒 0 → monitor 将**全部显红**，待上游接入分类链后四色自然生效；monitor 保持旁路只读不代填。【09-15（三）更新：分类链已接入发布（见上条），type 已为车道语义真值，四色实际生效，本边界作废】第一版查明的类别真源结论仍存档备用：/box TEXT_VIEW_FACING 标签（"Car 0.87"，id=cube+10000，kClassCfg 10 类）。
+<a id="2026-09-20d挡单次参考轨迹延长到60点"></a>
 
-- **09-15 hdmap 更新地图重新生成**：直接调用既有 SDK 批处理函数（通过 CLI），以 PNC heading、自动方向、>=1m 拟合节点和 0.5m 等弧长采样处理 `lane1/lane2/lane3/lane4/lane_MID/lane_N2S/lane_S2N`。输出目录原为空，7 文件全部生成成功，共 12537 点；默认不追加不足 0.5m 的末段终点。独立 SciPy 校验全部输出点通过，输入文件 SHA256 前后一致，输出文件集合与源图逐一匹配。更新模块 README、安装目录说明和验证报告；本次未改 SDK 或 PNC 代码。更新前文档与旧报告备份：`../hdmap_before_regenerate_20260915_083155.tar.gz`。
+- **D挡参考轨迹60点：** 原30点扩至最多60点，选点间距至少0.3m；不是固定60米，实际长度取决于采样与末端剩余路径。
+  R原点数/采样保持。详细说明见[规划README](src/pnc/src/robot_path_plan/README.md)。
+- **横向回滚：** 用户对首次当天基线反馈通过；之后速度相关融合权重效果更差，已回滚固定70%/30%。
+  首次“通过”不能覆盖后来试验；当前基线以回滚后的版本为准。
+- **CSV限速：** 四列为x/y/heading/speed，默认10；旧三列或多余列按既有加载流程规范化，坏路径拒绝而不沿用旧任务。
+  每点地图限速与其他规划安全约束取小。09-22两份cargo数据另做平滑，见上文。
+- **闸机：** 有效关闭且贴近参考路径<2m，前向沿程0<ds<8m才触发；不是附近任意闸机均停车。
+- **车道：** planning过滤左二车道type=2；左一type=1只过滤明确运动对向目标（夹角>135°、速度≥0.2m/s），
+  静止/不确定目标继续保留。其他安全通道保持。
 
-- **09-14（晚）检查用户 planning 整理并统一 PNC 大括号**：先保存用户当前树快照，再对 09-12 独立展开留档和头文件审查稿复核，确认 Comply 的有效差异仅两个未调用可视化函数与三个 printf 删除，头文件同步删声明；node 另移除两组 advertise、日志与注释并移动订阅声明位置，现役条件、回调内容、参数、循环频率保持。`/planning/obstacles` 仍有旧 RViz 显示配置，原发布调用已注释，删除不影响现役规划输出。用户改动前后 39 算法 TU+Comply/node 编译/链接、387 组回归事件相同。随后将自有源码 193 文件统一为 4 空格、左括号同行的用户示例风格（192 文件变化），不处理外置/内置第三方库；补根 `.clang-format` 和保留 token/预处理指令的格式工具，处理尾注释及构造函数初始化列表空行导致 clang-format 单独使用仍留下 Allman 的情况。验证模板 > > 边界、续行符、消息/数据配置均保留；1188 个第三方/数据/消息文件字节不变。`compile_all.py` 从真实 CMake 表得到 53 TU（包含 .cc）并完整链接六节点；全包编译桩补齐 WallTime/setParam/String/TF 接口，生产代码无修复。最终用格式后全包对象重编回归，387 组事件与格式前逐字节一致，SHA256 e5ef3eded0fdae033264d80d815a4bb28dd19d14ec2a0a60d9a8d67c02f9f742；格式检查二次运行零变化。旧结构检查器更新为兼容同行括号并提供 `--format-only`；默认模式仍为 09-12 原重构审计，遇到用户此次明确删除接口时报告差异属预期。记录 `src/pnc/tests/planning/review_20260914.md`；日志 `/tmp/pnc_brace_review_20260914_192628/`；快照 `../pnc_before_brace_style_20260914_192628.tar.gz`。新用户格式要求已同步覆盖 CLAUDE/PNC README 的旧双格式约定；未执行真实 ROS1/车载验证。
+## 较早记录摘要
 
-- **09-14 hdmap server SDK 首期实现**：用户新增 `src/hdmap/map` 后要求 C++ SDK `.so`、PNC 坐标/风格对齐、全轨迹按 >=1m 节点抽样后拟合 spline 并按 0.5m 插值输出 heading/曲率。已完成独立 C++11 分层库、可调用处理阶段、严格 CSV 读写、CLI、PNC 模板适配与真实类型示例，CMake 同时支持独立安装和 catkin 导出。源图 10 个文件与 PNC 同名图逐字节相同，原 heading 已为正北 0° 顺时针方位角，识别并保留 4 条倒车车头方向。夹持三次样条使用首末车头转换后的行进切线，真实弧长积分/反解，默认严格 0.5m 点串，另提供保留终点模式；不覆盖源图或既有结果。20899 原始点生成 10033 点、10 个新 CSV，输出位于 `src/hdmap/map_processed`，安装库在 `src/hdmap/sdk/lib/libhdmap_server.so`。校验发现并修复旋转直线整步终点因浮点 floor 少点的边界、内存输入输出同容器报告计数边界；956 项断言、ASan/UBSan（核心+真实图）、cppcheck 全过，独立 SciPy 全点几何/弧长/heading/曲率校验最大弧长间距误差 1.0031421e-8m，报告 `tests/map_verification.json`。真实 PNC 结构加载全 10 文件及 SDK 异地安装后的独立 CMake 动态链接通过，无 ROS 依赖，内部样条符号隐藏。原图 SHA256 未变，最终二进制复生成与交付 CSV 字节一致。当前 x86_64/GCC13 产物不用于 Orin 直接部署，未执行真实 ROS1/车载运行；8 列带头结果须由 SDK 加载，原 PNC 固定 0.1m 重算曲率逻辑留待正式接入时处理。快照 `../hdmap_before_sdk_20260914_184220.tar.gz`（原 hdmap+workflow，不含编辑器 swp）；详见模块 README。
+- **09-19：** D前向障碍额外提前3秒普通减速；车头净距6m目标≤0.45m/s，3m目标零速，保留独立safety。
+  旧control `dec*50`比例制动已被新反馈协调替代，不能从旧日志恢复。当前起步观察1m与旧2m夹具差异仍未统一。
+- **09-18：** 修复末点/短路径、多CSV里程连续和专用感知ACC门控；R已有末端修复继续保留。
+- **09-17～09-14：** 当帧观测与历史显示分流、跟踪速度、空间缓存、车道/闸机接入及PNC格式统一。
+  更早固定区域圆形限速和已下线功能不因历史描述恢复。
+- **09-12及以前：** 结构拆分、重建与历史审查只保留证据入口。09-10重置前的“已修”结论不能自动当作现树事实；
+  旧行号不用于定位新代码。完整经过见[09-19归档](docs/history/2026-09-19-before-docs/README.md)
+  和[本次整理前归档](docs/history/2026-09-22-before-roadtest-log-cleanup/README.md)。
 
-- **09-12（晚）planning 重构独立对抗校验（用户委托"校验有无错误、不改业务代码"，本轮零代码改动）**：四条相互独立的证据链一致判定**零行为差异**。①机械层（自研工具 `/tmp/planning_verify_xyy/`，与重构方工具无共因）：TU 按 include 链展开+函数级剥注释分词比对——55 函数逐 token 相同、5 入口重写（PublishReferPath 499→35 行/PublishPlanPath 213→50/calcuGlobalPath 137→20/LimitSpeedByDistanceToStop 173→26/SetTaskPlanData 88→73）+26 新阶段函数，comply.h 仅增声明零成员变动；重写区净删 35 token 逐项落位（死局部 xyz_list+dx/dy、两处人工/短路径早退块合并为 PublishStoppedPath 且逐字节等价、InitSafetyCheck=0/light=0/desireSpeed=0 随之合流）；五块对照包逐语句亲读复核（早退 gating=阶段 return+入口统一 publish 各分支恰发一次、/canbus/light 双写合流、checkIsInWaiting 双调用模式新旧同构且函数纯、PointDirectionToMe 只读 x/y/heading 故部分初始化 VehicleInfo 等价、ResetTaskHistory 14 语句原序提取、旧缺陷全保留：转向灯左右反/printf 噪声/task_id==4 测试限速）。②亲跑重构方工具不依赖留档：check_structure PASS + verify.py 双版本真实编译链接 + 387 快照/发布消息/参数事件逐字节一致（SHA256 99e32661…独立复现；回归工具链经审计为真双二进制+机械生成消息桩+确定性差分）。③独立 code-review 分支：106 共享块 100 个 token 相同、6 处差异全部落位，零行为变更；另列 12 条文档/清理级后续项（SetCommandData 按值拷贝消息、死参数 heading、死代码搬迁等，均非错误）。④对抗工作流 33 代理（8 审查者×3 异构镜头逐发现核实+完备性批评家）：确认级行为差异 0/8 原始发现全驳回（实为回归覆盖边界观察）；批评家复核全工作区 diff 恰为声明改动集、stdout 诊断流顺带 cmp 逐字节一致。**残余边界（均非重构错误）**：车载 -std=c++11 编译从未执行（本机 Boost 强制 c++14）→ 上车 rebuild 即裁决；task_id==4 限速链（全工程唯三函数级 static）/LaneChangeSwitch/horn/右转灯/ADAPTIVE 生成链动态零执行，等价性靠静态审查背书 → 扩 fixture 重跑 verify.py 可闭合；canbus/README 旧行号失效、tests/ 与 __pycache__ 勿上车（已入待办 7）。P3 备忘：perception.inc 除 SetCommandData 外还原样搬入 findObstacle/Obj_Projecte_Map（逐字节等价搬移，范围声明口径小差）。
+## 待办与已知边界
 
-- **09-12 planning 按用户风格重构并补核心中文注释**：原参考路径发布 499→35 行、最终输出 213→50 行、全局路径构建 137→20 行、任务停车限速 173→26 行；具体计算归入 task/reference/safety 阶段函数，几何辅助从编排入口和实验分片集中到独立分片。原有五个业务分片顺序不变，13 个 .inc 恰好包含一次，CMake 只更新说明，消息/配置/算法库不变。`SetCommandData` 收拢云端指令业务。最终校验：39 个共享算法 TU+前后节点编译和完整链接；387 个状态快照及完整发布/参数事件逐字节相同，含真实 CSV、多段装载、强制触发样条连接、起步窗、碰撞去抖、D/R 边界、动作/挂钩/入库/机位临停、等待区和固定种子组合；50 个保留函数 token 一致；原有成员声明/接口/节点接线/频率相同；Comply 编译告警 64→62，零新增。cppcheck 全依赖检查受 Eigen 宏解析限制，改做业务分片定向检查，无新增 warning/error 级诊断；原有不可达条件、回退 id 未初始化和 printf 类型问题已记录，未变更其业务规则。最终日志 `/tmp/planning_refactor_verify/final_review/`，可复现工具 `src/pnc/tests/planning/`，快照 `../planning_before_refactor_20260912_134949.tar.gz`。本机仅 ROS2 Jazzy，未执行真实 ROS1/车载测试。
+1. **实车反馈范围。** 最新D减速刹车已获“效果很好”的确认，不再列为整体待实车项目。
+   不同载荷、5m/s下制动距离、液压死区/释放模型仍无新增量化结论；后续调参应另有数据，保留当前满意版本作对照。
+2. **回归期望。** planning `terminal_control` 的1项旧末停断言差异待核对；旧control整套中D×15、
+   预瞄峰值立即限速等断言已过时，不能用旧计数声称现版本全套通过，也不为绿灯删除安全断言。
+3. **起步范围。** 现源码1m与历史2m要求/夹具口径仍需明确，不在日志整理中改参数或测试。
+4. **外廓/围栏。** 默认外廓、载荷制动能力尚需标定，无完整铰接托盘扫掠模型；围栏边界、挂钩例外、
+   失联和截停取消作业仍按围栏专项单独验收。本次刹车好评不覆盖这些业务。
+5. **历史源码待复核项。** 09-19审查的can_comm循环缺sleep、task_plan发布非latch、control旧初始化/转向数学/
+   模糊PID索引与非D双发语义等仍需独立核对，不能记为本次已修。旧control围栏判空问题随功能迁出移出该待办。
+6. **其他模块边界。** gantry输入老化/NaN/降采样点数/漏检判开；canbus非法挡位、N挡急停钳制与协议相位；
+   ultra任务未知/重启窗口及矩形配置，按相应模块README复核，保留尚未关闭的问题。
+7. **部署与运行。** rebuild_all缺完整辅助函数/目录锚定；HMI旧标定无有效执行端、navigation冻结定位重发、
+   MQTT凭据/网络策略等旧问题不因文档更新变成已解决。HDMap需aarch64构建，monitor需核对Orin性能/外参，
+   log_online需核对话题/前后窗/磁盘满降级/Timer边界。本机验证不代表上述车端条件已满足。
 
-- **09-11（四）车载 pnc 回滚分析（用户回滚并同步回本树）**：三方快照 diff 定位——现行 src/pnc=**09-10 基底 + can_comm sleep（在）+ v2 三矩形 + 三条 `_01_01` 轨迹 + perception.inc 一行 bbox 调试 cout**，其余与 09-10 基底逐字节一致；**09-10 深夜整理轮与 09-11 两修复（task_plan latch/空任务、perception_convert 空帧+stamp）整体消失**（整理轮的外观级改动可接受消失，快照 pnc_before_tidy_20260910 可恢复；两修复是 ultra 依赖项，重放为小改动——已列入待办 1 首项）。**新数据核查**：①三条 `_01_01.csv` 分别与对应 `_01.csv` **逐字节相同**（同路线双名，靠 yaml 引用决定 ultra 监控语义；param/ 零引用，任务尚不可下发）；②v2 矩形=left1 D(-11.39,-32.78)/right D'(-7.03,-31.27) 微调，**right⊂left1 100% 维持**、两排除区（charge.csv/trajectory_optimized.csv）与三矩形**仍零重叠**（射线法网格复核）；③三条轨迹起点((0,0)±0.8)均在三区**之外**（起步站位不自触发现），沿里程 10~12m 首入 left1 并穿越（左区 7.5~30m）——初始化语义起步后不看区，无影响；3 列格式与现有 _01 路径一致（fscanf 部分读为既有家族行为）。**ultra 兼容性后果（关键）**：回滚版 perception_convert 空场景静默 × ultra 静默>1.0s 故障写 1 → **空场景 safe 恒 1**（连续任务误报、初始化任务起步前恒 1，消费方以 0 放行则无法起步）；/task_plan_msg 非 latch → respawn/晚启动任务未知写 1 至下次块推进。perception.inc 的 cout 所订 /perception_back_bbox 无发布者不触发，无害（下轮重放修复时可顺手清）。本机 /tmp/pnc_stub 基线随之失效（树已变），下次桩编译需先重建基线
+## 使用、验证与回滚
 
-- **09-11（三）初始化监控审查问题修复**：①原实现仅按 ZoneMode 变化复位 mStarted，cargo_01_01→312_316_01_01 同为 INIT_LEFT 会继承“已起步”，同路径新 task_id 也无法识别；现按“完整命中路径+task_id”识别激活，二者均复位，重复 latch 消息保持闩锁。②原 mVehicleSpeed 只写不读，CAN 先于 task 回调时速度证据会被任务切换清掉；现缓存有效有限值车速，任务进入时同步判定，未收到车速按故障态 1。③原初始化起步前复用普通三帧解除，首个空帧仍为 1；现 INIT 模式对有效当前帧直接输出 1/0，普通模式三帧防抖不变。针对性用例覆盖 INIT_LEFT 两路径互切、同路径 task_id 变化、重复消息、两种回调顺序、0/0.5/0.51 阈值、INIT_RIGHT 和普通模式回归，全部通过；node+comply `-Wall -Wextra -Werror` 桩编译通过。检查期间三个 `_01_01.csv` 已加入，且分别与对应 `_01.csv` 逐字节一致；现役 YAML 尚未引用，待业务确认替换块
+| 入口 | 用途 |
+|---|---|
+| [根README](README.md) / [PNC](src/pnc/README.md) | 构建、启动、包名与编码规则 |
+| [control测试](src/pnc/tests/control/README.md) | 当前D专项命令、R/N差分及历史夹具区别 |
+| [planning测试](src/pnc/tests/planning/README.md) | 规划各专项与已知交接差异 |
+| [围栏交付](../pnc_fence_fix_delivery_20260922/部署说明.md) | 19文件部署清单及消息/节点配套 |
+| [文档维护](docs/README.md) | 当前说明与历史记录的分工及归档索引 |
 
-- **09-11（二）ultra_command 初始化监控新需求（_01_01 路径族）**：用户规格——执行 pudong_air/312_316_01_01 或 312_cargo_01_01 时监测 left1+left2、312_charge_01_01 监测 right，起步前（车速<0.5m/s）区内有障碍 safe=1/无 0，**首次车速>0.5m/s 后无论有无障碍恒 0**。实现：comply 增 INIT_LEFT(3)/INIT_RIGHT(4) 模式（与连续模式同路径匹配族、首命中惯例不变）+SetVehicleSpeed 输入+mStarted 单向闩锁（严格>0.5 触发，模式切换复位；同模式连续块不复位——「首次」按任务激活计）；JudgeSafeStatus 起步后早退恒 0（不依赖感知/矩形），起步前完全复用现有区域判定+故障安全+三帧去抖。node 增订 /can_msg（q10 tcpNoDelay，仅取 vehicleSpeed）。**规格未明说处的取值（README 决策 9）**：车速源=/can_msg.vehicleSpeed（全仓标准车速，20Hz；不做车速老化——canbus 死则整车已入急停链）；恰 0.5 不触发；重启后闩锁随进程复位（在动重启 ≤1~2 周期按起步前语义，与启动故障态方向一致）。注：_01_01 路径 csv/yaml 尚不存在（任务数据侧后补，不影响 ultra 字符串匹配先行）。**验证**：/tmp/ultra_stub 纯逻辑单测真实 CSV **39 组全过**（新：INIT 两模式起步期 1/0、恰 0.5 不触发、0.51 触发恒 0、降速不复位、模式切换复位/同模式不复位、起步前故障安全、混合列表首命中；旧：连续模式回归含三帧去抖）；node TU 桩编译（/tmp/pnc_stub 38 msg 桩含 can_msg）`-Wall -Wextra` 零告警；CMake/package.xml 零改动（can_msg 同 robot 包）
+- 本机无ROS1，原验证使用真实源码/消息生成桩；生产C++11保持，部分主机Boost验证另需C++14。
+  记录必须区分静态检查、本机桩测试、历史bag回放、车端编译/部署、用户实车反馈。
+- 原始bag及上轮测试JSON/日志/交付包保留，不因补录实车反馈重写当时证据；归档中的`/tmp`产物可能已清理。
+- 非git工程按任务留改前快照。回滚只恢复对应范围，不用旧control覆盖并行planning/围栏改动。
 
-- **09-11 ultra_command 已知问题修复**：根 `launch/control.launch` 接入 ultra launch，节点正常退出写 1+1s respawn；task_plan 的 `/task_plan_msg` 改 latch，启动发布空任务，云停车 clearTaskPool 后同步清空 TaskPlanMsgOut 并发布以刷新 latch；perception_convert 零 MarkerArray 不再早退静默，改发空 objs 且填 header stamp；ultra 启动/任务未知/矩形加载失败/感知未收到或>1.0s 全部故障安全写 1，已知非目标/待命/停止写 0，障碍立即置 1、清 0 需连续 3 个不同感知帧。保留中心点判定、精确三路径匹配、矩形坐标不动；仍待业务确认矩形与任务路径重叠、仓外消费协议。验证：`/tmp/pnc_stub/build.sh ultra_fix2` 全 52 TU 编译+6 节点链接；ultra node+comply `-Wall -Wextra -Werror` 桩编译；真实三矩形状态机测试与 task_plan 停车事件顺序/空 latch 数据测试均过
+## 2026-09-22：本次日志整理
 
-- **09-10（深夜）pnc 整理轮（零业务逻辑改动）**：用户指令「按 README 风格整理 pnc、不改任何业务逻辑、只清脏代码」；范围两决策用户拍板：**休眠算法族全部保留**（lattice/参考线/速度规划/换道 + 20 个未编译孤儿 .cpp + 其缝合处注释与胶水函数 SetPerceptionData2/pubObstacles/pubLatticeTrajs/JudgeTaskPlanMsgChanged/JudgeShiftParkingPoint/LatticePlan/TrajectoryMove/LaneChange 等一律不动）、**printf 只清热循环内**（无条件每帧/每迭代打印删，事件级/异常触发保留）。**清理内容**：①纯注释死块约 45 处（Camera1-6 三段、离线检查块、hook_rect 旧矩形检测、旧逐点距离计算、DOACTION 判定残迹等；保留 lattice/速度规划调用缝合处与 linkPallet 历史说明）；②零调用死函数（frame_transform 反向变换族 ~250 行含 kSinsE/kSinsE2/kSinsR0/WGS84Corr/BD09llCorr——亲证 kSinsE2 仅被死函数引用，盘查代理「勿删」结论有误；pubalgor 11+1；distan2Line/CalcuParkPointTangentDistance/getRectangleVertices/ResetParameter/sumVec/InCollision/Trans2PItoPI/TransPIto2PI/StringToHex/denseLineString/sparseLineString/pose2d 六运算）；③死成员死变量（comply.h 五个 state_/my_lattice_planner_/collision_ptr_/obstacle_obbs_/vehicle_obb_、mRcvGpsData、sysTime 三死字段〔msgCamera 保留——心跳链〕、LaneChangeRequset/HookPos*/PalletPos* 四 getParam 死读+成员〔=待办1 限值管道 pnc 侧拆除，canbus 生产者不动〕、task_plan mPositionLimits/PositionLimitsIn 整管道+CanStateIn.vehicleSpeed/hookPos、perception mGPS 5 write-only 字段+udp_pub/string_pub、control SoundPlayCommand+/sound/play setParam〔死通道群成员，顺带消 20Hz 无效 RPC〕、各死局部 min_speed/x0..h1/dl/dw/dx/dy/time/time_err/j）；④三处恒定分支（is_take_new_task 恒真折叠、mPathid==20 双分支逐行相同折叠、control 红绿灯两组恒假地理框删除——77 CSV 实测 |x|≤348.6 与 1553~1559/425~432 恒不相交，IsGreenLight/SetTlStatusData/订阅链保留；**不做**：handleDrivingPath 四组恒假内层〔自证业务缺陷〕、Path_Id==5 恒真〔休眠换道〕、can_comm 油门斜率恒假〔P1-8 修复候选〕、GetPreviewDistance/stanley Gear 半条件）；⑤热 printf 36 处（path_plan 24：checkAroundObstacle 循环 32 条/帧最吵+checkTJ 循环+挡位分支+hook path 每路径点+端口循环+T1 主循环节点 1 条等；control 7+stanley 9 全部；perception 2〔100Hz×每 marker〕；保留全部事件级：任务装载/切换、yaml、终点、异常触发打印）；⑥格式小岛（output.inc tab+K&R 三行、reference.inc :95 缩进、perception.inc 两处、can_comm K&R 括号/tab/尾空行、navigation tab 块、perception 空白行、各编辑文件 trailing whitespace；pubalgor/adaptiveHook/collision_detection 整文件历史格式不重排）；⑦文件级：删 8 个死 .msg（task_plan_status/vehicle_task_status/perception_msg/RoutingPath/Point/object1/obstac/visionObjects，全工程含 py/launch/hmi/monitor 两轮零引用实证；simview/canbus 副本是各自包独立类型不受影响）+CMake 5 行、msg/bak/ 10 个、robot_start.launch（零引用聚合器）、lib/ 5 个零链接 .so（非保护清单条量）、robot_navigation/gps2plane.h（声明无实现整文件死）、path/.~lock.4102.csv#（08-19 已删过随 zip 回流）、2 个 perception zip 移出至 `../`（既定建议）。**净删约 1110 行（-1171/+61，+61 全为折叠重排对齐与 2 行说明注释）**。**验证**：/tmp/pnc_stub 重建（38 msg 桩+ros API 桩+gencpp 机器件，配方入「设施」）；52 TU 全编译+6 可执行链接；告警 285→261 零回归；**token 级等价**（tok.py 字符串感知剥注释分词）：28 个改动文件全部 hunk 皆为纯删除，can_comm/navigation 两文件纯格式改动=完全等价——零 token 新增零改写；被删符号全工程 grep 零真残留（排除 driver 同名独立副本/休眠族同名成员/子串误匹配）。**车载部署**：pnc 整目录同步（删除项建议 rsync --delete 或手动删车载旧件——残留无害但不洁）+rebuild_all 重编 robot 包；can_msg 等 md5 未变，canbus/simview/fms 零连带。快照=../pnc_before_tidy_20260910.tar.gz
+记录用户最新实车好评，同步根/PNC/control/测试入口与当前专项报告；旧制动专项加历史标识。
+workflow合并重复调参、审查和中间尝试，09-22保留最终实现及证据，09-21/20按事项归纳，更早只保留有效结论。
+当前待办、修改边界和保护清单继续保留。原1807行正文原样归档并附SHA-256，历史证据未删除。
+本次仅改文档；文档原件及范围校验记录在 `../docs_roadtest_before_20260922_113403/`。
 
-- **09-10（晚二）ultra_command 对抗校验轮（ultracode：6 视角评审×3 异构镜头核实+完备性批评家，52 代理/315 万 tokens）+修复**：19 原始发现→13 去重→**10 确认/3 驳回/批评家补查 5**（补查含 1 项 P1）。**确认即修 4 项（全在包内）**：①[P1] 云端停止指令取消任务后监控闩死——task_plan 停车分支(task_plan_core.cpp:424-427)只 clearTaskPool，终态空 pathList 的 /task_plan_msg 因发布门控(task_plan_node.cpp:373-381)永假不发出，模式闩在 LEFT/RIGHT 对已取消任务持续写参数→node 增订 /cloud/msg/command_msg，commandState==0 即 SetTaskPlanPaths({})（不动 pnc；上游两停车时机行为不一致仍存，属 pnc 自身缺陷记录在案）②[P2] LoadPolygonCsv 接受 nan/inf 字面量（stod 不抛异常，NaN 顶点使射线法相邻边静默失效，/tmp 实验证实）→isfinite 校验跳过③[P3] CMake 未设 -std=c++11（stod 依赖，c++98 编译实验复现失败）→补 add_compile_options+std_msgs/geometry_msgs 传递依赖（perception.msg Header/object.msg Point）+add_dependencies(${catkin_EXPORTED_TARGETS})（对齐 auto_couple，消干净并行构建消息头竞态；此项原判「镜头分歧驳回」但三票均承认该加，作廉价加固）④[P2] 中途(重)启动失明分钟级+README「窗口小」量化失实（312_charge_01 单块 ~10 分钟）→补「有 /perception 无 /task_plan_msg」一次性告警+README 如实量化+硬性要求随栈启动；根治=pnc 一行 latch 待批。**确认未修（需用户拍板，已入待办 1/README 已知边界）**：启动接入缺失（P2，实车生效唯一阻塞）/感知死亡 1.0s 错报 0 的 ~2s 窗 vs sensorstate 3.0s（fail-safe 方向）/批评家五连：**矩形与作业走廊几何重叠（P1 级：实测任务路径自身穿矩形——312_316_01 106 点在 left1/cargo 131 点/charge 33 点在 right，挂靠目标若在区内则作业段 safe 恒 1，「无障碍→0」分支不可达，语义需确认）**、消费方契约全仓零读者、进程死亡参数冻结无监督、输出无去抖（边界徘徊实测 5Hz 方波）。**驳回 3**（记录）：add_dependencies 竞态（严重度分歧但已顺手加固）/package.xml 缺 std_msgs（同上加固）/safe 充电期粘滞（D1+D4 已文档化精确重述）。**上游顺带发现（不属本包）**：task5.yaml task_sum:3 但定义 4 块（task3 脱钩 subaction=6 永不装载，3/3 确认；也可能系故意禁用，业务确认）；rebuild_all say/die/JOBS 未定义=风险 14 复确认（新证：JOBS 未设时裸 -j 使 catkin_make argparse exit 2 即刻中止，全部 -j 行静默失败——比原记载「无限并行」更糟但机制不同）。README 决策 2/4 论据修正（空 objs 帧实际会发布——非 CUBE-only 或全被排除区过滤时；混合条目=列表首命中非 LEFT 优先，实验锁定）。**验证**：单测扩至 **10 组全过**（+nan/inf 坏行剔除、混合条目语义锁定）+node TU 桩重编（+v2nCommandFeedback/v2nFeedbackValue 桩 9/3 字段核对合）零警告；桩在 /tmp/ultra_stub（重启即失，gen_msgs.py 可再生）
+## 保护清单
 
-- **09-10（晚）ultra_command 新包（312 任务族监控矩形障碍物检测）**：需求=task_plan 执行 pudong_air/312_316_01 或 312_cargo_01 时监测 /perception 障碍物是否落入矩形 pudong_air/left1+left2，执行 312_charge_01 时监测 right；落入→rosparam `/ultra/status/safe`=1，无→0。交付 src/ultra_command（catkin 包名 ultra_command，与 pnc 并列；node 薄壳+comply 零 ROS 纯逻辑分层，消息跨包依赖 robot 包——auto_couple 消费 ivlocmsg 同款模式，rebuild_all 全量段自动编入，**干净构建下不可单独 --pkg ultra_command**）。坐标系核对：矩形 csv 与任务路径同目录同系（定位 xAxis/yAxis 地图系），/perception 障碍物已由 perception_convert 转到同系，中心点直接可比。**规格未明说处的实现决策（详见包 README）**：①非目标任务/待命不写参数保持最后值（消费者语义未知，最保守读法；退出即清 0 的一行改法已记）②**感知静默>1.0s 按 0**——perception_convert 空障碍列表早退**不发消息**（风险 9 同源行为），只盯最后一帧则 safe=1 永久粘滞，老化窗对齐 canbus 指令 1.0s；感知链死亡由 sensorstate→急停链兜底③中心点判内（射线法逐顶点同 IsPointInExclusion，不做 dx/dy 尺寸展开，与排除区过滤同口径）④精确字符串匹配：02/03 同族变体不触发；pathList 多条目首匹配 LEFT 优先；task8（charge_01）末块 action 路径 sx040901 期间模式回 NONE。矩形经全局 path_dir 每周期热读+失败自动重试（先于 pnc 启动也不死），**不用目录 glob**（避风险 9 模式），加载失败按无障碍+醒目打印。10Hz 主循环 ZOH 重发（外部改写可自愈）；启动写 safe=0 一次（对齐 task_plan 启动写 /cloud/suggestspeed）。已知边界：/task_plan_msg 非 latch，晚于任务下发启动需等下次块推进同步。**验证**：comply 纯逻辑单测真实 CSV 跑 8 组全过（三矩形质心入区/区外=0/模式精确匹配含 02 不触发/多障碍/1.0s 老化往返/未加载不崩/坏目录失败/无尾斜杠幂等）；node TU 消息桩从真 .msg 机械生成（task_plan_msg 13/perception 2/object 11 字段核对合）+ros 桩 `-fsyntax-only -Wall -Wextra` 零警告；桩在 /tmp/ultra_stub（重启即失）。**车载部署**：同步 src/ultra_command 整目录+rebuild_all；启动接入（start_l4.sh/HMI 均保护清单，未动）与编后核对清单见包 README
+| 内容 | 原因 |
+|---|---|
+| `src/pnc/path/`、`param/`、地图和外参 | 用户任务数据与标定，本次不改 |
+| CenterPoint模型/build、驱动可执行与架构库 | 运行依赖及现有编译产物 |
+| `src/fms_agent/env/`、`data/tmp_path.txt` | 运行环境和输入 |
+| `src/ivlocmsg/`、跨包消息、第三方依赖 | 仍在使用的通信/编译契约 |
+| 根启动/录制脚本、launch | 运维入口，仅在明确相关任务中修改 |
+| 工程外快照、原始bag、冻结交付、历史归档 | 非git回滚及验证证据 |
 
-- **09-10（下午）can_comm 忙循环修复（新基底首笔改动）**：can_comm_node.cpp:40 主循环尾补 `loop_rate.sleep()`（README 架构约定「频率分档 can_comm 20Hz」的既知漏项例外，同款写法对齐 task_plan_node:382/path_plan_node:264）。效果：循环从 CPU 满速空转规 20Hz，/can_comm_msg 由全速重发→20Hz（消费方仅 canbus_node queue1，canbus 老化兜底窗口 1.0s 远在范围内；HMI/monitor 经 grep 零引用该话题，无健康监控连带）；每圈 param RPC（/canbus/brake 等低频指令热读）随循环降频，ZOH 语义不变。**验证**：本机无 noetic（/opt/ros 只剩 jazzy/ROS2），按桩编译法做微桩——ros/ros.h 桩（仅本 TU API 面：init/ok/spinOnce/Rate/NodeHandle.subscribe 函数指针推导重载/advertise/publish）+4 消息桩**从真 .msg 脚本机械生成**（铁律 5，can_comm_msg 17/17 字段抽查合）+pubalgor 空桩，真 can_comm_node.cpp+真 can_comm_comply.h 过 `g++ -fsyntax-only -std=c++14`；桩在 /tmp/cancomm_stub（重启即失）。**车载部署**：pnc 整目录同步已含此文件，rebuild_all 重编 robot 包即生效（四.5 感知排除区清单与此独立）
-
-- **09-10 pnc 基线重置（用户宣言「忘掉过去，今后在这个版本的基础上改动」）**：全量 diff vs 09-05 基线=src/pnc **仅 robot_perception_convert 两文件不同**（其余逐字节一致，全部 src mtime 统一 09-04 12:16:43=外部 zip 整树覆盖指纹；09-09 用户 11 文件+6 修复随覆盖消失——6 修复因对应用户缺陷代码同失而无需补，**唯 can_comm sleep 已验证改进丢失[风险 2 复活，待重补]**）；canbus/hmi/monitor/launch 未受覆盖，各自保留 09-05 后演进。**感知重写=zyd 版**（版本链：基线→zip0909→zipcsv[`/home/zyd/0aqw/A03/` 外来版]→现树[用户仅改一行路径回车载]）：单包容多边形→多排除多边形，LoadBoundary 扫 config/ 全部 .csv（文件名排序/<3 顶点忽略/dirent），IsPointInBoundary(内=放行)→IsPointInExclusion(内=剔除)**语义整体反转**；编译面过（algorithm/fstream 在 .h:8-10，dirent.h 新增）。**P0×2**：①config/trajectory_optimized.csv=312_316 路线闭环优化草稿（21 点首尾相同，第三列恒 1 非 heading 列），被目录 glob 当排除多边形加载（stod 吞尾串+catch(...){} 静默）→行驶透镜区 ~140×330m 障碍物静默全剔；②车载部署不删旧 perception_boundary.csv 则旧包容区反转为排除区=作业区致盲。P1：目录 glob 无白名单/无格式校验；charge.csv 走廊 ~700m（312_charge 终点在内）整条充电车道排障待确认。param/task{4,5,6,8,18}.yaml=312 任务族（cargo/charge/316，引用路径全存在；sx040901 死引用无害[DOACTION 块 path_plan 不加载 CSV]；WAITING=7 仍零使用）。src/ 下两个 perception zip 副本建议移出源码树。**本轮零代码改动**；快照=../pnc_userbase_20260910.tar.gz
-
-- **09-09 用户 pnc 大改审查+风险修复轮**（用户 09-08~09-09 自改 11 文件 ~1700 行 vs 09-05 基线；can_comm 补 loop_rate.sleep 落实 20Hz 分档✓、task_plan 删 max_vehicle_speed 钳制系**用户有意**[原钳制单位错位本就不生效,残留 config.yaml 死参数与 node:19 注释已清]、path_plan 碰撞段重写门槛 0.1→0.5 对齐注释）。双审查代理+逐条亲证后发现并修复 6 处：①②task.inc updateAirPortStopIndex/updateAirPortInfo 两处 range-for **按值遍历写拷贝**（机位索引投影与占用状态全失效,起步可楔死 0 速）→改 `auto &`；③碰撞段滑窗被删致**风险空帧不再早退→急停去抖计数器每空帧清零,间歇检出永远凑不满 3 帧**→恢复 4 帧滑窗（在场判定+最近非空快照回取,保留用户 0.5 门槛与新结构,不恢复 dist_to_refline 死分支）；④恢复 distance2Object 的 100+/200+ 哨兵赋值（发布铁律,含 objs 空早退补 100+）；⑤sensorstate 的 +1 总标志位挪回位累加后（否则心跳 HB.sensorsState 恒 0 上云）；⑥spinOnce 挪回主循环顶（README 骨架,消除输入快照 100ms 滞后）。知悉未动：navigation status==2 改 early-return（用户有意,GNSS 降级首报 2s）、全目录 Allman→K&R 重排（与 README 目录风格相反,未回退）、min_speed 死变量、.height 死存储（保留供调试）。**验证：括号平衡+上下文复读过；未桩编译（46 msg 桩已失,重建成本高）——车载 rebuild 前述 6 文件需整体同步**：robot_path_plan{node.cpp,reference.inc,task.inc}+config.yaml+task_plan_node.cpp（task_plan_core.{h,cpp} 用户已改）
-
-- **09-08 晚 health_monitor 新包（话题健康监测,C++/单线程/零侵入）**：需求=监控全部话题+点云占空比采样+1Hz 出 /diagnostics,消费方用户后续自建。**前置 spike 推翻 /statistics 路线**（roscpp 未实现该特性,rospy 为订阅端语义,ros_comm noetic 源码验证）→ ShapeShifter 主动订阅方案。设计 spec 经 ultracode 17 代理五视角对抗校验（27 发现→9 确认全吸收）,关键修正：发现用 ros::master::getTopics 发布者表口径（getSystemState 并集会被自身订阅钉死+roscpp 无此封装）;重载荷池=PointCloud2+Image+CompressedImage（否则 2 路 1080p20 JPEG 被常订,预算破产）;event 话题 8 个实证入默认表不判 stale（/task_plan_msg 等,待命不误报）;HzMeter (ns,bytes) 成对存储防 traffic 单调发散;常订 queue=3 防 100Hz 丢帧;kill/kill -9 两种死亡路径分测。交付：src/health_monitor 新包（node/逻辑分层,纯逻辑 hz_meter+state_classify 可独立单测）;本机验证=桩编译(/tmp/hm_stub)+纯逻辑单测全绿,**实车清单见包 README 未执行**。车载部署：同步 src/health_monitor 整目录,rebuild_all 全量段自动编入,roslaunch 即起
-
-- **09-08 晚 calib 整包删除（用户自删 src/calib 后核验零残留）**：calib_logger+test_control 两包，上轮已证零入口引用（无 launch/HMI/脚本/文档引用，仅手动 rosrun/roslaunch）。本轮全树精确扫描（calib_logger/test_control/src/calib）**零残留+反向依赖零**（无任何剩余包 package.xml/CMakeLists 依赖之，catkin 构建不受影响；rebuild_all 分级段本就不含 calib；宽扫 calib 命中均为无关词——fms_agent 的 pip 包 camera_calibration、CenterPoint PTQ 量化校准）。本轮零代码改动（仅 workflow.md），上轮测试结论（test_full 80/0 等）仍有效。两包定性：横向=Stanley+纯跟踪试验场（调参从未回流生产 control）、纵向=油门/刹车响应数据采集（acc 列恒 0 占位）。**车载部署**：删 src/calib 整目录+重建即可，无其他文件需同步。另：核验时检测到 robot_path_plan/.path_plan_task.inc.swp（用户 vim 编辑中）——非残留，未动
-
-- **09-08 data_logger 整包删除+全树关联清理（用户自删 src/data_logger 后委托清理）**：七处关联清除——①start_l4.sh 删 data_logger 终端步（"network"标题那步，现 12 终端，后续步骤序号前移）②根 launch/data_logger.launch 孤儿副本删除 ③HMI：hmi_config.py 删"行车记录"组件（15→14 组件）+README 组件说明行+VEHICLE_TEST.md 表格行/尾注/核对项同步 ④test_record_rosbag.py 断言改 assertNotIn（锁死不回归）⑤**calib_logger 运行时借用 data_logger 路径两处改自持**（getPath 改 "calib_logger"；其 config/log.yaml frequency 20→10——原代码读的是 data_logger 的 yaml(10Hz)，自家 yaml(20)系从未生效的死配置，对齐 10 保行为不变；改前若直接删包，calib_logger 启动会因 LoadFile("/config/log.yaml") 抛未捕获 InvalidNode 崩溃）。calib_logger 修改仅两处字符串字面量（类型不变），未桩编译，车载 rebuild_all 全量段会实证。CLEANUP_REPORT.md 的 data_logger 字样系 09-02 时点历史记录，保留。验证：hmi test_full **80/0**（单独串行跑；曾出现一次 6 失败系我把 chaos_test 与之并行造成的进程互扰，单独重跑即复绿——**hmi 测试勿并行跑**）+ test_record_rosbag **24 OK** + frontend_test.js **72/0** + chaos_test 与改动零耦合（不 import hmi_config，纯进程层自包含，浸泡型未整跑）+ 全树无死角 grep 零残留（含无扩展名文件）。**同轮核验发现用户 09-08 晨自改两文件**（与本次清理零交集）：path_plan_node.cpp（11:33，风格回退+删注释死码+订阅移位非删除；两处语义变化——①navigation status==2 由"时间戳回拨 100s 即刻判障"改为"early-return 不更新时间戳，2s 后自然判障"②sensorstate 的 +1 总标志位移到位累加之前恒不触发（基线原在后本可产出 bit0；消费方只判 !=0，无影响））、canbus_comply.cpp（11:54，删 /canbus/time 唯一写入行）。用户自改件未桩编译，上车前注意。**车载部署**：同步删 src/data_logger、launch/data_logger.launch + 改 start_l4.sh、hmi/{hmi_config.py,README.md,VEHICLE_TEST.md,tests/test_record_rosbag.py}，重建+重启 HMI（⑤的 calib_logger 两文件随下条 calib 整删作废，车载无需同步）；devel 内旧产物随 rebuild_all 首段清除
-
-- **09-07 晚十 dashboard 对抗校验轮（ultracode：6 视角审查×双怀疑论者核实,18 代理/113 万 tokens/327 工具调用）**：12 原始发现→**4 确认/2 分歧/6 P3,全数处置**。数据逻辑视角(对照两份真实 .msg 逐规则验算)零发现。①[P2]flash 动画 box-shadow 整段覆盖拟物凸影(600ms 动画>500ms 轮询,活值瓦片凸影常态缺失且蓝环永不完结;核实者在真实 Chromium 复现)→keyframes 两帧保留基础柔影只衰减蓝环,浏览器采样复核三影层并存 ②[P2]ehb_msg.msg:3 头注"随 /can_msg 同拍发布"系晚七漏改→改"T2 20Hz/相位不锁"(仅注释,md5 不变无需重编) ③④[P2 测试盲区]sections=null 降级 payload 与 ros/master off 态零覆盖——变异删守卫/改绿灯均 150 项全绿(降级态会崩 render 伪装总断连;ROS 挂显示绿灯)→补 5 断言 ⑤[分歧→加固]_fmt_value 非整型数组元素 TypeError 打死整个 /api/dashboard(现网 .msg 无此形态,但"改 .msg 重启跟上"是文档化演进路径)→逐字段 try 降级 str+d12 用例 ⑥[分歧→加固]FAU 位属性缺失按 False 计入"全部正常"(违反自家"无数据不得假正常"不变量;真实 catkin 类全字段必有故现网不触发)→三态判定(任一位不可读=无数据),mock 补 34 位对齐真实类形态 ⑦P3×5:.tn 对比度 2.69:1→--dim/nodata 占位类常驻→render 清类/lastVals 跨卡同名互扰→话题前缀键/poll 慢响应乱序回跳→防重入+15s 死锁逃逸/日期 09-08 笔误→09-07。**修复过程自踩两坑**:mock 字典括号错位 34 键漏外层(运行时自检抓回);spec sections[0] 系头部空节(payload 跳过而测试取 FAU 名单未跳过)。回归:test_dashboard **110/110**(d05 三态重写+d12 新)+frontend_dash **51/51**(+降级/off 态/fsum 闪烁/防重入)+test_full 72/edge 28/frontend 62/fuzz 2/chaos 11 全绿。**方法论:变异沙箱(agent 自改自测)+双怀疑论者分镜头(代码实证/触发路径)是抓真缺陷主力;核实员严重度分歧本身有价值——分歧项按"成本极低+违反成文不变量"取向加固;变异代理动过工程文件,修复前先六标记核对工作树纯净**
-
-- **09-07 晚九 dashboard 布局紧凑化（用户认可晚八版后的追加需求）**：can 卡片收至原宽 1/3（160px,瓦片单列微缩 10/12px 字号）、ehb 收至 1/2（575px,瓦片 minmax 104px 约 4 列小号）;#wrap 两栏 grid→flex 靠左不拉伸,**右侧大片留白留给未来新增信息面板**（窄屏 flex-wrap 自动换行）。实现要点:卡片加 can/ehb 变体类承载差异化样式,**markDead/render 赋 className 会整体覆写须保类**——前端测试 5 处 className 断言同步。测试:frontend_dash **44/44**+test_dashboard **106/106**+浏览器截图目检（can 单列无截断/右侧留白约 40%/无重叠错位/ehb 故障条贯通）。车载部署仍=同步 monitor/ 目录
-
-- **09-07 晚八 dashboard 瘦身瓦片化（用户需求:去垃圾信息/凹凸感/can 不显 raw/ehb 注释精简）**：payload 即瘦身形态——can 27→**22** 瓦片（隐藏 rawcommand/rawfeedback/epsERR1/2/faultCode——faultCode 写路径 09-03 已下线恒 0,用户确认隐藏）、ehb 63→**27** 瓦片（35 个 *_FAU_* bool 折叠为分节首行汇总条三态:绿全正常/红 N 项点名/灰无数据;隐藏 RollingCounter/CheckSum 四字段）。注释只留换算/单位（ehb 正则 ×0.1 MPa/×0.04 MPa/×0.1 km/h/0-100%;can 单位 m/s/%/°/A,含=枚举括注丢弃）;**译码仍用 .msg 原注释——先译码后裁剪,顺序倒置会杀掉全部 ehb 绿字译码（两轮对抗校验头号发现）**;can 补 CAN_ENUMS 显式译码（挡位/急停/按钮/状态机）+VHL_VehicleGear uint16 双字节字符译码（恰一字母才译）;分节标题精简（"帧4 制动请求"）。前端表格→凹凸拟物瓦片（凸卡+凹槽双向柔影）,删英文名副行/注释列/topic 行/页脚;停滞徽标改挂卡片标题（原锚点随 topic 行删除失效——校验轮发现）。**两轮换视角校验共修 9 处设计缺陷**（另:无数据假绿"全部正常"/can 单位丢失/档位裸数字/文档同步缺口）。测试:test_dashboard d05/d07 重写 **106/106**、frontend_dash_test 重写 **44/44**、回归 test_full 72/edge 28/frontend 62/fuzz 2/chaos 11 全绿;mock 全栈+浏览器截图目检（凹凸效果/故障红绿/译码绿字/单位小字全就位）。车载部署=同步 monitor/ 目录（纯 Python 无编译）。教训:①后台任务沙箱禁 listen,视觉验证服务须前台 nohup 派生 ②pkill/pgrep -f 模式自匹配本命令行（连翻两次车）,清理按端口 `fuser -k` ③换视角二次校验（验收者→实现走查）两轮各抓出不同缺陷,单轮自校不够
-
-- **09-07 晚七 用户 canbus 侧自修+全树一致性复位**：用户自行将 /can_msg 发布自 T1 移回 T2Callback（20Hz,恢复基线编排;T1 仅余 /ehb_msg@10Hz）——从发布源头满足 HMI 原始 min_hz=20,与晚六"hmi_config 降 10"二选一,用户择源头修复,晚六方案随之作废复位。config.cfg 另加 vehicle1/vehicle3 双车注释（值未变,vehicle3=182/254/213/254 现行）。复核（vs canbus_before_ehb 快照 diff）:canbus_node.cpp 净变化=ehb 三行接线,无隐藏改动;pnc/monitor/dashboard 消费均频率无关。随之复位三处漂移:hmi_config min_hz 10→20（与 ros_test_config/车载原始值一致,监控紧度回基线）+canbus README 四处 T1/T2 描述与风险条+本文件现状。测试:hmi test_full **80/0**。**车载:canbus_node.cpp 属编译件,若仅在副本改则车载需同步+重编 canbus 包;hmi_config 晚六的 10 若已上车可回传 20（20Hz 实际下两值皆健康,20=基线紧度,建议统一）**
-
-- **09-07 晚六 实车故障定位：HMI"CAN 总线启动超时未达健康"**（用户报 /can_msg echo 正常）。根因=hmi_config canbus 健康判据 `/can_msg min_hz=20`（ros_bridge 按 min_hz×0.8=16Hz 判）vs 实际 10Hz——用户把 can_msg/ehb_msg 发布自 T2 移 T1(10Hz) 时 HMI 阈值未同步,晚三风险预警应验。修复:hmi_config `/can_msg min_hz 20→10`（有效门槛 8Hz;/can_recv 20 不动,socketcan_bridge 未变）。验证:hmi test_full **80/0**。过程教训两条:①A/B 对照用的全局 sed 误伤 /can_recv//navigation_msg(20→10),靠全配置核对抓回——**配置文件禁用无锚点全局 sed** ②T17"current 为 config.cfg 实际值"硬编码 09-01 旧限值(185/240/130/240) vs 现行 182/254/213/254 系陈旧漂移(与本次无关,A/B 实证),已同步常量。**测试盲区:hmi mock 泵 /can_msg 50Hz,测不出"配置阈值 vs 实际频率"漂移**。车载部署:同步 hmi/hmi_config.py 后重启 HMI 即可,canbus 侧无改动
-
-- **09-07 晚五 修复轮二遍对抗校验（5 视角+变异测试沙箱,12 代理）**：结论——**修复轮生产代码零缺陷**(decoder 63 字段×0..255 全扫描 0 错译;6 个指定变异 M1-M8 全被测试捕获),但暴露 5 条缺口全修:①[P1-测试缺口] monitor_server dashboard 启动整段 try/except 守卫零测试覆盖(删除后套件仍全绿,但端口被占场景守卫承重——沙箱实证无守卫则主服务死于 Errno 98)→新增 d11 占用守卫测试(预占 socket+断言主服务存活+stderr 告警) ②[P2-测试缺口]"二进制先于十进制"分支顺序无锁(交换后 6 个 2bit 字段值 10/11 会把垃圾字节译成"错误/无效"权威中文)→d03 补 D(10)/D(11) is None 顺序锁 ③[P2]DASHBOARD_PORT 空串静默关闭且遮蔽配置值→改空串=未设回退配置(不遮蔽不告警;非法值才告警+关闭) ④[P2]前端总断连(API 挂/JSON 坏)四点/龄/卡片残留最后一拍全绿——比部分故障更严重的总故障反而无指示→markDead(四点红+龄清空+卡片停滞),对齐 index.html ⑤[P2]README 称 .msg 失败 stderr 告警实为静默→dashboard.py 补 stderr 告警(文档变真而非改文档)。REFUTED 2:FakeMaster TIME_WAIT(SimpleXMLRPCServer 本有 SO_REUSEADDR,复跑不复现);空串无告警与主端口惯例同源(已被③以更优语义解决)。回归:test_dashboard **82/82**+frontend_dash_test **31/31**+test_full 72/edge 28/frontend 62/fuzz 2/chaos 11 全绿。**方法论:变异测试(沙箱撤销修复→测试必须红)是锁"修复被测试真正覆盖"的最直接手段,守卫类防御代码最易零覆盖**
-
-- **09-07 晚四 dashboard 对抗审查与修复（ultracode 工作流:5 视角审查×逐发现对抗核实,15 代理/80 万 tokens）**：换思路弃自证脚本改独立对抗审查——16 条原始发现,**8 CONFIRMED/2 REFUTED**(其余去重合并)。修复全部 8 条:①枚举译码缺纯十进制键形态→VHL_EPB_ParkingRequest 值 2(请求释放)/3(无效)译不出(键正则 [01]{1,8}→\d{1,8}+三态匹配:hex/二进制等宽/十进制;二进制必须先于十进制否则"10"当 10) ②_fmt_value 不认 bytes——rospy(Py3) uint8[]=bytes,mock 用 list 致测试盲区,实车 faultCode/rawcommand/rawfeedback 显示 Python repr→补 bytes/bytearray/memoryview→hex ③.msg 非 UTF-8 直接炸穿 main() 含主 8081(DashboardApp 只捕 OSError;UnicodeDecodeError 是 ValueError)→utf-8 优先 GBK 兜底+except Exception 降级 msg_load_errors+monitor_server 整段 dashboard 启动守卫 ④译码文本污染:0xFF:忽略;64768-03 整段入文本→截去 ( ; , 后缀 ⑤DASHBOARD_PORT 空串→int('') ValueError 拖死主服务→安全解析(非法/越界告警+关闭) ⑥端口>65535 OverflowError 穿透 except OSError→并入守卫 ⑦前端话题点永不熄灭+冻结值伪装健康→三态(ok/stale/off,5s 阈值对齐 index.html)+停滞卡片半透明标注 ⑧$( "err")笔误。REFUTED 2:区间键 0x4~0x6 跳过系设计;空串行为与主端口 MONITOR_PORT 既有死代码同源(仍顺手修了新代码侧)。回归:test_dashboard 74/74+frontend_dash_test 24/24(新,DOM 桩驱动真实页面脚本)+test_full 72/edge 28/frontend 62/fuzz 2/chaos 11 全绿。**方法论结论:mock 类型契约与真实 rospy 不一致(bytes vs list)是本轮最大盲区来源,自证式校验测不到自己没想到的类型**
-
-- **09-07 晚三 monitor dashboard 仪表板（8082,can_msg+ehb_msg 全字段中文展示）**：monitor 同进程第二端口（monitor.sh 不变,绑定失败仅告警;DASHBOARD_PORT 可改/置 0 关闭）;ros_visualizer +/ehb_msg 订阅+latest()/master_ok() 取数接口;新文件 dashboard.py+static/dashboard.html+tests/test_dashboard.py。**中文名称对齐策略**：ehb 启动时运行时解析 ../src/canbus/msg/ehb_msg.msg 注释（构造性对齐,改 msg 自动跟上）;can_msg 无中文注释→dashboard.py 内 CAN_LABELS monitor 侧命名（27 字段,改 can_msg 需同步）;英文注释（CAN BUS OFF）回退原文。附枚举译码（00:/0x0:/冒号空格三形态,值旁绿字）。验证:test_dashboard 56/56+全量回归（test_full 72/edge 28/frontend 62/fuzz 2/chaos 11）+monitor.sh 真实入口双端口冒烟过。**环境发现:本机 11311 被 root 的真实 rosmaster(noetic,/opt/ros/noetic,09-05 起)占用**——测试伪 master 已迁 21111~21113;本机其实装了 ROS(与"本机无 ROS"旧记录不符,桩编译流程不受影响,rospy 对 monitor 仍不可 import(未 source)）。同轮修正:上轮漏更的 README 运行逻辑 T1/T2 描述（发布移 T1 后过时 4 处）
-
-- **09-07 晚二 EHB「接收信号需求」纳入（ehb_msg 52→63 字段,canbus 旁听九帧）**：接收方向全部 SA=0x58（VCU→EHB）——0x08FB1458 制动请求(4 信号,请求压力×0.04 MPa)/0x08FB1558 驻车请求(3)+补充项 0x0CFD0358 车速/0x0CFD0058 上电/0x0CFD0158 踏板/0x08FD0258 档位(ASCII);RecvCanData +6 case(共九),**canbus 只旁听解析不发送**;「其他液压管路压力」ID=暂无未纳入。要点:RollingCounter 声明 8bit/位跨 4bit(I02)→按位置 4bit 解析(显式假设,与 0-0xF 逻辑范围一致);CheckSum 求和宽度未定义(I06)→仅存不校验;档位 16bit ASCII 摆放未定义(I09)→存小端原始拼接;**4 补充项中文信号名→英文名(VHL_VehicleSpeed/HvPowerState/BrakePedalStatus/VehicleGear)系整理命名非原表,已注 msg/README**。同轮用户改动:ehb_msg+can_msg 发布自 T2 移至 T1(10Hz,ehb 先发)。验证:63 字段 python 交叉核对+定向 73/73+接线 7/7+随机往返 800×9 全过;期间校验器抓出并修正一处测试向量笔误(0x2F→0xF2 高4bit)
-
-- **09-07 晚 EHB 依用户协议文件重做（唯一来源=src/canbus/docs/ehb-can.md,旧 SST 锚定版全废）**：用户整理的 ehb-can.md（xls 保真转写,含冲突编号 I01~I12 与逐行单元格账本）取代此前 SST 锚定法结论。ehb_msg.msg 重写（52 字段=信号名原文,diff 逐条核对）+RecvCanData 三 case 重写+**新增 /ehb_msg 发布**（时为 T2 20Hz,09-07 晚二随用户改动移至 T1 10Hz,topic 暂无读者）。纠正旧版三错：①ATB 15 故障位顺序（3.3=CanBusOff/3.6=BrakePressSensorError(旧版漏此字段)/3.7=LosOfEHBSTOCom/3.8=MotorCommuteFail=电机**校准**失败;删 EHB_ATB_Reserved）②EPB 5.1=RcError/5.2=CsError（旧版颠倒）③头注方向（0x08FB1458/0x08FB1558 才是整车发送的请求帧;FD 系列=车速/上电/踏板/档位,EHB 接收补充项）。验证 /tmp/ehb_verify：52 字段断言+0x185/285/0C02A0A2 回归 62/62+发布接线 3/3+**随机往返 500 帧全字段**+python 按 md 布局对 cpp/msg/测试三方机械交叉核对全过;大写字段名已对照 noetic genmsg 源码确认合法（BASE_RESOURCE_NAME_LEGAL_CHARS_P=^[A-Za-z][\w_]*$,尾注释合法）
-
-- **09-07 晨 EHB 定稿〔本条 SST 锚定结论已被 09-07 晚条目取代,勿引用〕（名称/中文注释与 xls 完全对应,用户需求）**：SST 提取突破——**锚点扫描法**（前缀 `10 00 00 00`+尾 `01 00 0c 00` 交叉验证,CONTINUE 段首宽度标志剥离）恢复 201/367 串且偏移序=索引序;三帧结构定稿:FB67=STO 蓄能(20 信号:4×2bit 状态+5×8bit 压力原始+4bit 故障数+10 故障位,名称[72-91]/中文[44-53]/位序三方锚定)、FB68=ATB 主动制动(压力+状态+故障数+**15 故障位顺序系语义推断未锚定⚠**)、FB69=EPB 驻车(2bit+3bit+驻车液压+4bit+10 故障位锚定);接收方向真帧=0x0CFD0058/0x0CFD0158/0x0CFD0358(SA=0x58,初版"模板ID"误判实为此);ehb_msg.msg **字段名=xls 信号名原文+注释=xls 信号描述原文**,解析器/测试重写(EHB 35 断言+回归全绿);⚠ 字段名大写开头(EHB_*)ROS1 genmsg 接受(ROS2 才强制小写),若车载 catkin 意外拒绝则首字母小写一键替换
-
-- **09-06 EHB 帧 ID 纠偏（用户指正）**：初版三帧 ID 锚在 xls 模板残留的示例串（0x0CFD00xx,模板备注列渗入）——**正主=P=2/SA=0x0E：0x08FB670E(FB67=64359,与行3 '64359-02' 自洽)/0x08FB680E(FB68)/0x08FB690E(FB69)**;canbus_comply.cpp 三 case+ehb_msg.msg 头注释+测试已改,EHB 31/31+回归全绿重验;教训入 canbus/README:**绑定漂移的 xls 里帧 ID 类关键值必须人工确认**
-- **09-05 EHB 解析交付**（快照 ../canbus_before_ehb_20260905.tar.gz）：docs/ehb-can.xls(213KB WPS 变体 BIFF,本机无 xlrd/pip)→手写纯 Python OLE2+BIFF 解析器提取（SST 字符串头带 4 字节前缀的变体;绑定部分漂移但**数值单元格 100% 可靠**;**位布局破译**:起始位"字节.位"且 Excel 部分存成 ×10000(如 21000=2.1),验算全自洽）。产出:msg/ehb_msg.msg(帧1 0x0CFD0058 全展开 20 信号/帧2 0x0CFD0158/帧3 0x08FD0258,J1939 Intel 位序位1=LSB,SA=0x58,均 100ms DLC8)+canbus_comply.{h,cpp} mEHBMsg 与 RecvCanData 三 case 解析+CMake 注册;**桩验证 EHB 31/31+回归全绿**;⚠ 待用户对照 xls 目检一次:帧1 byte1 四个 2bit 含义/帧2·3 位图名称/故障位对应(候选名已列 README)。mEHBMsg **未发布**(需求只要求存入;外发= T2 加一行)。**同轮纠正**:09-05 晨"GATE 全绿"系陈旧二进制误报——用户 09-04 的 :100/:101 联锁改变三组期望,test_gate 已按部署版真值表重写(14 断言含 pallet 组合与自收敛)全过
-
-- **09-05 基线重分析（本条目后现行版确立）**：用户报实车部署未发现问题→本树定为唯一基准（快照+归档）；ultracode 6 路深读（593k tokens/284 工具调用）产出：canbus 0x284 真值表与联锁语义、控制链新发现（双发拆包清油门/转向数学三处/fence fopen/m_acc_last）、全仓契约矩阵（死通道群清单）、rebuild_all 缺陷精查；修正自身文档偏差；关闭待办 0；新增风险清单 15 条。**对抗校验轮（3 代理×34 声明）**：32 CONFIRMED/2 REFUTED——驳回①"恰好 4 键"（节点实写 5 键，/canbus/time 每周期写，文档措辞本就指位置键无需改）②完成判定行号（深读代理报 :445/:454 有误，实为 **:443/:452**——早间据深读代理的"行号修正"被对抗轮纠正回原始值，已改回）；control-bridge 12/12 全确认（双发拆包/忙循环/fence fopen/刹车 5% 峰值/m_acc_last/indexE/转向数学/灯光反转/PalletType/感知粘滞全部代码实证）
-- **09-05 晨** 精简全部文档（942→351 行），新建 canbus README；用户改动两处入基线：canbus_comply :100-101 挂/脱钩两相续接联锁（销到位后单独驱动鞍座至端态，含自动收敛特性）、rebuild_all.sh 分级版（依赖序+白名单清空）
-- **09-04** 心跳迁移 hookStatus+param hookstate 清退；:79 平滑过渡判据统一；部署前验证 6 exe 桩编译过+geometry_utils ODR 修复；fms 契约查明；车载首跑 --pkg 撞消息生成→用户改依赖序分级后成功；Firefox WebGL 三开关终解
-- **09-03** 晨 canbus_core 终局七轮（随晚间重写作废）；**晚** 用户自研重写 canbus+我修 5 处+六项下线+老化/config 化
-- **09-02** 新车部署；两树统一本树唯一正本
-- **09-01** 标定实车迭代/stall 极值版（后均删）；Eigen 泄漏修复；HMI 标定模块+去 rviz；rosbag 启动器
-- **08-31** 任务切换需求实现；canbus 标定引入（后删）；monitor 右侧栏
-- **08-30** pnc 专项（重构/CMake/control 四轮/话题全局化/task_plan core 化/规范文档）
-- **08-28** monitor 交付；PNC_ANALYSIS 产出
-- **08-25/26~27** HMI 交付+canbus_core 重构（后取代）；自启+config 收敛
-- **08-19/20** 全量分析；清理 175M；MQTT 明文凭据（待整改）
+已下线的一键标定、相机伸缩杆、旧蜂鸣/CAN故障写入、旧固定区域起步等待不因整理恢复。
+不能仅凭历史“死通道”列表删除接口；保留消息声明也不代表功能仍在运行。

@@ -2,14 +2,19 @@
 // 最终是否停车不在这里决定，而是在参考路径和最终路径发布阶段分层覆盖。
 
 void PathPlanComply::SetCanData(robot::can_msg can_msg_t) {
+    mStartupObservation.SetVehicle(can_msg_t.controlPanelState != 0, can_msg_t.linkPallet != 0,
+                                   ros::Time::now().toSec(), can_msg_t.curGear == GEAR_D);
     mVehicleData = can_msg_t;
     if(mVehicleData.emergencyStop)
         emergencyStop = 1;
-    mPathPlanStatus.curSpeed = mVehicleData.vehicleSpeed;
 }
 
 void PathPlanComply::SetGantryState(bool active, bool gantry_open) {
     mGantryStop = active && !gantry_open;
+}
+
+void PathPlanComply::SetStartupPerceptionData(const robot::perception &perception_t) {
+    mStartupObservation.Observe(perception_t, ros::Time::now().toSec(), mPerceptionSafety.GetConfig().input_timeout);
 }
 
 void PathPlanComply::SetPerceptionData(const robot::perception &perception_t) {
@@ -22,10 +27,11 @@ void PathPlanComply::SetPerceptionData(const robot::perception &perception_t) {
         ++mPerceptionOutsideGeneration;
     }
     bool has_outside = false;
+    const auto lane_filter = BuildPerceptionLaneMotionFilter();
 
     for(const auto &i : perception_t.objs) {
-        // 只忽略左右车道外；本车道、左一和左二仍参与原有几何及区域检查。
-        if(i.type == 3 || i.type == 4) {
+        // 忽略左二、左右车道外和左一动态对向目标；复用原 ID 标记清理风险历史。
+        if(i.type == 2 || i.type == 3 || i.type == 4 || lane_filter.Ignore(i)) {
             if(i.id > 0) mPerceptionOutsideMarks[i.id] = mPerceptionOutsideGeneration;
             has_outside = true;
             continue;
@@ -58,11 +64,11 @@ void PathPlanComply::SetPerceptionData(const robot::perception &perception_t) {
         mPerception.objs.push_back(i);
 
     if(has_outside && !mPerceptionSafety.HasInput()) {
-        // 兼容链的四帧历史也删除已明确出车道的 ID；用索引避免目标与历史两层匹配。
+        // 兼容链四帧历史同步删除明确剔除的 ID；用索引避免目标与历史两层匹配。
         bool has_history = false;
         for(auto &frame : history_risk_vec) {
             frame.erase(std::remove_if(frame.begin(), frame.end(), [this](const robot::object &object) {
-                            return object.type == 3 || object.type == 4 ||
+                            return object.type == 2 || object.type == 3 || object.type == 4 ||
                                    (object.id > 0 && mPerceptionOutsideMarks[object.id] == mPerceptionOutsideGeneration);
                         }),
                         frame.end());
@@ -71,7 +77,7 @@ void PathPlanComply::SetPerceptionData(const robot::perception &perception_t) {
         if(!has_history) safety_check_counter_refer = 0;
     }
 
-    // 新观测链启用后，/perception 仅保留原起步/T 区等消费，避免重复进行未使用的限速计算。
+    // 新观测链启用后，/perception 快照保留给轨迹复用等消费，跳过未使用的限速计算。
     if(mPerceptionSafety.HasInput()) return;
 
     // collistion check precise
@@ -257,7 +263,6 @@ void PathPlanComply::SetBackScanData(jsk_recognition_msgs::BoundingBoxArray msg)
         mPerceptionBackScan.objs.push_back(obj);
     }
 
-    std::cout << "bbox size ======== " << (int)mPerceptionBackScan.objs.size() << std::endl;
 }
 
 void PathPlanComply::SetPalletCoorData(robot::hook_position hook_pos_t) {
@@ -270,12 +275,18 @@ void PathPlanComply::SetLoadPosition(robot::palletpos load_pos_t) {
 }
 
 void PathPlanComply::SetNavigationData(robot::navigation_msg navigation_msg_t) {
+    const double now = ros::Time::now().toSec();
+    mStartupObservation.SetPose(navigation_msg_t.xAxis, navigation_msg_t.yAxis,
+                                navigation_msg_t.heading, now);
+    // 只由新的导航回调推进起步车速确认，CAN 重发不能重复计票。
+    mStartupObservation.SetSpeed(navigation_msg_t.gpsSpeed, now);
     mNavData = navigation_msg_t;
+    mRcvGpsData = true;
     mPathPlanStatus.curXAxis = mNavData.xAxis;
     mPathPlanStatus.curYAxis = mNavData.yAxis;
 
     mPathPlanStatus.curHead = mNavData.heading;
-    //mPathPlanStatus.curSpeed = mNavData.gpsSpeed;
+    mPathPlanStatus.curSpeed = mNavData.gpsSpeed;
     mPathPlanStatus.rtkState = mNavData.rtkState;
     // 计算车辆的包围盒 车长3.45m，后轴中心到前雷达:2.41   车宽1.47m,托盘宽3.4m
     //  double l = 4.82;
@@ -302,31 +313,6 @@ double PathPlanComply::Distance2PerceptionObjs(double x, double y) {
 
         if(dist > ds)
             dist = ds;
-    }
-
-    return dist;
-}
-
-double PathPlanComply::Distance2PerceptionObjs(GeoLine line) {
-    double dist = 10000.0;
-
-    for(auto i : mPerception.objs) {
-        GeoPoint point(i.x, i.y);
-        double len = std::min<double>(fabs(i.dx / 2.0), fabs(i.dy / 2.0));
-        double d = bg::distance(point, line) - len - 0.15;
-
-        // double dx = fabs(x - i.x);
-        // double dy = fabs(y - i.y);
-        // double len = std::min<double>(i.dx / 2.0, i.dy / 2.0);
-        // double ds = hypot(dx, dy) - len - 0.5;
-        // double dl = dx - i.dx / 2.0;
-        // double dw = dy - i.dy / 2.0;
-
-        // if (dist > ds)
-        //     dist = ds;
-        if(d < dist) {
-            dist = d;
-        }
     }
 
     return dist;

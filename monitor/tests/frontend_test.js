@@ -62,9 +62,17 @@ class El {
         fillRect() { calls.fillRect++; },
         beginPath() {}, moveTo() {}, closePath() {},
         lineTo() { calls.lineTo++; },
-        stroke() {}, fill() {}, save() {}, restore() {},
+        stroke() {}, save() {}, restore() {},
+        fill(...a) { (calls.fills = calls.fills || []).push(
+          { style: this.fillStyle, rule: a[1] }); },
+        createPattern(cv, rep) {
+          (calls.patterns = calls.patterns || []).push(rep);
+          return { __pattern: true };
+        },
         translate() {}, rotate() {},
-        strokeRect(...args) { calls.strokeRect++; calls.strokeRects.push(args); },
+        strokeRect(...args) { calls.strokeRect++; calls.strokeRects.push(args);
+          (calls.strokeRectStyles = calls.strokeRectStyles || []).push(
+            this.strokeStyle); },
         arc() { calls.arc++; },
         set font(v) { self2._font = v; },
         get font() { return self2._font || ""; },
@@ -188,9 +196,25 @@ const THREE = {
   BoxGeometry: function (a, b, c) {
     const g = makeGeom(); g.__dims = [a, b, c]; return g;
   },
-  CanvasTexture: function (cv) { this.minFilter = 0; this.needsUpdate = false; this.cv = cv; this.disposed = false; this.dispose = function () { this.disposed = true; }; },
+  CanvasTexture: function (cv) { this.minFilter = 0; this.needsUpdate = false; this.cv = cv; this.disposed = false; this.dispose = function () { this.disposed = true; };
+    this.wrapS = 0; this.wrapT = 0;
+    this.repeat = { x: 1, y: 1, set(x, y) { this.x = x; this.y = y; } }; },
   LinearFilter: 1006,
+  // 电子围栏缓冲带(Shape 外环 + Path 洞 -> ShapeGeometry)
+  Vector2: function (x, y) { this.x = x; this.y = y; },
+  Path: function (pts) { this.points = pts; },
+  Shape: function (pts) { this.points = pts; this.holes = []; },
+  ShapeGeometry: function (shape) {
+    const g = makeGeom(); g.__shape = shape; return g;
+  },
+  RepeatWrapping: 1000,
+  DoubleSide: 2,
 };
+// 2D 围栏环带填充用的 Path2D(记录子路径数即可)
+global.Path2D = function () { this.subs = 0; };
+global.Path2D.prototype.moveTo = function () {};
+global.Path2D.prototype.lineTo = function () {};
+global.Path2D.prototype.closePath = function () { this.subs++; };
 global.THREE = THREE;
 
 // ---------------- bin fixture(与 test_full.py t05 同源) ----------------
@@ -244,9 +268,17 @@ async function main() {
                     left: [[5, 6]], right: [[5, 4]] },
                 ],
                 bbox: [0, 0, 6, 6],
+                // 电子围栏 fixture:本体 40x40 方形 + 外扩 2.5m,
+                // 警示带在栏外(x∈[20,22.5] 等),判定基准=中心点在本体内
+                fences: [
+                  { name: "fence.csv",
+                    fence: [[-20, -20], [20, -20], [20, 20], [-20, 20]],
+                    outer: [[-22.5, -22.5], [22.5, -22.5], [22.5, 22.5], [-22.5, 22.5]] },
+                ],
                 layers: { vehicle: true, lidar: true, routing: true,
                           planning: false, loadpos: true, stoppose: true,
-                          map: false, scan: true, cloud: true, grid: false } };
+                          map: false, fence: true, scan: true, cloud: true,
+                          grid: false } };
   fetchRoutes = { "/api/snapshot": { json: SNAP }, "/api/map": { json: MAP } };
   failSnapshotOnce = true;
 
@@ -614,10 +646,81 @@ async function main() {
             JSON.stringify(Array.from(b0)));
     }
   }
-  check("图层 10 项", el("#layerList")._children.length === 10,
+  check("图层 11 项", el("#layerList")._children.length === 11,
         String(el("#layerList")._children.length));
   check("map 默认关", document.getElementById("ly_map").checked === false);
   check("vehicle 默认开", document.getElementById("ly_vehicle").checked === true);
+
+  // F7b 电子围栏:PIP 纯函数 / 3D 几何 / 图层开关联动 / 闯入变色
+  {
+    const sq = [[0, 0], [10, 0], [10, 10], [0, 10]];
+    check("PIP 内点", MM2.pointInPoly(5, 5, sq) === true);
+    check("PIP 外点", MM2.pointInPoly(15, 5, sq) === false);
+    check("PIP 顺时针绕向同样成立",
+          MM2.pointInPoly(5, 5, sq.slice().reverse()) === true);
+    check("PIP 空/短多边形", MM2.pointInPoly(0, 0, []) === false &&
+          MM2.pointInPoly(0, 0, [[0, 0], [1, 1]]) === false);
+
+    const fenceMeshes = OBJ_SEQ.filter(
+      (o) => o.__kind === "mesh" && o.geometry && o.geometry.__shape);
+    check("围栏警示带 mesh 建出(外扩环挖本体洞)", fenceMeshes.length === 1,
+          String(fenceMeshes.length));
+    const fm = fenceMeshes[0];
+    check("警示带洞=围栏本体且双面/透明",
+          fm && fm.geometry.__shape.holes.length === 1 &&
+          fm.geometry.__shape.holes[0].points.length === 4 &&
+          fm.material.transparent === true &&
+          fm.material.side === THREE.DoubleSide);
+    check("缓冲带平铺到地面(rotation.x=-90°,y=0.02)",
+          fm && near(fm.rotation.x, -Math.PI / 2) && near(fm.position.y, 0.02));
+    const fenceGrp = fm && fm.parent;
+    const fenceLines = fenceGrp && fenceGrp.children.filter(
+      (c) => c.__kind === "line");
+    check("围栏组:本体/外扩两条红线",
+          fenceLines && fenceLines.length === 2 &&
+          fenceLines.every((l) => l.material.color === 0xff0000),
+          String(fenceLines && fenceLines.length));
+    check("围栏线闭合(首点重复在末尾)",
+          fenceLines && near(fenceLines[0].geometry._attrs.position.array[0],
+                             fenceLines[0].geometry._attrs.position.array[
+                               (fenceLines[0].geometry._attrs.position.array.length - 3)]));
+    check("围栏组挂到场景", fenceGrp && sceneObj.children.indexOf(fenceGrp) >= 0,
+          String(fenceGrp && fenceGrp.visible));
+
+    const cbFence = document.getElementById("ly_fence");
+    check("fence 默认开", cbFence.checked === true);
+    cbFence.checked = false;
+    cbFence.fire("change", { target: cbFence });
+    check("关 fence 图层 -> 围栏组隐藏", fenceGrp.visible === false);
+    cbFence.checked = true;
+    cbFence.fire("change", { target: cbFence });
+    check("开 fence 图层 -> 围栏组恢复", fenceGrp.visible === true);
+
+    // 闯入变色:直接改 SNAP.vehicle(页面 route 引用同一对象),speed=0 消外推
+    function vehColor() {
+      const c = vehLine.material.color;
+      return (c && c.c !== undefined) ? c.c : c;
+    }
+    async function setVeh(x, y) {
+      SNAP.vehicle.x = x; SNAP.vehicle.y = y; SNAP.vehicle.speed = 0;
+      SNAP.vehicle.yaw = 0;
+      await sleep(700);
+      if (rafCb) { rafCb(); }
+    }
+    check("初始在围栏本体内:车辆轮廓黄", vehColor() === 0xffff00,
+          String(vehColor()));
+    await setVeh(21, 0);        // 中心越出本体,进入外侧警示带(20~22.5) -> 预警橙框
+    check("中心进入外侧警示带:车辆轮廓变橙(预警)", vehColor() === 0xff8c00,
+          String(vehColor()));
+    await setVeh(40, 0);        // 完全越出外扩线 -> 违规报警红框
+    check("完全越出外扩线:车辆轮廓变红(报警)", vehColor() === 0xff0000, String(vehColor()));
+    await setVeh(0, 0);         // 回到本体多边形内 -> 恢复安全黄框
+    check("回到围栏内:恢复黄", vehColor() === 0xffff00, String(vehColor()));
+    SNAP.vehicle.x = 6.7; SNAP.vehicle.y = -13.1;
+    SNAP.vehicle.yaw = -3.2198; SNAP.vehicle.speed = 2.5;
+    await sleep(700);
+    if (rafCb) { rafCb(); }
+  }
 
   // F8 图层开关联动
   const cbLidar = document.getElementById("ly_lidar");
@@ -722,6 +825,8 @@ async function main() {
           document.getElementById("ly_map").checked === false &&
           document.getElementById("ly_scan").checked === true &&
           document.getElementById("ly_cloud").checked === true);
+    check("F12 2D fence 图层默认开",
+          document.getElementById("ly_fence").checked === true);
     let mapToggleErr = null;
     const cbMap2d = document.getElementById("ly_map");
     cbMap2d.checked = true;
@@ -731,13 +836,55 @@ async function main() {
           mapToggleErr === null, String(mapToggleErr || ""));
 
     // F13 2D 降级渲染:必须实际画出路径/车辆/点,不能只画背景假通过
+    // (2D 视图画布按窗口尺寸建;斜纹瓦片是 16/32px 小画布,须排除)
     if (rafCb) { rafCb(1000); }
-    const cvEl = created.filter((e) => e.key === "<canvas>").pop() || null;
+    const cvEl = created.filter((e) => e.key === "<canvas>" &&
+          e.width === viewEl.clientWidth).pop() || null;
     const ctx2 = cvEl && cvEl.getContext();
     check("F13 2D 实际绘制路径/车辆/点(非仅背景)",
           ctx2 && ctx2.__calls.lineTo > 0 && ctx2.__calls.strokeRect > 0 &&
           ctx2.__calls.fillRect > 3,
           JSON.stringify(ctx2 && ctx2.__calls));
+    // F13b 2D 电子围栏:环带 evenodd 斜纹填充 + 闯入变色(最终 strokeRect
+    // 即车身矩形,记录调用时刻 strokeStyle)
+    const fenceFills = ctx2 && (ctx2.__calls.fills || []).filter(
+      (f) => f.rule === "evenodd");
+    check("F13b 2D 围栏环带 evenodd 斜纹填充", fenceFills.length >= 1 &&
+          fenceFills.every((f) => f.style && f.style.__pattern === true),
+          JSON.stringify(ctx2 && ctx2.__calls.fills));
+    check("F13b 2D 斜纹 pattern 建立", ctx2 &&
+          (ctx2.__calls.patterns || []).indexOf("repeat") >= 0);
+    // 车身矩形样式:按几何特征(-0.8m 后缘/3.1m 长 × zoom2d=6)在
+    // strokeRects 里定位(闸机箱在车辆之后也 strokeRect,不能取末项)
+    function vehStroke2d() {
+      const rs = ctx2.__calls.strokeRects;
+      const ss = ctx2.__calls.strokeRectStyles;
+      for (let i = rs.length - 1; i >= 0; i--) {
+        if (near(rs[i][0], -0.8 * 6) && near(rs[i][2], 3.1 * 6)) {
+          return ss[i];
+        }
+      }
+      return undefined;
+    }
+    const bandStyle = vehStroke2d();
+    check("F13b 2D 车辆在围栏内:黄框", bandStyle === "#ffff00", String(bandStyle));
+    SNAP.vehicle.x = 21; SNAP.vehicle.y = 0; SNAP.vehicle.speed = 0;
+    SNAP.vehicle.yaw = 0;
+    await sleep(700);
+    if (rafCb) { rafCb(2000); }
+    const bandStyle2 = vehStroke2d();
+    check("F13b 2D 中心进入警示带:橙框(预警)", bandStyle2 === "#ff8c00", String(bandStyle2));
+    SNAP.vehicle.x = 40; SNAP.vehicle.y = 0; SNAP.vehicle.speed = 0;
+    SNAP.vehicle.yaw = 0;
+    await sleep(700);
+    if (rafCb) { rafCb(2500); }
+    const bandStyle3 = vehStroke2d();
+    check("F13b 2D 完全越出外扩线:红框(报警)", bandStyle3 === "#ff0000", String(bandStyle3));
+    check("F13b 2D 闯入后围栏仍重画(填充再+1)",
+          (ctx2.__calls.fills || []).filter((f) => f.rule === "evenodd").length >
+          fenceFills.length);
+    SNAP.vehicle.x = 6.7; SNAP.vehicle.y = -13.1; SNAP.vehicle.speed = 2.5;
+    SNAP.vehicle.yaw = -3.2198;
     const vehicleRectOk = ctx2 && ctx2.__calls.strokeRects.some((a) =>
       near(a[0], -0.8 * 6) && near(a[2], 3.1 * 6));
     check("F13 2D 车身矩形从后缘 -0.8m 起画", vehicleRectOk,

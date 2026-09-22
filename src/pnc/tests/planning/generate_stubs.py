@@ -110,6 +110,7 @@ template<class T> struct Printer {
 #define ROS_DECLARE_ALLINONE_SERIALIZER
 #define ROS_INFO(...) ((void)0)
 #define ROS_WARN(...) ((void)0)
+#define ROS_WARN_THROTTLE(...) ((void)0)
 #define ROS_ERROR(...) ((void)0)
 #define ROS_DEBUG(...) ((void)0)
 ''')

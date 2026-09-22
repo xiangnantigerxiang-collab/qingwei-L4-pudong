@@ -1,5 +1,20 @@
 # **Quantization for CenterPoint SparseConvolution**
 
+## 使用方法（本工程范围）
+
+核对：2026-09-19。本目录保留上游PTQ/QAT实验流程，整车运行入口见
+[CenterPoint README](../README.md)。它不由HMI或整车启动脚本自动执行。
+在独立训练环境准备上游CenterPoint、数据集与权重后，按下文Usage、PTQ、QAT章节执行；
+命令中的工作目录均为独立的上游训练仓库，不能在本工程根盲目执行 `cp -r * CenterPoint/`。
+
+## 注意事项与容易疏忽的点
+
+- 下方checkpoint路径、依赖版本和精度表为上游历史示例，当前未做车端复验。
+- 量化训练不在FMS虚拟环境或车端运行目录安装依赖，避免改变已部署环境。
+- 导出ONNX不等于目标TensorRT引擎已兼容；替换模型前另行验证输入坐标、输出类别和检测效果。
+- 当前任务仅整理文档，没有重训、下载权重或覆盖model/build。
+
+## 随工程保留的上游说明
 
 <!-- SparseConvolution has two implementations, **[traveller59/spconv](https://github.com/traveller59/spconv)** and **[mmdet3d/spconv](https://github.com/mit-han-lab/bevfusion/tree/main/mmdet3d/ops/spconv)** -->
 

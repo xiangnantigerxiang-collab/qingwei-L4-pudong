@@ -21,25 +21,17 @@ double LatController::calculate(const std::vector<Pose2d>& trajectory,
     }
     double curvature = calcCurature(trajectory, ego_pose);
     double k = 1 / (1 + 1.1 * curvature);
-    printf("=============================LatController calculate=============================\n");
-    printf("自车转向角: %.1f, 自车车速:%.1f, 自车曲率:%.1f, k系数:%.1f\n",
-           ego_steer_angle / M_PI * 180, ego_speed, curvature, k);
-    printf("----------------------------------------------------------------------------\n");
     double vehicle_speed = ego_speed < 0.5 ? 0.5 : ego_speed;
     double stanley_steer_angle = calcSteer(trajectory, ego_pose, vehicle_speed);
     double feedforwad_steer_angle = feedforward(trajectory, ego_pose, ego_speed);
     k = 0.3;
     double fusion_angle =
         (1 - k) * stanley_steer_angle + k * feedforwad_steer_angle;
-    printf("融合后转向角 %.1f 度\n", fusion_angle / M_PI * 180);
 
     double filter_steer_angle =
         this->lowPassFilter(fusion_angle, ego_steer_angle, 0.8);
-    printf("滤波后转向角 %.1f 度\n", filter_steer_angle / M_PI * 180);
 
     double final_steer_angle = steerLimit(filter_steer_angle, ego_steer_angle);
-    printf("结果: %.1f 度\n", final_steer_angle / M_PI * 180);
-    printf("============================================================================\n");
     return final_steer_angle;
 }
 
@@ -71,39 +63,42 @@ double LatController::calcSteer(const std::vector<Pose2d>& trajectory,
     double phi_weight = 0.4;
     double lat_weight = 0.4;
     double v_smooth = 0.01;
+
+    if(std::abs(ego_speed) > 2.0) phi_weight = 0.6;
+
     double angle1 = phi_weight * phi_t;
     double angle2 = lat_weight * std::atan(k * e_t / (ego_speed + v_smooth));
     double steer_angle = angle1 + angle2;
-    printf("LatController: 横向偏差:%.2f, 航向偏差:%.2f,偏角1:%.1f, 偏角2:%.1f,转向角: %.1f 度\n",
-           e_t, phi_t / M_PI * 180, angle1 / M_PI * 180, angle2 / M_PI * 180,
-           steer_angle / M_PI * 180);
     return steer_angle;
 }
 
 double LatController::feedforward(const std::vector<Pose2d>& trajectory,
                                   const Pose2d& ego_pose,
                                   const double& ego_speed) {
-    double forward_distance = 2 * ego_speed;
+    if(trajectory.empty()) return 0.0;
+
+    double forward_distance = 3 * ego_speed;
     if(forward_distance < 3.0) {
         forward_distance = 3.0;
     }
-    // 查找前馈点
-    Pose2d ff_point;
+    // 末端参考路径可能包含车后的拟合点，前视距离从当前投影位置开始计算。
+    // 剩余路径不足前视距离时使用真实末点，避免回退到默认坐标 (0,0)。
+    const double start_s = math_utils::getFootPose(ego_pose, trajectory).s;
+    Pose2d ff_point = trajectory.back();
     for(const auto& pt : trajectory) {
-        if(pt.s > forward_distance) {
+        if(pt.s - start_s > forward_distance) {
             ff_point = pt;
             break;
         }
     }
     Pose2d p_to_base = toBaseLink(ff_point, ego_pose);
     double real_forward_dist = ff_point.distanceTo(ego_pose);
+    if(real_forward_dist < 1e-6) return 0.0;
     double turn_radius =
         (std::pow(p_to_base.x, 2) + std::pow(p_to_base.y, 2)) /
         (2 * p_to_base.y);
     // 3. 计算转向角
     double steer_angle = atan(wheelbase_ / turn_radius);
-    printf("puresuit 前视距离:%f, 转弯半径:%f, 转向角: %f 度\n",
-           real_forward_dist, turn_radius, steer_angle / M_PI * 180);
     return steer_angle;
 }
 

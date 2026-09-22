@@ -1,6 +1,30 @@
 # 1 **rslidar_sdk**
 
- [中文介绍](README_CN.md)
+## 本工程使用方法
+
+核对：2026-09-19。整车运行ROS1，在工程根执行：
+
+```bash
+catkin_make --pkg rslidar_sdk -DENABLE_TRANSFORM=ON
+source devel/setup.bash
+roslaunch launch/start.launch
+```
+
+这是工程多雷达接线入口；下文 `roslaunch rslidar_sdk start.launch` 是包自带示例，
+两者配置不保证相同。设备IP/UDP端口、型号、frame及外参以工程launch和当前配置为准。
+HMI已启动雷达时不要双启；用 `rostopic list`、`rostopic hz <实际点云话题>` 检查。
+
+## 注意事项与容易疏忽的点
+
+- ENABLE_TRANSFORM=ON是本车编译接入要求，不能照上游默认构建忽略安装变换。
+- 点云字段/点类型、单位和frame与下游CenterPoint/gantry需一致；有频率不代表坐标正确。
+- 同一设备端口重复监听会导致断流或冲突，先核对实际进程与网络设置。
+- ROS2与新装依赖步骤仅为上游参考，不用于直接替换本工程ROS1运行环境。
+- `src/rs_driver`为上游驱动内核，保留其README与源码；工程接入统一查本节和 [驱动入口](../README.md)。
+
+## 随工程保留的上游说明
+
+[中文介绍](README_CN.md)
 
 ## 1 Introduction
 

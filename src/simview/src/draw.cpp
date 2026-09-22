@@ -1,30 +1,56 @@
 #include "simviewer.h"
+#include <sstream>
+#include <cmath>
 
 ConvexPoints robot::SimViewer::LoadMap(std::string file)
 {
-    double x = 0.0;
-    double y = 0.0;
     double x_ = 0.0;
     double y_ = 0.0;
-    double z = 0.0;
 
     ConvexPoints points;
     std::ifstream inFile(file);
 
-    FILE *fp;
-    fp=fopen(file.c_str(), "r");
-
-    while(!feof(fp))  {
+    if(!inFile.is_open()) {
+        ROS_ERROR("Map CSV open failed: %s", file.c_str());
+        return points;
+    }
+    std::string line;
+    std::size_t invalid_rows = 0;
+    while(std::getline(inFile, line)) {
+        if(line.compare(0, 3, "\xEF\xBB\xBF") == 0) line.erase(0, 3);
+        const auto first = line.find_first_not_of(" \t\r");
+        if(first == std::string::npos || line[first] == '#') continue;
+        std::istringstream row(line);
+        double values[5] = {};
+        std::size_t columns = 0;
+        bool valid = true;
+        // 每次消费整行，兼容3列旧图、4列限速图及带第5列旧标志的图。
+        for(;;) {
+            if(columns == 5 || !(row >> values[columns]) || !std::isfinite(values[columns])) {
+                valid = false;
+                break;
+            }
+            ++columns;
+            row >> std::ws;
+            if(row.eof()) break;
+            char comma = 0;
+            if(!(row >> comma) || comma != ',') {
+                valid = false;
+                break;
+            }
+        }
+        if(!valid || columns < 3 || (columns >= 4 && values[3] < 0)) {
+            ++invalid_rows;
+            continue;
+        }
         ConvexPoint p;
-        fscanf(fp,"%lf,%lf,%lf", &x, &y, &z);
-
-        z = 90.0 - z;
+        double z = 90.0 - values[2];
 
 	if(z > 360.0) z -= 360.0;
 	if(z <-360.0) z += 360.0;
 
-        p.xg = x;
-        p.yg = y;
+        p.xg = values[0];
+        p.yg = values[1];
         p.zg = z / 180.0 * M_PI;
 
         if(hypot(p.xg - x_, p.yg - y_) > 0.1)  {
@@ -33,6 +59,12 @@ ConvexPoints robot::SimViewer::LoadMap(std::string file)
             y_ = p.yg;
         }
     }
+
+    if(inFile.bad()) {
+        ROS_ERROR("Map CSV read failed: %s", file.c_str());
+        return ConvexPoints();
+    }
+    if(invalid_rows) ROS_WARN("Map CSV skipped %zu invalid rows: %s", invalid_rows, file.c_str());
 
     int size = points.size();
 

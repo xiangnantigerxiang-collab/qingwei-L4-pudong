@@ -26,14 +26,14 @@ void UltraCommandComply::SetTaskPlanPaths(
     for (size_t i = 0; i < path_list.size(); i++)
     {
         // 精确匹配目标任务路径; 同族 02/03 变体与其它路径不监控
-        if (path_list[i] == "pudong_air/312_316_01" ||
-            path_list[i] == "pudong_air/312_cargo_01")
+        if (path_list[i] == "pudong_air/312_316" ||
+            path_list[i] == "pudong_air/312_cargo")
         {
             new_mode = ZONE_MODE_LEFT;
             active_path = path_list[i];
             break;
         }
-        if (path_list[i] == "pudong_air/312_charge_01")
+        if (path_list[i] == "pudong_air/312_charge")
         {
             new_mode = ZONE_MODE_RIGHT;
             active_path = path_list[i];

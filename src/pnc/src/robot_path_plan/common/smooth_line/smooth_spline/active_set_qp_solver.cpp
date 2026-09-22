@@ -79,7 +79,6 @@ namespace planning {
 
         int a = affine_equality_matrix_.rows();
         int b = affine_equality_matrix_.cols();
-        printf("a = %d, b = %d\r\n", a, b);
 
         //todo:下面的等式约束,因为apollo工程中的piecewise_st_graph并没有添加等式约束,所以调用会崩溃
         //        for (int r = 0; r < affine_equality_matrix_.rows(); ++r) {

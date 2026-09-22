@@ -371,7 +371,6 @@ namespace math {
             had_map::MapPoint p;
             math::gussPointToRFU(orignPoint, mapPoint, p);
             goalPoints.emplace_back(p);
-            printf("point : x = %f, y = %f\r\n", p.x(), p.y());
         }
         return Box2d(goalPoints);
     }

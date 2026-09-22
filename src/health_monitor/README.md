@@ -4,6 +4,17 @@
 频率/新鲜度/流量/消息类型，1Hz 发布 `diagnostic_msgs/DiagnosticArray` 到
 `/diagnostics`。旁路观测节点，不接任何控制链；健康判定留给消费方。
 
+## 最近记录
+
+09-08新增旁路健康观测；现行机制和参数如下，不改变车辆控制。旧开发过程见工程workflow归档。
+
+## 注意事项与容易疏忽的点
+
+- ROS master发布者表不同于rostopic list的发布/订阅并集，数量差异未必是漏检。
+- 事件话题可合法静默，不能按周期话题强判故障；重载荷话题轮转采样不代表持续订阅。
+- stale/no_data要区分曾收到后断流与从未收到；干净注销与kill -9注册残留表现不同。
+- `/diagnostics`只是观测输出，不接安全制动链；预期CPU值必须在Orin实测。
+
 ## 机制
 
 - 小/中话题：topic_tools::ShapeShifter 常订（queue=3，跳过反序列化，回调只记
@@ -29,9 +40,18 @@
 | /health_monitor/event_topics | 见代码（8 个本图实证话题） | 事件驱动话题 |
 | /health_monitor/max_topics | 128 | 订阅数上限 |
 
-## 启动
+## 使用方法
 
+在ROS1工程根、消息依赖已满足时执行：
+
+```bash
+catkin_make --pkg health_monitor -j4
+source devel/setup.bash
 roslaunch health_monitor health_monitor.launch
+```
+
+另一终端source相同工作空间后，用 `rostopic echo /diagnostics` 和 `rostopic hz <实际话题>`
+对照，参数见上表。HMI或已有launch运行此节点时不要再重复启动。
 
 ## 本机回归（无 ROS 依赖）
 

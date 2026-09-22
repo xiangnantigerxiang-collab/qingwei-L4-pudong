@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>log_online 在线监控</title>
+<style>
+body{font-family:sans-serif;margin:16px;background:#f4f5f7;color:#222}
+h2{border-bottom:2px solid #3572b0;padding-bottom:4px}
+table{border-collapse:collapse;background:#fff;min-width:560px}
+td,th{border:1px solid #ccd;padding:4px 10px;font-size:14px}
+td.k{background:#eef2f7;white-space:nowrap}
+.ok{color:#1a7f37}.bad{color:#c62828}.warn{color:#b26a00}
+#events td{font-family:monospace}
+.note{color:#777;font-size:12px}
+</style>
+</head>
+<body>
+<h2>log_online 在线监控 <span id="veh" class="note"></span></h2>
+
+<h3>链路健康</h3>
+<div id="health">加载中…</div>
+
+<h3>实时数据</h3>
+<div id="live">加载中…</div>
+
+<h3>最近事件</h3>
+<table id="events"><thead><tr>
+<th>事件目录</th><th>触发段</th><th>记录区间</th><th>complete</th><th>大小</th>
+</tr></thead><tbody></tbody></table>
+<p class="note">仅内网使用,严禁公网映射。灯光/挡位文案按 path_plan 语义显示,灯光左右方向待实车核对。</p>
+
+<script>
+var GEAR={2:"N",3:"R",4:"D"};
+var LIGHT={0:"关",3:"右转向",4:"左转向",5:"倒车",7:"报警",8:"安全停车"};
+
+function esc(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;");}
+
+function fmtHealth(h){
+  var out="<table>";
+  for(var k in h){
+    var v=h[k];
+    var cls=v.stale?"bad":"ok";
+    var hz=v.hz_est===null||v.hz_est===undefined?"-":v.hz_est+"Hz";
+    out+="<tr><td class=\"k\">"+esc(k)+"</td><td class=\""+cls+"\">"+
+         (v.stale?"离线":"在线")+"</td><td>"+v.last_seen_age_s+"s 前</td><td>"+hz+"</td></tr>";
+  }
+  return out+"</table>";
+}
+
+function row(k,v){return "<tr><td class=\"k\">"+k+"</td><td>"+esc(v)+"</td></tr>";}
+
+function fmtLive(s){
+  var m=s.motion||{},p=s.position||{},c=s.control||{},r=s.response||{},
+      l=s.lights||{},v=s.video||{},f=s.fault||{},pe=s.perception||{};
+  var out="<table>";
+  out+=row("控制模式",c.controlPanelState===null?"-":("panel="+c.controlPanelState));
+  out+=row("位置",p.x===null?"-":("("+p.x.toFixed(1)+", "+p.y.toFixed(1)+") heading "+p.heading.toFixed(0)+"° "+p.rtkState));
+  out+=row("方向/速度/加速度",m.gear===null?"-":(GEAR[m.gear]||m.gear)+" 挡, "+
+        (m.speed===null?"-":m.speed.toFixed(2))+" m/s, "+
+        (m.accel===null?"-":m.accel.toFixed(2))+" m/s²");
+  out+=row("感知",pe.obj_count===null?"-":(pe.obj_count+" 个障碍, 最近 "+
+        (pe.nearest_dist===null?"-":pe.nearest_dist)+" m"));
+  out+=row("响应","safety="+r.safety+" 期望速度 "+r.desireSpeed+" 油门 "+r.throttle+
+        " 刹车 "+r.brake+" 转角 "+r.wheelAngle);
+  out+=row("灯光/信号","light="+l.light+"("+(LIGHT[l.light]||"?")+") horn="+l.horn);
+  out+=row("视频",v.online===null?"未配置":(v.online?"在线 "+v.fps+"fps":
+        "离线 "+(v.last_frame_age_ms===null?"":"("+v.last_frame_age_ms+"ms 前)")));
+  out+=row("故障","emergencyStop="+f.emergencyStop+" sensorstate="+r.sensorstate+
+        " netcheck="+f.netcheck+" faultCode="+(f.faultCode_hex||""));
+  return out+"</table>";
+}
+
+function fmtTime(ts){return ts===null?"-":new Date(ts*1000).toLocaleString();}
+
+function refresh(){
+  fetch("/api/status").then(function(r){return r.json();}).then(function(st){
+    document.getElementById("veh").textContent="车辆 "+st.vehicle_id+
+      " ｜ 状态机 "+st.trigger.state+" ｜ 缓冲 "+st.ring.count+" 条 / "+st.ring.span_s+"s"+
+      " ｜ 磁盘 "+(st.disk.used_bytes/1048576).toFixed(1)+"/"+(st.disk.cap_bytes/1048576).toFixed(0)+"MB";
+    document.getElementById("health").innerHTML=fmtHealth(st.health);
+    document.getElementById("live").innerHTML=fmtLive(st.snapshot);
+  }).catch(function(){});
+  fetch("/api/events?limit=20").then(function(r){return r.json();}).then(function(d){
+    var tb=document.querySelector("#events tbody");
+    tb.innerHTML="";
+    (d.events||[]).forEach(function(e){
+      var tr=document.createElement("tr");
+      var segs=(e.trigger_segments||[]).map(function(s){
+        return s.types.join("+")+" ["+fmtTime(s.start)+"~"+fmtTime(s.end)+"]";
+      }).join("; ");
+      var size=e.stats&&e.stats.bytes?(e.stats.bytes/1048576).toFixed(2)+"MB":"-";
+      tr.innerHTML="<td>"+esc(e.dir)+"</td><td>"+esc(segs)+"</td><td>"+
+        fmtTime(e.record_start)+" ~ "+fmtTime(e.record_end)+"</td><td class=\""+
+        (e.complete?"ok":"warn")+"\">"+e.complete+"</td><td>"+size+"</td>";
+      tb.appendChild(tr);
+    });
+  }).catch(function(){});
+}
+refresh();
+setInterval(refresh,2000);
+</script>
+</body>
+</html>

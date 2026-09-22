@@ -15,7 +15,7 @@ int main() {
             plan->mNavData.xAxis = 100;
             plan->mNavData.yAxis = 100;
             plan->mNavData.heading = 90;
-            plan->mVehicleData.vehicleSpeed = 1;
+            plan->mNavData.gpsSpeed = 1;
             for(int i = 0; i < 20; ++i) {
                 plan->mReferPath.x.push_back(100 + i * 0.5);
                 plan->mReferPath.y.push_back(100);

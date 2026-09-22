@@ -2,9 +2,9 @@
 // ultra_command_node - ultra_command 的 ROS 薄壳(业务逻辑在 ultra_command_comply)。
 //
 // 规格:
-//   task_plan 执行 pudong_air/312_316_01 或 pudong_air/312_cargo_01 时,
+//   task_plan 执行 pudong_air/312_316 或 pudong_air/312_cargo 时,
 //     监测 /perception 障碍物是否落入矩形 pudong_air/left1 或 pudong_air/left2;
-//   task_plan 执行 pudong_air/312_charge_01 时,
+//   task_plan 执行 pudong_air/312_charge 时,
 //     监测 /perception 障碍物是否落入矩形 pudong_air/right。
 //   落入 -> rosparam::set("/ultra/status/safe", 1); 无 -> 0。
 //
@@ -12,12 +12,12 @@
 //   (312_316_01_01 / 312_cargo_01_01 -> left1+left2, 312_charge_01_01 -> right):
 //     起步前(车速<0.5m/s)同上监测区内障碍物 -> safe 1/0;
 //     首次车速超过 0.5m/s 后, 无论区内是否有障碍物 safe 恒 0(单向, 停车不复位)。
-//   车速源 = /can_msg.vehicleSpeed(m/s, canbus 20Hz, 全仓标准车速)。
+//   车速源 = /navigation_msg.gpsSpeed(m/s)。
 //
 // 接线(话题全部绝对名, 惯例对齐 pnc):
 //   subscribe /task_plan_msg (队列1, 事件驱动; 取 pathList 精确匹配任务路径)
 //   subscribe /perception    (队列10; 障碍物中心点, 地图系, 与矩形 csv 同系)
-//   subscribe /can_msg       (队列10; 仅取 vehicleSpeed 作起步判据)
+//   subscribe /navigation_msg (队列10; 仅取 gpsSpeed 作起步判据)
 //   subscribe /cloud/msg/command_msg (队列1; 云端停止指令即退监控模式,
 //              兼容未发布空任务的旧 task_plan 节点)
 //   param in : path_dir(全局, robot_path_plan.launch 设置; 每周期热读, 失败重试)
@@ -32,7 +32,7 @@
 
 #include <ros/ros.h>
 
-#include "robot/can_msg.h"
+#include "robot/navigation_msg.h"
 #include "robot/perception.h"
 #include "robot/task_plan_msg.h"
 #include "robot/v2nCommandFeedback.h"
@@ -87,9 +87,10 @@ static void PerceptionCallBack(const robot::perception::ConstPtr &msg)
     g_comply.SetObstacles(objs_temp, ros::Time::now().toSec());
 }
 
-static void CanMsgCallBack(const robot::can_msg::ConstPtr &msg)
+// 保留既有回调标识符，实际输入已切换为导航消息。
+static void CanMsgCallBack(const robot::navigation_msg::ConstPtr &msg)
 {
-    g_comply.SetVehicleSpeed(msg->vehicleSpeed);
+    g_comply.SetVehicleSpeed(msg->gpsSpeed);
 }
 
 static void ShutdownCallBack()
@@ -111,7 +112,7 @@ int main(int argc, char **argv)
     ros::Subscriber perception_sub = nh.subscribe(
         "/perception", 10, PerceptionCallBack, ros::TransportHints().tcpNoDelay());
     ros::Subscriber can_msg_sub = nh.subscribe(
-        "/can_msg", 10, CanMsgCallBack, ros::TransportHints().tcpNoDelay());
+        "/navigation_msg", 10, CanMsgCallBack, ros::TransportHints().tcpNoDelay());
     ros::Subscriber command_msg_sub = nh.subscribe(
         "/cloud/msg/command_msg", 1, CommandMsgCallBack, ros::TransportHints().tcpNoDelay());
 

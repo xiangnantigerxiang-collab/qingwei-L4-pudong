@@ -7,12 +7,16 @@
 #include "lattice/gis_utils.h"
 #include <yaml-cpp/yaml.h>
 #include <sstream>
+#include "common/path_csv.h"
+#include "common/path_csv_upgrade.h"
 
 // 这些分片共享本翻译单元；不可单独加入 CMake。
 // 原有五个业务分片仍按任务、感知、参考路径、输出、实验算法的顺序包含。
 #include "path_plan_geometry.inc"
 #include "safety/perception_safety.inc"
 #include "safety/perception_safety_adapter.inc"
+#include "safety/startup_observation.inc"
+#include "task/fence_guard.inc"
 #include "path_plan_task.inc"
 #include "path_plan_perception.inc"
 #include "path_plan_reference.inc"

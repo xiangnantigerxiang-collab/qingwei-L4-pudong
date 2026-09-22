@@ -80,8 +80,6 @@ bool PathPlanComply::UpdateReferenceRiskHistory(std::vector<robot::object> &risk
         if(history_risk_vec[i].size() > 0)
             risk_num++;
     }
-    printf("risk vector: %d, %d, %d, %d\n", (int)history_risk_vec[0].size(), (int)history_risk_vec[1].size(),
-           (int)history_risk_vec[2].size(), (int)history_risk_vec[3].size());
     if(risk_num == 0) {
         // 100+n 表示本帧有 n 个感知目标，但历史窗口内没有路径碰撞风险。
         mPathPlanStatus.distance2Object = 100 + mPerception.objs.size();
@@ -193,18 +191,18 @@ void PathPlanComply::ApplyReferenceCollisionSpeed(const std::vector<robot::objec
     if(dist_to_refline > 0.2) {  // 车道外，不会碰撞
         min_speed = 0.5;
         // 根据与障碍物的距离计算速度
-        mReferPath.desireSpeed = std::min<double>(spd, dist_to_refline) * 0.5 + mVehicleData.vehicleSpeed * 0.5;
+        mReferPath.desireSpeed = std::min<double>(spd, dist_to_refline) * 0.5 + mNavData.gpsSpeed * 0.5;
     } else {  // 发生碰撞
         // 各距离条件依次覆盖，最后命中的分支生效，不能改成互斥 else-if。
         if((dist < 25.0) && (dist >= 10.0))
-            mReferPath.desireSpeed = std::min<double>(spd, dist / 5.0) * 0.5 + mVehicleData.vehicleSpeed * 0.5;
+            mReferPath.desireSpeed = std::min<double>(spd, dist / 5.0) * 0.5 + mNavData.gpsSpeed * 0.5;
         if(dist < 20.0)
-            mReferPath.desireSpeed = std::min<double>(spd, dist / 6.0) * 0.5 + mVehicleData.vehicleSpeed * 0.5;
+            mReferPath.desireSpeed = std::min<double>(spd, dist / 6.0) * 0.5 + mNavData.gpsSpeed * 0.5;
         if(dist < 15.0)
-            mReferPath.desireSpeed = std::min<double>(spd, dist / 7.0) * 0.5 + mVehicleData.vehicleSpeed * 0.5;
+            mReferPath.desireSpeed = std::min<double>(spd, dist / 7.0) * 0.5 + mNavData.gpsSpeed * 0.5;
         if(dist < 10.0)
-            mReferPath.desireSpeed = std::min<double>(spd, dist / 8.0) * 0.5 + mVehicleData.vehicleSpeed * 0.5;
-        if(dist < 6.5 && mVehicleData.vehicleSpeed > 1.5)
+            mReferPath.desireSpeed = std::min<double>(spd, dist / 8.0) * 0.5 + mNavData.gpsSpeed * 0.5;
+        if(dist < 6.5 && mNavData.gpsSpeed > 1.5)
             mReferPath.safety = 1;
         if(dist < 4.5)
             mReferPath.safety = 1;

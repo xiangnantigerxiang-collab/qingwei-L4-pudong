@@ -146,6 +146,32 @@ def t01_static():
     check("图层默认态照 rviz",
           m["layers"]["map"] is False and m["layers"]["planning"] is False
           and m["layers"]["grid"] is False and m["layers"]["vehicle"] is True)
+    # 电子围栏:fence_fixture 双围栏(方环含坏行 + 顺时针三角),origin(55,50)。
+    # 判定基准=围栏本体(fence);outer=外扩 2.5m(仅显示)
+    fs = m.get("fences") or []
+    check("围栏: 2 个按名有序", [f["name"] for f in fs] ==
+          ["f1.csv", "f2.csv"], str([f.get("name") for f in fs]))
+    f1 = fs[0] if fs else {}
+    check("f1 本体 4 点且已减 origin(坏行/nan 跳过)",
+          f1.get("fence") == [[-55.0, -50.0], [-45.0, -50.0],
+                              [-45.0, -40.0], [-55.0, -40.0]],
+          str(f1.get("fence")))
+    check("f1 外扩 2.5m 为 15x15 方环",
+          f1.get("outer") == [[-57.5, -52.5], [-42.5, -52.5],
+                              [-42.5, -37.5], [-57.5, -37.5]],
+          str(f1.get("outer")))
+    f2 = fs[1] if len(fs) > 1 else {}
+    outer2 = f2.get("outer") or []
+
+    def _near(a, b):
+        return abs(a - b) <= 0.02
+
+    check("f2 顺时针三角外扩(miter 角平分线)",
+          len(outer2) == 3 and
+          all(_near(outer2[i][0], v[0]) and _near(outer2[i][1], v[1])
+              for i, v in enumerate([(-37.5, -52.5), (-37.5, -33.96),
+                                     (-18.96, -52.5)])),
+          str(outer2))
     d = snap()
     check("ros_available=True(伪 rospy 生效)", d["ros_available"] is True)
     check("origin=地图中心",
@@ -531,6 +557,100 @@ def t10_master_restart():
                          "/rslidar_points_mid": 5})
 
 
+def t12_fence_edge():
+    """电子围栏边界:目录缺失/顶点不足/双向几何/退化/缓存(不依赖 HTTP)。"""
+    print("== t12 围栏边界 ==")
+    sys.path.insert(0, MON)
+    import ros_visualizer as rv
+
+    sq = [(0, 0), (10, 0), (10, 10), (0, 10)]
+    # 偏移单位几何(纯函数,双向)
+    inner = rv.offset_polygon(sq, 2.0, inward=True)
+    check("内缩:单位方环精确",
+          all(abs(inner[i][j] - v[j]) <= 1e-9 for i, v in
+              enumerate([(2, 2), (8, 2), (8, 8), (2, 8)])
+              for j in (0, 1)), str(inner))
+    outer = rv.offset_polygon(sq, 2.5, inward=False)
+    check("外扩:单位方环精确",
+          all(abs(outer[i][j] - v[j]) <= 1e-9 for i, v in
+              enumerate([(-2.5, -2.5), (12.5, -2.5), (12.5, 12.5),
+                         (-2.5, 12.5)])
+              for j in (0, 1)), str(outer))
+    check("偏移:顶点不足/非正距离 -> 空",
+          rv.offset_polygon([(0, 0), (1, 1)], 2.0) == [] and
+          rv.offset_polygon([(0, 0), (10, 0), (10, 10)], 0.0) == [])
+
+    # 退化矩阵:内缩窄走廊翻转;外扩窄凹槽指状自重叠;正常输入不误伤
+    corridor = [(0, 0), (50, 0), (50, 3), (0, 3)]
+    u_notch = [(0, 0), (20, 0), (20, 20), (12, 20), (12, 5), (8, 5),
+               (8, 20), (0, 20)]
+    check("退化:窄走廊内缩翻转检出",
+          rv._fence_offset_degenerate(
+              corridor, rv.offset_polygon(corridor, 2.0, inward=True),
+              inward=True))
+    check("退化:窄凹槽外扩自交检出(开口4m<2x2.5m)",
+          rv._fence_offset_degenerate(
+              u_notch, rv.offset_polygon(u_notch, 2.5, inward=False),
+              inward=False))
+    check("退化:窄凹槽外扩1.5m不误伤(开口4m>3m)",
+          not rv._fence_offset_degenerate(
+              u_notch, rv.offset_polygon(u_notch, 1.5, inward=False),
+              inward=False))
+    check("退化:方环双向不误伤",
+          not rv._fence_offset_degenerate(
+              sq, rv.offset_polygon(sq, 2.5, inward=False), inward=False) and
+          not rv._fence_offset_degenerate(
+              sq, rv.offset_polygon(sq, 2.0, inward=True), inward=True))
+
+    maps = os.path.join(HERE, "maps_fixture")
+    # 目录缺失 -> 空围栏(不抛错)
+    viz = rv.RosVisualizer({"MAP_PATH": maps,
+                            "FENCE_PATH": "/tmp/monitor_fence_absent_zz"})
+    fp = viz.fence_payload()
+    check("围栏目录缺失 -> 空", fp == {"fences": [], "n": 0}, str(fp))
+    check("围栏缓存:二次调用同对象", viz.fence_payload() is fp)
+
+    # 有效顶点<3(坏行+空行全跳) -> 跳过该文件
+    tmpd = "/tmp/monitor_fence_toofew"
+    os.makedirs(tmpd, exist_ok=True)
+    for stale in os.listdir(tmpd):
+        os.unlink(os.path.join(tmpd, stale))
+    with open(os.path.join(tmpd, "few.csv"), "w") as f:
+        f.write("0,0,0\n1,0,0\nbad,line\n\nnan,2,2\n")
+    viz2 = rv.RosVisualizer({"MAP_PATH": maps, "FENCE_PATH": tmpd})
+    fp2 = viz2.fence_payload()
+    check("有效顶点<3 -> 跳过文件", fp2["n"] == 0, str(fp2))
+
+    # utf-8-sig BOM:Excel "CSV UTF-8" 导出首行不丢(对抗校验轮确认问题)
+    with open(os.path.join(tmpd, "bom.csv"), "w", encoding="utf-8-sig") as f:
+        f.write("100,100,0\n110,100,0\n110,110,0\n100,110,0\n")
+    pts_bom = rv.load_fence_polygon(os.path.join(tmpd, "bom.csv"))
+    check("围栏 BOM 首点不丢", len(pts_bom) == 4 and
+          abs(pts_bom[0][0] - 100.0) < 1e-9 and
+          abs(pts_bom[0][1] - 100.0) < 1e-9, str(pts_bom[:1]))
+    # 凸走廊外扩正常;窄凹槽外扩 -> payload 停用 outer(判定用本体不受影响)
+    with open(os.path.join(tmpd, "corridor.csv"), "w") as f:
+        f.write("0,0,0\n50,0,0\n50,3,0\n0,3,0\n")
+    with open(os.path.join(tmpd, "notch.csv"), "w") as f:
+        f.write("0,0,0\n20,0,0\n20,20,0\n12,20,0\n12,5,0\n8,5,0\n"
+                "8,20,0\n0,20,0\n")
+    viz3 = rv.RosVisualizer({"MAP_PATH": maps, "FENCE_PATH": tmpd})
+    fp3 = viz3.fence_payload()
+    byname = {x["name"]: x for x in fp3["fences"]}
+    check("凸走廊围栏 fence/outer 各 4 点",
+          len(byname.get("corridor.csv", {}).get("fence") or []) == 4 and
+          len(byname.get("corridor.csv", {}).get("outer") or []) == 4,
+          str(byname.get("corridor.csv", {}).get("outer")))
+    check("窄凹槽围栏 outer 停用(本体照常)",
+          byname.get("notch.csv", {}).get("outer") == [] and
+          len(byname.get("notch.csv", {}).get("fence") or []) == 8,
+          str(byname.get("notch.csv", {}).get("outer")))
+    check("BOM 围栏 fence/outer 各 4 点",
+          len(byname.get("bom.csv", {}).get("fence") or []) == 4 and
+          len(byname.get("bom.csv", {}).get("outer") or []) == 4,
+          str(byname.get("bom.csv", {}).get("outer")))
+
+
 def t11_nan_safety():
     """NaN 注入 -> snapshot 不得输出非法 JSON(Python 端能解析但浏览器
     不能;曾致整页瘫痪)。回归 H1。"""
@@ -615,7 +735,7 @@ def main():
                        t02c_gantry, t03_scan,
                        t04_cloud_variants, t05_byte_lock, t06_ages,
                        t07_concurrent, t08_rss, t10_master_restart,
-                       t11_nan_safety, t09_py38):
+                       t11_nan_safety, t12_fence_edge, t09_py38):
                 try:
                     fn()
                 except Exception as exc:

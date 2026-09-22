@@ -165,6 +165,193 @@ def load_map_lines(path):
 
 
 # ---------------------------------------------------------------------------
+# 电子围栏(monitor/fence/*.csv,与普通轨迹地图 map/ 分离)
+# ---------------------------------------------------------------------------
+
+# 外扩距离(米):围栏边界向外平移形成闯入警示带。2026-09-22 按用户要求由
+# "向内 2m"改为"向外 2.5m":2.5 = 车头前伸 2.3m + 0.2m 余量。判定基准为
+# 自车定位中心点——中心在围栏本体多边形内=安全(此时车头最多伸出边界
+# 2.3m,仍落在外扩红线之内,视觉上整车未越线不变红);中心越出围栏边界
+# (进入外侧斜线带或更远)才判闯入变红。外扩线/斜纹带仅作显示。
+FENCE_OUTSET_METERS = 2.5
+
+
+def _signed_area2(pts):
+    """有向面积×2(绕向符号用,CCW 为正)。"""
+    a2 = 0.0
+    n = len(pts)
+    for i in range(n):
+        x1, y1 = pts[i]
+        x2, y2 = pts[(i + 1) % n]
+        a2 += x1 * y2 - x2 * y1
+    return a2
+
+
+def _point_in_poly(x, y, poly):
+    """射线法(与前端 MM.pointInPoly 同口径,加载期一次性判定用)。"""
+    inside = False
+    n = len(poly)
+    for i in range(n):
+        x1, y1 = poly[i]
+        x2, y2 = poly[(i + 1) % n]
+        if (y1 > y) != (y2 > y):
+            t = (y - y1) / (y2 - y1)
+            if x < x1 + t * (x2 - x1):
+                inside = not inside
+    return inside
+
+
+def load_fence_polygon(path):
+    """fence csv(x/y/heading 三列) -> 闭合多边形顶点 [(x, y)](不重复首点)。
+
+    - heading 列仅格式兼容(与路径 csv 同风格),不参与围栏几何
+    - 坏行/非有限值跳过(与 load_map_lines 同款守卫);相邻近重复点
+      (<=0.1m)去重,首尾重复点也去(否则闭合边长为零)
+    - 有效顶点 <3 由调用方跳过该文件
+    """
+    pts = []
+    # utf-8-sig:Excel "CSV UTF-8" 导出带 BOM,普通 utf-8 会让首行 x 解析
+    # 失败而静默丢掉第一个顶点(多边形闭合边悄悄变形);无 BOM 文件行为不变
+    with open(path, "r", encoding="utf-8-sig", errors="replace") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            parts = line.split(",")
+            if len(parts) < 3:
+                continue
+            try:
+                x, y = float(parts[0]), float(parts[1])
+            except ValueError:
+                continue
+            if not (math.isfinite(x) and math.isfinite(y)):
+                continue
+            if pts and math.hypot(x - pts[-1][0], y - pts[-1][1]) <= 0.1:
+                continue
+            pts.append((x, y))
+    # 首尾近重复:去掉末点,让前端"闭合到首点"不产生零长边
+    while len(pts) > 1 and math.hypot(pts[0][0] - pts[-1][0],
+                                      pts[0][1] - pts[-1][1]) <= 0.1:
+        pts.pop()
+    return pts
+
+
+def offset_polygon(pts, dist, inward=True):
+    """简单多边形等距偏移(miter 角平分线法) -> 同长度顶点列表。
+
+    inward=True 向内收缩(原内缩语义),False 向外扩张。有向面积定绕向
+    (CCW 内部在边左侧,CW 取反法线;外扩再翻转法线),顶点沿两邻边
+    偏移法线角平分方向平移 dist/sin(内角/2)。尖角处 miter 长度限幅
+    4*dist;近 180° 折返退化为保持原顶点。内缩的窄颈翻转与外扩的窄
+    凹槽相交都可能自交,由 _fence_offset_degenerate 检测后停用——偏移
+    结果仅用于显示,闯入判定始终用围栏本体,不参与安全停车。
+    """
+    n = len(pts)
+    if n < 3 or dist <= 0.0:
+        return []
+    sign = 1.0 if _signed_area2(pts) > 0.0 else -1.0
+    if not inward:
+        sign = -sign
+    normals = []
+    for i in range(n):
+        x1, y1 = pts[i]
+        x2, y2 = pts[(i + 1) % n]
+        ex, ey = x2 - x1, y2 - y1
+        length = math.hypot(ex, ey)
+        if length < 1e-9:
+            normals.append(None)     # 零长边(load 已去重,防御)
+            continue
+        normals.append((-ey / length * sign, ex / length * sign))
+    out = []
+    miter_max = 4.0 * dist
+    for i in range(n):
+        n1 = normals[i - 1]          # 进入顶点的边
+        n2 = normals[i]              # 离开顶点的边
+        x, y = pts[i]
+        if n1 is None or n2 is None:
+            out.append((x, y))
+            continue
+        denom = 1.0 + n1[0] * n2[0] + n1[1] * n2[1]
+        if denom < 1e-6:
+            # 内角趋近 0:角平分方向按限幅长度退化和兜底
+            bx, by = n1[0] + n2[0], n1[1] + n2[1]
+            bl = math.hypot(bx, by)
+            if bl < 1e-9:
+                out.append((x, y))
+                continue
+            f = miter_max / bl
+            out.append((x + bx * f, y + by * f))
+            continue
+        vx = (n1[0] + n2[0]) * dist / denom
+        vy = (n1[1] + n2[1]) * dist / denom
+        vl = math.hypot(vx, vy)
+        if vl > miter_max:
+            s = miter_max / vl
+            vx *= s
+            vy *= s
+        out.append((x + vx, y + vy))
+    return out
+
+
+def _segs_touch(p1, p2, p3, p4):
+    """两线段是否相交或接触(严格穿越/端点搭接/共线重叠,加载期检测用)。"""
+    def cross(o, a, b):
+        return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+    d1 = cross(p3, p4, p1)
+    d2 = cross(p3, p4, p2)
+    d3 = cross(p1, p2, p3)
+    d4 = cross(p1, p2, p4)
+    if (((d1 > 0.0 and d2 < 0.0) or (d1 < 0.0 and d2 > 0.0)) and
+            ((d3 > 0.0 and d4 < 0.0) or (d3 < 0.0 and d4 > 0.0))):
+        return True
+    eps = 1e-9
+
+    def on_seg(a, b, p):
+        return (min(a[0], b[0]) - eps <= p[0] <= max(a[0], b[0]) + eps and
+                min(a[1], b[1]) - eps <= p[1] <= max(a[1], b[1]) + eps)
+
+    if abs(d1) < eps and on_seg(p3, p4, p1):
+        return True
+    if abs(d2) < eps and on_seg(p3, p4, p2):
+        return True
+    if abs(d3) < eps and on_seg(p1, p2, p3):
+        return True
+    if abs(d4) < eps and on_seg(p1, p2, p4):
+        return True
+    return False
+
+
+def _fence_offset_degenerate(base, offset, inward=True):
+    """miter 偏移结果退化判定(只影响偏移线/斜纹带显示,判定用本体)。
+
+    内缩:宽度 <2×偏移距的窄走廊整体翻转(绕向变号),或偏移点穿出本体。
+    外扩:开口 <2×偏移距的窄凹槽两侧外扩面相交,形成指状自重叠——顶点
+    包含检查对它不敏感(偶奇射线在指内仍判内),用偏移多边形自交/自搭接
+    检测捕获(合法简单多边形的非相邻边不会接触)。顶点恰落边界等测量零
+    情形按退化保守处理。O(N^2) 仅加载期执行一次。
+    """
+    if _signed_area2(offset) * _signed_area2(base) <= 0.0:
+        return True
+    if inward:
+        for x, y in offset:
+            if not _point_in_poly(x, y, base):
+                return True
+    else:
+        for x, y in base:
+            if not _point_in_poly(x, y, offset):
+                return True
+    m = len(offset)
+    for i in range(m):
+        o1, o2 = offset[i], offset[(i + 1) % m]
+        for j in range(i + 1, m):
+            if j == i + 1 or (i == 0 and j == m - 1):
+                continue        # 相邻边共享端点,属正常
+            if _segs_touch(o1, o2, offset[j], offset[(j + 1) % m]):
+                return True
+    return False
+
+
+# ---------------------------------------------------------------------------
 # LaserScan -> 二进制点(含安装外参)
 # ---------------------------------------------------------------------------
 
@@ -361,6 +548,8 @@ class RosVisualizer(object):
 
         # 地图(懒加载缓存)
         self._map_payload = None
+        # 电子围栏(懒加载缓存,与地图同为静态数据,改动需重启)
+        self._fence_payload = None
 
         # scan 缓存(按 msg 身份;数据小,身份变了才重算)
         self._scan_cfg = dict(cfg.get("SCAN_EXTRINSICS") or {})
@@ -908,6 +1097,87 @@ class RosVisualizer(object):
             "bbox": [_r2(xs0), _r2(ys0), _r2(xs1), _r2(ys1)],
         }
         return self._map_payload
+
+    # ---------------- 电子围栏 ----------------
+
+    def fence_payload(self):
+        """加载全部电子围栏(monitor/fence/*.csv 按名排序,每个文件一个围栏)。
+
+        每个围栏输出 fence(本体多边形,闯入判定基准)与 outer(向外扩张
+        2.5m 的警示带外缘)两条闭合顶点串,坐标已减去与地图/快照一致的
+        origin。目录缺失/无 csv 返回空列表(图层无内容,不报错);坏文件
+        跳过。缓存一次,改动围栏 csv 需重启 monitor(与地图一致)。
+        """
+        if self._fence_payload is not None:
+            return self._fence_payload
+        sources = []
+        explicit = None
+        if ROS_AVAILABLE:
+            try:
+                p = rospy.get_param("/robot/fencefile", None)
+                if p and os.path.isfile(p):
+                    explicit = p
+                elif not p:
+                    p_dir = (rospy.get_param("path_dir", None) or
+                             rospy.get_param("/robot/path_dir", None))
+                    if p_dir:
+                        candidate = os.path.join(p_dir, "fence.csv")
+                        if os.path.isfile(candidate):
+                            explicit = candidate
+            except Exception:
+                pass
+        if explicit is not None:
+            sources = [explicit]
+            self._safe_print("[MONITOR] rosparam fence=%s 优先加载" % explicit)
+        else:
+            fdir = self._cfg.get("FENCE_PATH", "$MON/fence")
+            fdir = fdir.replace("$MON", MON_DIR)
+            try:
+                if os.path.isdir(fdir):
+                    # lower():Windows 导出的 .CSV 大写扩展名同样加载
+                    sources = sorted(
+                        os.path.join(fdir, f) for f in os.listdir(fdir)
+                        if f.lower().endswith(".csv"))
+                elif os.path.isfile(fdir):
+                    sources = [fdir]
+            except OSError as exc:
+                self._safe_print("[MONITOR] 围栏目录不可读 %s: %s" % (fdir, exc))
+        ox, oy = self._origin()      # 与地图/快照同源,围栏与车对齐
+        fences = []
+        for src in sources:
+            try:
+                pts = load_fence_polygon(src)
+            except (OSError, ValueError) as exc:
+                self._safe_print("[MONITOR] 围栏文件跳过 %s: %s" % (src, exc))
+                continue
+            if len(pts) < 3:
+                self._safe_print("[MONITOR] 围栏有效顶点<3,跳过 %s" % src)
+                continue
+            outer = offset_polygon(pts, FENCE_OUTSET_METERS, inward=False)
+            if len(outer) != len(pts):
+                outer = []           # 防御:长度不一致时不画外扩线(不发生)
+            name = os.path.basename(src)
+            if outer and _fence_offset_degenerate(pts, outer, inward=False):
+                self._safe_print(
+                    "[MONITOR] 围栏 %s 外扩自交(存在开口<%.1fm 的窄凹槽),"
+                    "外扩线与斜纹带停用;闯入判定用围栏本体不受影响"
+                    % (name, 2 * FENCE_OUTSET_METERS))
+                outer = []
+            self._safe_print("[MONITOR] 围栏 %s: %d 点(外扩 %.1fm)%s"
+                             % (name, len(pts), FENCE_OUTSET_METERS,
+                                "" if outer else " [外扩停用]"))
+            fences.append({
+                # fence=围栏本体(闯入判定多边形);outer=外扩 2.5m 多边形
+                # (仅显示:第二道红线与斜纹带的外缘)
+                "name": name,
+                "fence": [[_r2(x - ox), _r2(y - oy)] for x, y in pts],
+                "outer": [[_r2(x - ox), _r2(y - oy)] for x, y in outer],
+            })
+        if not sources:
+            self._safe_print("[MONITOR] 围栏目录无 csv(%s),电子围栏图层为空"
+                             % fdir)
+        self._fence_payload = {"fences": fences, "n": len(fences)}
+        return self._fence_payload
 
     # ---------------- scan.bin ----------------
 

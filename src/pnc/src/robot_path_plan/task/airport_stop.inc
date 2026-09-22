@@ -93,8 +93,6 @@ AirCraftParkingPort PathPlanComply::findNextAirCraftParkingPort() {
     int nearest_stop_index = mDrivingPath.size() - 1;
     for(int i = 0; i < aircraft_parking_ports_.size(); i++) {
         auto port = aircraft_parking_ports_[i];
-        printf("mkeypoint:%d, port id:%d, go_stop_index:%d, back_stop_index:%d, nearest_stop_index:%d\n", mKeypoint,
-               port.id, port.go_stop_index, port.back_stop_index, nearest_stop_index);
         if(port.go_stop_index > mKeypoint ||
            abs(port.go_stop_index - mKeypoint) < 5) {
             if(port.go_stop_index < nearest_stop_index) {

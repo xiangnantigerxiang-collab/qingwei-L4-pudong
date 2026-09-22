@@ -33,6 +33,7 @@ TYPED_SUBS = [
     ("/navigation_msg",          "robot.msg",    "navigation_msg", "_on_navigation"),
     ("/path_plan_status",        "robot.msg",    "path_plan_status", "_on_path_status"),
     ("/control_msg",             "robot.msg",    "control_msg",    "_on_control"),
+    ("/robot/task_plan/fence_guard", "robot.msg", "task_fence_guard", "_on_fence_guard"),
     ("/task_plan_msg",           "robot.msg",    "task_plan_msg",  "_on_task_plan"),
     ("/cloud/task/task_status",  "robot.msg",    "TaskStatus",     "_on_task_status"),
     ("/v2nHeartBeat",            "robot.msg",    "v2nHeartBeat",   "_on_heartbeat"),
@@ -316,7 +317,8 @@ class RosBridge(HealthProvider):
             pass
 
     def _node_patterns(self):
-        return ["/cloud"]   # 与 hmi_config 中 nodes 型规格保持一致;如增改配置需同步
+        # 与 hmi_config 中 nodes 型规格保持一致;如增改配置需同步
+        return ["/cloud", "/ultra_command_node"]
 
     # ================= 订阅管理 =================
 
@@ -392,7 +394,6 @@ class RosBridge(HealthProvider):
             "sensorstate": "/planning/sensorstate",
             "alive": "/planning/alive",
             "netcheck": "/robot/planning/netcheck",
-            "alarm": "/alarmcmd",
         }
         vals = {}
         for k, roskey in keys.items():
@@ -425,6 +426,7 @@ class RosBridge(HealthProvider):
                         "camera": None, "gnss": None, "alive": None,
                         "vehicle_ok": None},
             "net": {"internet_ok": None, "alarm": None},
+            "fence_alarm": None,
             "status_str": None,
             "params": {},
         }
@@ -497,6 +499,12 @@ class RosBridge(HealthProvider):
             if bia is not None:
                 # biaDistance 带符号(叉积定向, control_comply.cpp:596-603), 负值=另一侧偏差
                 self._veh["lateral_dev_warn"] = abs(bia) > 5.5
+
+    def _on_fence_guard(self, msg):
+        self._bump("/robot/task_plan/fence_guard")
+        with self._lk:
+            alarm = _to_int(_g(msg, "alarm"))
+            self._veh["fence_alarm"] = alarm if alarm in (0, 1) else None
 
     def _on_task_plan(self, msg):
         self._bump("/task_plan_msg")
@@ -582,7 +590,9 @@ class RosBridge(HealthProvider):
             s["alive"] = _to_int(p.get("alive"))
             veh["sensors"] = dict(self._veh["sensors"])
             nc = _to_int(p.get("netcheck"))
+            fence_time = self._last.get("/robot/task_plan/fence_guard")
+            fence_fresh = fence_time is not None and 0 <= time.monotonic() - fence_time <= 1.0
             veh["net"] = {"internet_ok": None if nc is None else nc == 0,
-                          "alarm": _to_int(p.get("alarm"))}
+                          "alarm": self._veh.get("fence_alarm") if fence_fresh else None}
             veh["can"]["hz"] = self._rates.get("/can_msg")
         return veh

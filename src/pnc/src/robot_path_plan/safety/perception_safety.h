@@ -4,6 +4,7 @@
 #include <vector>
 #include <cstdint>
 #include "robot/perception.h"
+#include "lane_motion_filter.h"
 
 namespace planning_perception {
     struct CONFIG_S {
@@ -17,7 +18,10 @@ namespace planning_perception {
         double lateral_margin = 0.15;
         double stop_margin = 1.0;
         double emergency_margin = 0.3;
-        double reaction_time = 0.4;
+        double reaction_time = 2.1;
+        double static_obstacle_extra_time = 2.0;
+        double static_stop_min_distance = 3.0;
+        double front_no_confirmation_distance = 6.0;
         double comfort_deceleration = 0.8;
         double emergency_deceleration = 0.8;
         double jerk = 0.8;
@@ -57,7 +61,10 @@ namespace planning_perception {
         double speed_limit = 0;
         double distance = 10000;
         double ttc = 10000;
+        double emergency_distance = 0;
         int object_id = 0;
+        int emergency_hits = 0;
+        bool immediate_confirmation = false;
         REASON_E reason = CLEAR;
         bool emergency = false;
         std::size_t candidates = 0, axis_tests = 0;
@@ -75,14 +82,18 @@ namespace planning_perception {
         bool HasInput() const {
             return mStarted;
         }
-        bool Observe(const robot::perception& tMessage, double tNow);
+        bool Observe(const robot::perception& tMessage, double tNow,
+                     const LaneMotionFilter& tLaneFilter = LaneMotionFilter());
         RESULT_S Evaluate(const std::vector<PATH_POINT_S>& tPath, const EGO_S& tEgo,
-                          double tTargetSpeed, double tNow);
+                          double tTargetSpeed, double tNow, bool tForward = false);
         double Lookahead(double tSpeed) const;
         std::size_t WorkingBytes() const;
         void ResetMotion();
 
     private:
+        struct FORWARD_LIMIT_S {
+            double approach_speed = 0, hard_speed = 0;
+        };
         struct BOX_S {
             double x = 0, y = 0, ux = 1, uy = 0;
             double hx = 0, hy = 0, ex = 0, ey = 0;
@@ -93,7 +104,7 @@ namespace planning_perception {
             double score = 0;
             std::uint64_t frame = 0;
             int hits = 0;
-            bool active = false, confirmed = false;
+            bool active = false, confirmed = false, own_lane = false;
             std::uint64_t emergency_frame = 0;
             int emergency_hits = 0;  // 同一目标的连续真实紧急观测，不能用规划循环补票。
         };
@@ -101,6 +112,7 @@ namespace planning_perception {
             BOX_S box;
             double vx = 0, vy = 0, score = 0;
             int id = 0;
+            bool own_lane = false;
         };
         struct SEGMENT_S {
             BOX_S box;
@@ -127,6 +139,8 @@ namespace planning_perception {
                           double tMargin, double tMaxFraction, double& tEnter, std::size_t& tAxisTests);
         void ClearTracks();
         bool ConfirmEmergency(TRACK_S& tTrack, bool tRisk);
+        bool IsNearForwardObstacle(const BOX_S& tBox, std::size_t& tAxisTests) const;
+        FORWARD_LIMIT_S ForwardObstacleSpeedLimit(const EGO_S& tEgo, double tTargetSpeed, double tNow) const;
         void Prune(double tNow, bool tNewFrame);
         bool BuildSegments(const std::vector<PATH_POINT_S>& tPath, const EGO_S& tEgo);
         double SmoothLimit(double tLimit, double tTarget, double tMeasured, double tDt, bool tRisk);

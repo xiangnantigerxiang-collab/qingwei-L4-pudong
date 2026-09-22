@@ -118,7 +118,6 @@ std::tuple<std::vector<TrajectoryPoint>, std::vector<std::vector<TrajectoryPoint
     PathDecision pathDecision(checked_trajectory);
     int pathcost_number = pathDecision.GetMaxcostPath();
     auto path_status = pathDecision.PathSideJudge(pathcost_number);
-    printf("lattice: check_traj_size:%d\n", checked_trajectory.size());
     auto final_path = GetMinCostPath(checked_trajectory, path_status, vehiclestatus);
 
     return final_path;

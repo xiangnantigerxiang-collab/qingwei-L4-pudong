@@ -68,6 +68,9 @@ class MonitorApp(object):
     def map_payload(self):
         return self.viz.map_payload()
 
+    def fence_payload(self):
+        return self.viz.fence_payload()
+
     def scan_bin(self):
         return self.viz.scan_bin()
 
@@ -174,6 +177,8 @@ def make_handler(app):
             if p == "/api/map":
                 payload = dict(app.map_payload())   # 浅拷贝,勿污染缓存
                 payload["layers"] = app.cfg.get("LAYERS", {})
+                # 电子围栏静态数据随地图一次性下发(同为懒加载缓存)
+                payload["fences"] = app.fence_payload().get("fences", [])
                 self._json(200, payload)
                 return
 

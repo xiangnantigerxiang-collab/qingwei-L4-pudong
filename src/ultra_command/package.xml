@@ -2,7 +2,7 @@
 <package format="2">
   <name>ultra_command</name>
   <version>0.1.0</version>
-  <description>312任务族监控矩形障碍物检测: task_plan 执行 312_316_01/312_cargo_01 时监测 left1+left2 矩形, 执行 312_charge_01 时监测 right 矩形, /perception 障碍物落入则 rosparam 写 /ultra/status/safe=1, 否则 0</description>
+  <description>312任务族监控矩形障碍物检测: task_plan 执行 312_316/312_cargo 时监测 left1+left2 矩形, 执行 312_charge 时监测 right 矩形, /perception 障碍物落入则 rosparam 写 /ultra/status/safe=1, 否则 0</description>
   <maintainer email="nvidia@todo.todo">nvidia</maintainer>
   <license>BSD</license>
 

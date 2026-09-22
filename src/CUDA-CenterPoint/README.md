@@ -1,4 +1,38 @@
 # CUDA-CenterPoint
+
+## 本工程最近接入
+
+核对：2026-09-19。09-17起HMI“3D感知”卡片同时管理CenterPoint与gantry_detect；
+检测结果经/box送入PNC转换器。下方上游数据集/性能与环境是原项目资料，不是本车当天实测。
+
+## 使用方法
+
+在匹配Orin的CUDA/TensorRT/libspconv环境中，从工程根构建与运行：
+
+```bash
+source devel/setup.bash
+cmake -S src/CUDA-CenterPoint -B src/CUDA-CenterPoint/build -DROS_NODE=ON
+cmake --build src/CUDA-CenterPoint/build -j1
+cd src/CUDA-CenterPoint/build
+./centerpoint_ros_node
+```
+
+模型和标定须已配置好；运行目录必须是build，模型使用相对路径。HMI已启此卡片时
+不要再次启动；HMI还会拉起gantry，直接运行本命令只启动检测节点。
+用 `rostopic hz /box` 与 `rostopic echo -n 1 /box` 核对输出；规划实际还要检查转换后的
+`/perception/planning`。本模块不是常规catkin包，不能仅重编robot期望模型节点更新。
+
+## 注意事项与容易疏忽的点
+
+- 保留既有build/model，重建先确认目标环境和模型可用；nvcc峰值开销较大，当前采用串行构建。
+- 源码中的TensorRT/CUDA路径和库架构有平台差异，本机x86产物不能直接用于Orin。
+- /box有目标不等于规划必然刹车，还经过排除区、车道、尺寸、时效和物理框检查。
+- 确认点云是否已按部署要求变换；不能直接套用上游单雷达测试数据的坐标假设。
+- HMI停止后应同时无CenterPoint与gantry残留进程，避免重复TensorRT引擎占用。
+- PTQ/QAT属于离线模型实验，见 [量化说明](qat/README.md)，不是运行节点的启动前置步骤。
+
+## 随工程保留的上游说明
+
 This repository contains sources and model for [CenterPoint](https://arxiv.org/abs/2006.11275) inference using CUDA & TensorRT.
 ![title](/assets/centerpoint.png)
 

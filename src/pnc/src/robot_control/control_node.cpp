@@ -65,17 +65,14 @@ int main(int argc, char** argv) {
         nh.advertise<robot::control_msg>("/control_msg", 10);
 
     ros::Publisher acc_pub = nh.advertise<robot::acc>("/acc", 10);
-    controlComply.LoadPathFile("fence");
 
     ros::Rate loop_rate(20);
-    ros::param::set("alarmcmd", 0);
     while(ros::ok()) {
         nh.setParam("/sound/play", controlComply.SoundPlayCommand);
 
         ros::spinOnce();
 
         controlComply.VehicleControl();
-        controlComply.FenceAlarm();  // 电子围栏检测，设置标志位
         controlComply.PublishMessage(control_pub);
 
         acc_pub.publish(controlComply.acc_msg);

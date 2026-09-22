@@ -48,6 +48,7 @@ add_message_files(
   path_plan_status.msg
   sound_light_msg.msg
   task_plan_msg.msg
+  task_fence_guard.msg
   task_plan_status.msg
   vehicle_task_status.msg
   object.msg

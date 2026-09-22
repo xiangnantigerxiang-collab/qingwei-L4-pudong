@@ -3,12 +3,12 @@
 
 // ultra_command 业务逻辑(零 ROS 依赖, 可独立编译单测):
 //   1. SetTaskPlanPaths: 按 /task_plan_msg.pathList 精确匹配任务路径名, 切换监控模式
-//        pudong_air/312_316_01 / pudong_air/312_cargo_01 -> LEFT  (left1 + left2)
-//        pudong_air/312_charge_01                        -> RIGHT (right)
+//        pudong_air/312_316 / pudong_air/312_cargo -> LEFT  (left1 + left2)
+//        pudong_air/312_charge                     -> RIGHT (right)
 //        上述三者的 _01_01 后缀变体 -> 初始化监控 INIT_LEFT / INIT_RIGHT:
 //        仅起步前(车速<0.5m/s)监测对应矩形, 首次车速>0.5m/s 后无条件 safe=0
 //   2. SetObstacles: 缓存最新一帧 /perception 障碍物中心点(地图系)
-//   3. SetVehicleSpeed: 车速输入(/can_msg.vehicleSpeed), 初始化监控的起步判据
+//   3. SetVehicleSpeed: 车速输入(/navigation_msg.gpsSpeed), 初始化监控的起步判据
 //   4. JudgeSafeStatus: 有障碍物或监控不可用返回 1, 确认无障碍返回 0
 //      (初始化模式起步后恒 0)
 //   5. LoadZones: 从 path_dir/pudong_air/{left1,left2,right}.csv 加载监控矩形
@@ -42,14 +42,14 @@ public:
 
     UltraCommandComply();
 
-    // 当前任务块 pathList(如 ["pudong_air/312_charge_01"]) + task_id -> 模式切换
+    // 当前任务块 pathList(如 ["pudong_air/312_charge"]) + task_id -> 模式切换
     void SetTaskPlanPaths(const std::vector<std::string> &path_list,
                           long long task_id = 0);
 
     // 最新一帧感知障碍物; t_now_sec = 本帧接收时刻(秒)
     void SetObstacles(const std::vector<UltraObstacle> &objs, double t_now_sec);
 
-    // 最新车速 m/s(节点侧来自 /can_msg.vehicleSpeed)
+    // 最新车速 m/s(节点侧来自 /navigation_msg.gpsSpeed)
     void SetVehicleSpeed(double speed_mps);
 
     // 加载监控矩形; path_dir 为 pnc 全局参数 path_dir 的值(自动补尾 '/')

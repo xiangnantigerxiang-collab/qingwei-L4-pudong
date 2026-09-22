@@ -3,14 +3,11 @@
 PathPlanComply::PathPlanComply() {
     // 跨帧历史窗口的初值与原函数内 static 声明保持一致
     history_risk_vec.assign(4, std::vector<robot::object>());
-    unsafe_vec.assign(4, true);
-    history_unsafe.assign(30, true);
 }
 
 void PathPlanComply::InitParameter() {
     mDesireSpeed = 0;
     mKeypoint = 0;
-    InitSafetyCheck = 0;
     mDrivingPath.clear();
     mRcvGpsData = false;
     mVehicleData.curGear = GEAR_N;
@@ -21,57 +18,17 @@ void PathPlanComply::InitParameter() {
     mPathPlanStatus.stopY = -1;
     mPathPlanStatus.stopAngle = 0;
     mPathPlanStatus.taskExecuStatus = NOTASK;
+    mTurnLightCandidate = 0;
+    mTurnLightCandidateCount = 0;
+    mActiveTurnLight = 0;
+    mTurnLightActiveTime = -1.0;
+    mActiveTurnLightSteps = 0;
+    mTurnLightOffCount = 0;
     mHookPos.center_distance = 100;
     mHookPos.center_point_x = 0.0;
     mHookPos.center_point_y = 0.0;
     sysTime.init = ros::Time::now().toSec();
     this->loadAirCraftPorts();
-    LoadPointSpeedLimits();
-}
-
-void PathPlanComply::LoadPointSpeedLimits() {
-    mPointSpeedLimits.clear();
-    std::string path_dir;
-    if(!ros::param::get("path_dir", path_dir) || path_dir.empty()) {
-        printf("单点区域限速未加载: path_dir 未设置\n");
-        return;
-    }
-    if(path_dir.back() != '/') path_dir += '/';
-    const std::string file_path = path_dir + "speed_limit.csv";
-    std::ifstream input(file_path.c_str());
-    if(!input.is_open()) {
-        printf("单点区域限速文件未打开: %s\n", file_path.c_str());
-        return;
-    }
-
-    std::string line;
-    std::size_t invalid_rows = 0;
-    while(std::getline(input, line)) {
-        if(line.find_first_not_of(" \t\r") == std::string::npos) continue;
-        std::istringstream row(line);
-        POINT_SPEED_LIMIT_S point = {};
-        char first_comma = 0, second_comma = 0;
-        if(!(row >> point.x >> first_comma >> point.y >> second_comma >> point.speed_limit) ||
-           first_comma != ',' || second_comma != ',' ||
-           !std::isfinite(point.x) || !std::isfinite(point.y) ||
-           !std::isfinite(point.speed_limit) || point.speed_limit < 0) {
-            ++invalid_rows;
-            continue;
-        }
-        row >> std::ws;
-        if(!row.eof()) {
-            ++invalid_rows;
-            continue;
-        }
-        mPointSpeedLimits.push_back(point);
-    }
-    if(input.bad()) {
-        mPointSpeedLimits.clear();
-        printf("单点区域限速文件读取失败: %s\n", file_path.c_str());
-        return;
-    }
-    // 速度单位与 desireSpeed 一致为 m/s；空文件保留空缓存，不增加运行时文件 I/O。
-    printf("单点区域限速已加载 %zu 个点，跳过 %zu 行无效数据\n", mPointSpeedLimits.size(), invalid_rows);
 }
 
 void PathPlanComply::ResetParameter() {
@@ -85,6 +42,12 @@ void PathPlanComply::ResetParameter() {
     mPathPlanStatus.stopY = -1;
     mPathPlanStatus.stopAngle = 0;
     mPathPlanStatus.taskExecuStatus = NOTASK;
+    mTurnLightCandidate = 0;
+    mTurnLightCandidateCount = 0;
+    mActiveTurnLight = 0;
+    mTurnLightActiveTime = -1.0;
+    mActiveTurnLightSteps = 0;
+    mTurnLightOffCount = 0;
 }
 
 void PathPlanComply::SetTaskPlanData(robot::task_plan_msg task_plan_t) {
@@ -117,9 +80,8 @@ void PathPlanComply::SetTaskPlanData(robot::task_plan_msg task_plan_t) {
         mPathPlanStatus.stopX = task_plan_t.stopX;
         mPathPlanStatus.stopY = task_plan_t.stopY;
         mPathPlanStatus.stopAngle = task_plan_t.stopAngle;
-        InitSafetyCheck = 0;
         // 仅真实任务切换时复位跨帧任务状态（块推进保持滚动窗口）：
-        // 否则同任务每个块边界都会重播观察窗（约 2.5 s 禁行）并抹掉云端暂停。
+        // 同任务每个块边界不能清除风险历史或抹掉云端暂停。
         if(task_switched) {
             ResetTaskHistory();
         }
@@ -135,11 +97,17 @@ void PathPlanComply::SetTaskPlanData(robot::task_plan_msg task_plan_t) {
 
         printf("stopx:%f, stopy:%f, desired_speed:%f\n",
                mPathPlanStatus.stopX, mPathPlanStatus.stopY, mTaskPlanData.desireSpeed);
-        calcuGlobalPath(task_plan_t);
-        if(task_plan_t.task_id == go_task_id_) {  // 99去程,100回程
+        mFenceTaskKey = task_fence::TaskKey(task_plan_t);
+        mFenceExempt = task_plan_t.taskType == NOTHING || task_plan_t.taskType == DOACTION ||
+                       task_plan_t.taskType == ADAPTIVEHOOK;
+        mFencePending = mFenceEnabled;
+        mFenceFailed = false;
+        mFenceFailure.clear();
+        if(!mFenceEnabled) calcuGlobalPath(task_plan_t);
+        if(!mFenceEnabled && task_plan_t.task_id == go_task_id_) {  // 99去程,100回程
             updateAirPortStopIndex(mDrivingPath, true);
         }
-        if(task_plan_t.task_id == back_task_id_) {  // 99去程,100回程
+        if(!mFenceEnabled && task_plan_t.task_id == back_task_id_) {  // 99去程,100回程
             updateAirPortStopIndex(mDrivingPath, false);
         }
     }
@@ -156,9 +124,6 @@ void PathPlanComply::ResetTaskHistory() {
     safety_check_counter_percep = 0;
     safety_check_counter_refer = 0;
     HornFlag = 1;
-    // 播种全 true = 保守方向: 新任务起步再观察(约 2.5s @10Hz)
-    unsafe_vec.assign(4, true);
-    history_unsafe.assign(30, true);
     backdist_flag = 0;
     mPerception.objs.clear();
     mPerceptionFrontScan.objs.clear();
@@ -174,12 +139,17 @@ void PathPlanComply::resetTask() {
     mPathPlanStatus.taskExecuStatus = NOTASK;
     mKeypoint = 0;
     mStopIndex = 0;
-    InitSafetyCheck = 0;
     mDrivingPath.clear();
     mReferPath.desireSpeed = 0.0;
     mReferPath.planspeed = 0.0;
     mReferPath.x.clear();
     mReferPath.y.clear();
+    mTurnLightCandidate = 0;
+    mTurnLightCandidateCount = 0;
+    mActiveTurnLight = 0;
+    mTurnLightActiveTime = -1.0;
+    mActiveTurnLightSteps = 0;
+    mTurnLightOffCount = 0;
 }
 
 PathPlanComply::~PathPlanComply() {

@@ -15,6 +15,8 @@ gnome-terminal -t "loc" -x bash -c "cd /home/nvidia/qingwei-L4-No2; source devel
 sleep 2s
 gnome-terminal -t "control" -x bash -c "cd /home/nvidia/qingwei-L4-No2; source devel/setup.bash;roslaunch ./launch/control.launch;exec bash"
 sleep 2s
+gnome-terminal -t "ultra" -x bash -c "cd /home/nvidia/qingwei-L4-No2; source devel/setup.bash;roslaunch ultra_command ultra_command.launch;exec bash"
+sleep 2s
 gnome-terminal -t "fms" -x bash -c "cd /home/nvidia/qingwei-L4-No2; source devel/setup.bash;./fms.sh;exec bash"
 sleep 1s
 #gnome-terminal -t "network" -x bash -c "cd /home/nvidia/qingwei-L4-No2; source devel/setup.bash;./launch/netcheck.sh;exec bash"

@@ -10,6 +10,17 @@ monitor 配置(纯数据模块,无逻辑)
   MAP_PATH        地图目录(其下全部 .csv 按文件名排序依次全部绘制,
                   x,y,heading 三列无表头);$MON 替换为本目录;
                   rosparam /robot/mapfile 指向单文件时只画该张
+  FENCE_PATH      电子围栏目录(其下全部 .csv 按名排序,每个文件一个
+                  围栏多边形,x/y/heading 三列,heading 不参与几何)。
+                  与普通轨迹地图分离,避免围栏被当作道路线绘制;
+                  支持 rosparam /robot/fencefile 或 path_dir/fence.csv
+                  优先加载。
+                  显示:围栏本体红边界+向外扩张 2.5m 红线+两线间黄色
+                  斜线警示带;三态视觉判定基准:
+                  中心在任一围栏本体内=安全(黄框);
+                  中心越出本体进入警示带=预警(橙框);
+                  中心完全越出外扩线=严重违规报警(红框)。
+                  判定不受图层勾选影响。2.5m=车头前伸 2.3m+余量
   SCAN_EXTRINSICS 每路 2D 激光的安装外参(车体坐标系,米/度)。
                   工程内没有任何 laser->车体 的静态 tf,rviz 里这两路
                   从未正确落位;默认 0 需实车标定一次(README 有步骤)
@@ -29,6 +40,11 @@ CONFIG = {
 
     # 地图文件。rosparam /robot/mapfile 存在时优先(rospy 可用才读)。
     "MAP_PATH": "$MON/map",
+
+    # 电子围栏目录(2026-09-22 起,当日由向内 2m 改为向外 2.5m):
+    # 所有 csv 各为一个围栏,与 map/ 分离。修改围栏文件后需重启
+    # monitor(与地图一致,懒加载缓存一次)。
+    "FENCE_PATH": "$MON/fence",
 
     # 2D 补盲激光:话题名 -> 车体安装外参 {x, y, yaw_deg}
     # 语义:scan 点先在传感器系极坐标->笛卡尔,再平移 (x,y)、旋转 yaw_deg。
@@ -68,6 +84,7 @@ CONFIG = {
         "loadpos": True,      # 托盘位置点
         "stoppose": True,     # 停车点箭头
         "map": False,         # 地图三线
+        "fence": True,        # 电子围栏(红边界+外扩2.5m红线+黄色斜线警示带)
         "scan": True,         # 2D 补盲激光两路
         "cloud": True,        # 3D 感知点云
         "grid": False,        # 参考网格

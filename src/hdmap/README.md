@@ -4,6 +4,26 @@ C++11 共享库，供 PNC 在进程内调用。核心算法不依赖 ROS、Eigen
 新增车道服务采用 PNC 当前的 4 空格、同行大括号、PascalCase 函数与中文业务注释风格。
 地图初始化阶段使用 Boost.Polygon 头文件完成区域并集；运行时没有 Boost 动态库依赖。
 
+## 最近变化与注意事项
+
+09-21 配合 PNC/ultra_command 导航速度替换，核查本库无 CAN 实际车速入口。
+`ClassifyPerception()` 仅从导航读取位置和 heading；样条 `Segment::Speed()` 是几何参数
+导数模长，供弧长积分/反解使用；`pnc_adapter` 的路径点 velocity 是目标路径字段。
+这些量不替换成车辆实际速度。本轮未修改 HDMap 算法、地图、接口或 SDK 库。
+
+09-15更新为7条源地图、12,537个处理点，并将车道服务接入PNC感知发布；09-14首期10条地图
+属于历史。地图预处理与规划实际加载链是两件事，当前接入的是感知车道分类。
+
+## 注意事项与容易疏忽的点
+
+- 0.5m是沿样条的弧长间距，不是弯道相邻点的直线距离；末尾不足一整步默认不输出。
+- 输出8列表头CSV不能交给PNC旧三/四列fscanf读取器；使用LoadProcessedTrajectory。
+- SDK方向1/-1不是PNC挡位枚举；倒车车头heading不能用点序切线直接替代。
+- 当前SDK安装库是主机架构，Orin必须重编；`sdk/share/hdmap/README.md`是安装副本，由源README安装更新。
+- 类实例一次LoadMap并复用；改CSV不自动热更新，不能每帧重新加载地图。
+- 只返回type的分类接口不改变其他字段；converter另有本车道20%门槛，不等同于SDK通用分类。
+- 地图原点、位置精度和车辆可行性需要外部保证，数值插值误差小不代表实车定位精度。
+
 ## 架构与职责
 
 ```text
@@ -64,7 +84,7 @@ robot::perception result = lane_map.ClassifyPerception(navigation, perception);
 PNC 的 `perception_msg_convert.cpp` 已在 `perception_pub.publish(mPerception)` 前调用分类。
 节点启动时加载 `hdmap` 包的 `map_processed`，可通过 `/hdmap/map_processed_dir` 覆盖目录；
 地图加载失败退出，单帧分类失败记录错误并跳过该帧发布。`type` 的消息注释已同步为车道关系。
-接入检查见 `src/pnc/tests/perception/verify.py`，使用真实回调与 SDK、ROS 消息桩验证。
+当前发布检查见 `src/pnc/src/robot_perception_convert/tests/verify_publish.py`；旧tests/perception为09-15历史接入夹具，其空帧期望已被后续需求替代。
 
 ## 坐标和数据契约
 
@@ -123,7 +143,7 @@ PNC 内部 `planning::PathPoint::theta` 使用数学弧度，应通过 `Coordina
 x,y,heading,curvature,signed_curvature,dist_origin,p2p_distance,direction
 ```
 
-## 编译、生成 `.so` 和批处理
+## 使用方法：编译、生成 `.so` 和批处理
 
 在工程根执行：
 
@@ -166,14 +186,13 @@ hdmap::HdMapServer server;
 hdmap::MapPointList points;
 hdmap::DIRECTION_E direction = hdmap::DIRECTION_AUTO;
 hdmap::STATUS_S status = server.LoadProcessedTrajectory(csv_file, points, direction);
-if (!status.IsOk())
-{
+if(!status.IsOk()) {
     // 向任务装载层报告 status.message，当前地图不得切换为失败结果。
     return;
 }
 std::vector<XYZ_COOR_S> path_list;
 status = hdmap::ConvertToPncPath(points, path_list);
-if (!status.IsOk()) return;
+if(!status.IsOk()) return;
 // path_list 交给路径管理层；实际挡位、任务速度仍由 PNC 任务配置赋值。
 ```
 
@@ -199,7 +218,7 @@ ROS1 catkin 消费者可在现有 `find_package(catkin REQUIRED COMPONENTS ...)`
 示例运行：
 
 ```bash
-src/hdmap/build/hdmap_pnc_example src/hdmap/map_processed/312_316_03_spline.csv
+src/hdmap/build/hdmap_pnc_example src/hdmap/map_processed/lane1_spline.csv
 ```
 
 需要按内存点串处理时调用 `ProcessTrajectory`；文件处理用 `ProcessFile` / `ProcessDirectory`。
@@ -212,19 +231,6 @@ src/hdmap/build/hdmap_pnc_example src/hdmap/map_processed/312_316_03_spline.csv
 批次启动前失败时不替换旧的结果数组，调用方必须先检查返回状态。
 
 ## 验证与已生成结果
-
-以下编译与 SDK 回归记录来自 2026-09-14 首期实现，当时使用 10 条原始地图：
-
-- C++11 `-Wall -Wextra -Wpedantic -Werror` 编译通过。
-- 956 项断言通过：直线/旋转直线、圆弧及左右符号、倒车、0/360°、两点拟合、重复/毫米级密集点、
-  终点策略、非法间距、混合方向、尖点、坏 CSV、原文件/软链接保护、部分批次失败、PNC float 边界。
-- AddressSanitizer / UndefinedBehaviorSanitizer 检查通过；真实 PNC 类型示例成功加载全部 10 个结果文件。
-- cppcheck 无 warning/performance/portability 诊断；将安装后的 SDK 移到独立目录，
-  使用 `find_package(hdmap)` 编译消费者并动态加载 `.so` 通过，不依赖 `LD_LIBRARY_PATH`。
-- SciPy 使用独立样条求解、QUADPACK 积分与 Brent 反解，对全部 10,033 个输出点交叉验证。
-  实际 CSV 点投回独立样条后重新积分，最大相邻弧长误差 `1.004e-8 m`；
-  最大坐标差 `1.001e-8 m`、heading 差 `1.195e-7°`、曲率差 `1.359e-9 /m`。
-- 10 个源 CSV 的 SHA-256 与开工时一致；最终二进制重新生成的结果与交付 CSV 逐字节相同。
 
 2026-09-15 已对更新后的 7 条地图重新调用 SDK：25,277 个原始点生成 12,537 个输出点。
 参数为 `--heading pnc --direction auto --anchor-interval 1 --sample-interval 0.5`，
@@ -253,3 +259,6 @@ python3 src/hdmap/tests/verify_maps.py src/hdmap/map src/hdmap/map_processed \
 上述误差是数值实现交叉验证结果，不代表原始定位数据的物理精度。
 三次样条穿过采样节点，没有执行定位去噪、障碍物约束或车辆最小转弯半径约束；
 实车使用前仍需在目标环境完成 PNC 接入及道路验证。
+
+09-14首期10条地图/956项及安装后异地链接验证属于历史；详细数值见
+[整理前原文](../../docs/history/2026-09-19-before-docs/src/hdmap/README.md)，不与当前7条结果混用。

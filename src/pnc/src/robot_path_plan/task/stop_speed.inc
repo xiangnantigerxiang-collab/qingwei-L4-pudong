@@ -14,7 +14,6 @@ float PathPlanComply::LimitSpeedByDistanceToStop(
         return 0.0;
     }
     remain_distance_ = mDrivingPath.at(mStopIndex).dist_origin - mDrivingPath.at(mKeypoint).dist_origin;
-    printf("remain_distance_: %f, key_index:%d, stop_index:%d\n", remain_distance_, mKeypoint, mStopIndex);
     mPathPlanStatus.distance2Stop = remain_distance_;
 
     if(mTaskPlanData.taskType == ADAPTIVEPARK)
@@ -78,7 +77,6 @@ float PathPlanComply::LimitHookTaskSpeed() {
     // 挂钩阶段改用后向感知的 center_distance；连接反馈只在距离小于 1.5 m 时判定完成。
     printf("挂钩循迹中...\n");
     remain_distance_ = mHookPos.center_distance;
-    printf("hook, remain_distance_ %f\n", remain_distance_);
     if(remain_distance_ < 1.5) {
         // 历史区域限定已注释；现役判据是下方的 linkPallet。
         //                std::vector<Dot> hook_rect;
@@ -124,7 +122,6 @@ float PathPlanComply::LimitDrivingTaskSpeed() {
         }
     }
     remain_distance_ = mDrivingPath.at(stop_index).dist_origin - mDrivingPath.at(mKeypoint).dist_origin;
-    printf("<<<<dest stop index: %d, airport stop index: %d>>>>>\n", mStopIndex, stop_index);
     if(mVehicleData.curGear == GEAR_N) {
         printf("挡位:N, 停车\n");
         return 0;
@@ -132,7 +129,7 @@ float PathPlanComply::LimitDrivingTaskSpeed() {
     if(mVehicleData.curGear == GEAR_D) {
         printf("挡位:D, 路径跟踪\n");
 
-        if(remain_distance_ < 0.5) {  // 距离终点还剩0.5开始刹停
+        if(remain_distance_ < 0.5) {  // 进入到位区前已按连续限速降至低速，这里保持原到位判据。
             // 临时停车只返回零速，不能把整个任务标成完成。
             if(stop_index == mStopIndex) {
                 printf("离终点小于0.5, task_finished\n");
@@ -144,14 +141,19 @@ float PathPlanComply::LimitDrivingTaskSpeed() {
                 return 0.0;
             }
         } else {
-            if(remain_distance_ > 10.0)  // 远处返回距离值，外层再与任务期望速度取最小值。
-                return remain_distance_;
-            else
-                return std::max<double>(remain_distance_ / 6.0, 0.3);
+            // 按 d = v^2/(2a) + T*v 预留减速距离，避免原 10 m 边界突降到 1.67 m/s。
+            // a=0.2 m/s^2，T=4 s；15 km/h 时约提前 61 m 开始减速，近终点自然收缓。
+            // 保留 0.3 m/s 蠕行下限，避免底层速度环低速停滞；0.5 m 到位区仍返回零速。
+            const double deceleration = 0.2;
+            const double approach_time = 4.0;
+            const double distance = remain_distance_ - 0.5;
+            const double offset = deceleration * approach_time;
+            const double speed = std::sqrt(offset * offset + 2.0 * deceleration * distance) - offset;
+            // 末段再按 8 s 收速；两条上限在 v=1.6 m/s 时连续相交，
+            // 理想跟随时末段减速度不超过 0.2 m/s^2，保留已验证可行的蠕行速度。
+            return std::max(std::min(speed, distance / 8.0), 0.3);
         }
     } else {
-        printf("挡位:%d\n", mVehicleData.curGear);
     }
-    printf("return 0\n");
     return 0.0;
 }

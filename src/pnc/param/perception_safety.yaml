@@ -11,7 +11,10 @@
   lateral_margin: 0.15
   stop_margin: 1.0
   emergency_margin: 0.3
-  reaction_time: 0.4
+  reaction_time: 2.1             # s，1 m/s 时紧急距离为 2.1 + 1/(2*0.8) + 0.3 = 3.025 m
+  static_obstacle_extra_time: 2.0 # s，仅本车道静态且与行驶路径相交的目标，额外提前普通减速
+  static_stop_min_distance: 3.0  # m，本车道静态碰撞目标的停车距离下限，减速后也不缩小
+  front_no_confirmation_distance: 6.0 # m，本车道车头正前方此距离内，紧迫碰撞不等待三帧
   comfort_deceleration: 0.8       # m/s²，普通风险减速上限
   emergency_deceleration: 0.8     # m/s²，估计紧急停车距离用；须按最差载荷实测保证值标定
   jerk: 0.8                     # m/s³，普通风险限速变化率
